@@ -117,6 +117,23 @@ Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option
   are untested. Known limitation: dragging the header while content is scrolled un-scrolls the content first; native moves the
   sheet with the content offset kept.
 
+### Stacked sheets (`src/react/stack.ts`)
+- A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes all
+  siblings inert, including the sheet below. The below sheet's `inert` is removed and focus returns when the top one closes.
+- A module-level stack of open sheets handles: **Escape closes only the top sheet** (one document listener, not one per
+  sheet); the sheet directly below gets `data-ybs-covered` and `--ybs-covered` (0..1, following the upper sheet's progress)
+  so `/styled` can scale it back like iOS; **only the top sheet reacts to the keyboard** (`isActive` option).
+- Don't toggle `overflow` on a covered sheet (Firefox re-snaps on overflow changes); `inert` already blocks it.
+- Demo: Stacked settings (three levels: Settings → Appearance → Accent colour, plus a controlled Language sheet).
+
+### Many sheets (performance)
+A closed sheet is cheap: `Root` is a context, and `Portal` renders `null` until it opens, so no controller, observers or
+listeners exist. Measured on the "1000 sheets" demo (production build, desktop Chromium with Pixel 7 emulation, 5 runs each):
+1000 rows render in ~12ms without sheets and ~21ms with a `<BottomSheet>` per row (~9µs per closed sheet). Expect a few
+times that on phones. `?bare=1` on that demo renders the same rows without sheets, for comparison on devices. Guidance: put
+expensive sheet content in a component (it only renders when open); for "tap a row to see details", one sheet whose content
+follows the selected row is lighter still.
+
 ### Keyboard (spike 01)
 The overlay layer (backdrop, scroller, bleed) is positioned from `visualViewport` (`--vv-top`, `--vv-h`), not
 from the layout viewport. Without that, iOS pans fixed elements off-screen, and Android (resizes-visual by default) leaves
@@ -135,7 +152,7 @@ the sheet behind the keyboard.
   (the on-screen keyboard is then hidden until Cmd+K). Only tap in keyboard tests.
 
 Still open: iOS on a real device (momentum feel, rubber-band at the top), Firefox desktop,
-slow mouse-drag feel, header drag while content is scrolled, non-modal (Maps-style) sheets, stacking, page scale-back,
+slow mouse-drag feel, header drag while content is scrolled, non-modal (Maps-style) sheets, page scale-back (the page behind a sheet),
 screen-reader pass (the modal currently uses inert siblings + focus on open/restore + Escape).
 
 ## Product decisions

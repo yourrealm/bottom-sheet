@@ -52,6 +52,8 @@ export const structuralCss = /* css */ `
 [data-ybs-sheet] { position: relative; scroll-snap-align: start; scroll-snap-stop: always; outline: none; }
 [data-ybs-root][data-ybs-fit] [data-ybs-sheet] { scroll-snap-align: end; }
 [data-ybs-header] { position: sticky; top: 0; z-index: 1; }
+/* Stacked: a covered sheet is inert (set by the sheet above), so it can't be scrolled. Don't toggle its
+   overflow: Firefox re-snaps on overflow changes. The visual recede lives in /styled. */
 @media (pointer: fine) {
   [data-ybs-drag] { cursor: grab; user-select: none; -webkit-user-select: none; }
   [data-ybs-root][data-ybs-drag="active"] [data-ybs-drag] { cursor: grabbing; }

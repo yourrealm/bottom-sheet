@@ -1,0 +1,123 @@
+import { useState } from 'react'
+import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { logged } from '../debug'
+
+const LANGUAGES = [
+  'Dansk', 'Deutsch', 'English (UK)', 'English (US)', 'Español', 'Eesti', 'Suomi', 'Français', 'Gaeilge', 'Hrvatski',
+  'Magyar', 'Íslenska', 'Italiano', 'Latviešu', 'Lietuvių', 'Nederlands', 'Norsk bokmål', 'Norsk nynorsk', 'Polski',
+  'Português (Brasil)', 'Português (Portugal)', 'Română', 'Slovenčina', 'Slovenščina', 'Svenska', 'Türkçe', 'Čeština',
+  'Ελληνικά', 'Български', 'Русский', 'Українська', 'עברית', 'العربية', 'हिन्दी', 'ไทย', '한국어', '日本語', '中文 (简体)', '中文 (繁體)',
+]
+const ACCENTS = [
+  ['Ocean', '#0a66ff'], ['Moss', '#2f9e44'], ['Ember', '#e8590c'], ['Orchid', '#ae3ec9'], ['Rose', '#e64980'], ['Slate', '#495057'],
+] as const
+
+/** Stacked sheets, up to three levels: Settings → Appearance → Accent colour, and Settings → Language. */
+export function Settings({ autoOpen }: { autoOpen: boolean }) {
+  const [open, setOpen] = useState(autoOpen)
+  const [language, setLanguage] = useState('English (UK)')
+  const [langOpen, setLangOpen] = useState(false)
+  const [accent, setAccent] = useState<string>(ACCENTS[0][1])
+  const [dark, setDark] = useState(false)
+  const [notify, setNotify] = useState(true)
+
+  return (
+    <div className="settings-page" style={{ ['--accent' as string]: accent }}>
+      <div className="profile">
+        <div className="avatar big" style={{ ['--h' as string]: 220 }}>AB</div>
+        <div>
+          <strong>Alva Berg</strong>
+          <div className="muted small">{language} · {notify ? 'Notifications on' : 'Notifications off'}</div>
+        </div>
+      </div>
+      <button className="primary wide" onClick={() => setOpen(true)}>Open settings</button>
+
+      <BottomSheet {...logged('settings')} open={open} onOpenChange={setOpen} detents={[0.55]} title="Settings">
+        <ul className="menu">
+          <li>
+            <label className="switch-row menu-row">
+              Notifications
+              <input type="checkbox" role="switch" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+            </label>
+          </li>
+          <li>
+            <button className="menu-row" id="open-language" onClick={() => setLangOpen(true)}>
+              Language <span className="muted">{language} ›</span>
+            </button>
+          </li>
+          <li>
+            <BottomSheet
+              {...logged('appearance')}
+              trigger={
+                <span className="menu-row">
+                  Appearance <span className="muted">›</span>
+                </span>
+              }
+              detents={[]}
+              title="Appearance"
+              description="Stacked on top of Settings"
+            >
+              <div className="pad">
+                <label className="switch-row">
+                  Dark mode (demo only)
+                  <input type="checkbox" role="switch" checked={dark} onChange={(e) => setDark(e.target.checked)} />
+                </label>
+                <BottomSheet
+                  {...logged('accent')}
+                  trigger={
+                    <span className="menu-row">
+                      Accent colour <span className="accent-dot" style={{ background: accent }} />
+                    </span>
+                  }
+                  detents={[]}
+                  title="Accent colour"
+                  description="Third sheet in the stack"
+                >
+                  <div className="pad accents">
+                    {ACCENTS.map(([name, value]) => (
+                      <button
+                        key={name}
+                        className={`accent${accent === value ? ' on' : ''}`}
+                        onClick={() => setAccent(value)}
+                        aria-pressed={accent === value}
+                      >
+                        <span style={{ background: value }} />
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </BottomSheet>
+              </div>
+            </BottomSheet>
+          </li>
+          {['Privacy', 'Storage', 'Help', 'About'].map((x) => (
+            <li key={x}>
+              <button className="menu-row">
+                {x} <span className="muted">›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {/* Controlled stacked sheet (opened from a plain button above). */}
+        <BottomSheet {...logged('language')} open={langOpen} onOpenChange={setLangOpen} detents={[0.6]} title="Language">
+          <ul className="menu">
+            {LANGUAGES.map((l) => (
+              <li key={l}>
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    setLanguage(l)
+                    setLangOpen(false)
+                  }}
+                >
+                  {l} {l === language && <span className="check">✓</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </BottomSheet>
+      </BottomSheet>
+    </div>
+  )
+}

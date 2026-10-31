@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom'
 import { createSheetController, type SheetController } from '../core/controller'
 import type { Detent } from '../core/math'
 import { structuralCss } from '../core/styles'
+import { isTopSheet, pushSheet, removeSheet, reportProgress } from './stack'
 import { useStyle } from './use-style'
 
 interface SheetContextValue {
@@ -204,11 +205,16 @@ export function Portal({ children, container }: PortalProps) {
 
   // Everything outside the sheet is inert: focus can't leave, screen readers
   // see only the dialog. (Modal sheet; non-modal is a later option.)
+  const setOpenRef = useRef(ctx.setOpen)
+  setOpenRef.current = ctx.setOpen
   useEffect(() => {
     const root = ctx.rootEl.current
     if (!ctx.mounted || !root) return
     const parent = root.parentElement
     if (!parent) return
+    // Stack: Escape goes to the top sheet only; the sheet below can recede.
+    const entry = { root, close: () => setOpenRef.current(false) }
+    pushSheet(entry)
     const touched: Element[] = []
     for (const el of Array.from(parent.children)) {
       if (el === root || el.hasAttribute('inert') || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue
@@ -216,6 +222,7 @@ export function Portal({ children, container }: PortalProps) {
       touched.push(el)
     }
     return () => {
+      removeSheet(entry)
       for (const el of touched) el.removeAttribute('inert')
       // Restore focus only now: while the page is inert, focus() is a no-op.
       const back = ctx.returnFocus.current
@@ -223,15 +230,6 @@ export function Portal({ children, container }: PortalProps) {
       if (back?.isConnected) back.focus({ preventScroll: true })
     }
   }, [ctx.mounted, ctx.rootEl, ctx.returnFocus])
-
-  useEffect(() => {
-    if (!ctx.mounted) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) ctx.setOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [ctx.mounted, ctx.setOpen])
 
   if (!ctx.mounted || typeof document === 'undefined') return null
   return createPortal(
@@ -292,6 +290,8 @@ export function View({ children, className, bleedClassName }: ViewProps) {
         guard: ctx.guard,
         onDetentChange: (d) => ctxRef.current.onDetentChange?.(d),
         onClosed: () => ctxRef.current.onClosed(),
+        onProgress: (p) => reportProgress(root, p),
+        isActive: () => isTopSheet(root),
         debug: (m) => ctxRef.current.debug?.(m),
       },
     )

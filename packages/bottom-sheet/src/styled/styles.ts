@@ -24,6 +24,13 @@ export const styledCss = /* css */ `
   opacity: calc(var(--ybs-progress, 0) * var(--ybs-backdrop-max));
 }
 .ybs-bleed { background: var(--ybs-sheet-bg); }
+/* Stacked sheets: the covered sheet recedes (scales back and lifts slightly), like iOS. */
+.ybs-view { transform-origin: 50% 0; transition: none; }
+[data-ybs-root][data-ybs-covered] .ybs-view {
+  transform: translateY(calc(var(--ybs-covered, 0) * -6px)) scale(calc(1 - var(--ybs-covered, 0) * 0.06));
+  border-radius: var(--ybs-radius);
+}
+[data-ybs-root][data-ybs-covered] .ybs-bleed { opacity: 0; }
 .ybs-sheet {
   background: var(--ybs-sheet-bg);
   color: var(--ybs-sheet-fg);

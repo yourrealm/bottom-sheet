@@ -40,6 +40,10 @@ export interface SheetControllerOptions {
   onDetentChange?: (detent: Detent) => void
   /** Called once the sheet has fully closed (scrolled to 0). */
   onClosed?: () => void
+  /** Progress 0 (closed) .. 1 (full), on every scroll. Used to drive stacked-sheet effects. */
+  onProgress?: (progress: number) => void
+  /** Whether this sheet is the active (top) one; inactive sheets ignore the keyboard. Default always. */
+  isActive?: () => boolean
   /** Internal decision log, for testing on devices. */
   debug?: (message: string) => void
 }
@@ -211,7 +215,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // ---- scroll ----
   function onScroll() {
     const st = scroller.scrollTop
-    root.style.setProperty('--ybs-progress', String(full > 0 ? Math.min(Math.max(st / full, 0), 1) : 0))
+    const progress = full > 0 ? Math.min(Math.max(st / full, 0), 1) : 0
+    root.style.setProperty('--ybs-progress', String(progress))
+    options.onProgress?.(progress)
     root.style.setProperty('--ybs-bleed', st > 4 ? '1' : '0')
 
     if (lock != null && !touching) {
@@ -365,7 +371,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       keyboard = kb
       root.toggleAttribute('data-ybs-keyboard', kb)
       // Native: the sheet goes to its largest detent while the keyboard is up.
-      if (kb && current !== 'full' && target !== 'full') {
+      if (kb && (options.isActive?.() ?? true) && current !== 'full' && target !== 'full') {
         requestAnimationFrame(() => {
           layout()
           scrollToDetent('full')

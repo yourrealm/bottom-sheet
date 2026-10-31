@@ -229,3 +229,75 @@ for (const id of ['places', 'comments', 'product', 'share', 'filters', 'playlist
     expect(errors).toEqual([])
   })
 }
+
+// ---------- stacking ----------
+
+test.describe('stacked sheets', () => {
+  test('a sheet opened from a sheet stacks on top; the one below is covered and inert', async ({ page }) => {
+    await page.goto('/?open=1#/settings')
+    await waitForEvent(page, 'settings: onDetentChange')
+    await page.getByRole('button', { name: /Appearance/ }).click()
+    await waitForEvent(page, 'appearance: onDetentChange')
+
+    const roots = page.locator('[data-ybs-root]')
+    await expect(roots).toHaveCount(2)
+    await expect(roots.nth(0)).toHaveAttribute('data-ybs-covered', '')
+    await expect(roots.nth(0)).toHaveAttribute('inert', '')
+    await expect(page.getByRole('dialog', { name: 'Appearance' })).toBeVisible()
+
+    // Three levels.
+    await page.getByRole('button', { name: /Accent colour/ }).click()
+    await waitForEvent(page, 'accent: onDetentChange')
+    await expect(roots).toHaveCount(3)
+    await expect(roots.nth(1)).toHaveAttribute('data-ybs-covered', '')
+  })
+
+  test('Escape closes only the top sheet and returns focus to its trigger', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'keyboard flow is a desktop concern')
+    await page.goto('/?open=1#/settings')
+    await waitForEvent(page, 'settings: onDetentChange')
+    const trigger = page.getByRole('button', { name: /Appearance/ })
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    await waitForEvent(page, 'appearance: onDetentChange')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-covered', '')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('inert', '')
+    await expect(trigger).toBeFocused()
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+
+  test('tapping the dimmed area closes only the top sheet', async ({ page }) => {
+    await page.goto('/?open=1#/settings')
+    await waitForEvent(page, 'settings: onDetentChange')
+    await page.locator('#open-language').click()
+    await waitForEvent(page, 'language: onDetentChange 0.6')
+    await page.mouse.click(40, 80)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+  })
+})
+
+// ---------- many sheets ----------
+
+test('1000 rows, each with its own sheet: renders fast and any row opens its sheet', async ({ page }) => {
+  await page.goto('/#/thousand')
+  await page.locator('#open-orders').click()
+  await waitForEvent(page, /orders: rendered 1000 rows/)
+  const line = (await events(page)).find((e) => e.startsWith('orders: rendered'))!
+  const ms = Number(/in ([\d.]+)ms/.exec(line)![1])
+  console.log(`[${test.info().project.name}] ${line}`)
+  expect(ms).toBeLessThan(1500)
+  await waitForEvent(page, 'orders: onDetentChange')
+
+  await page.locator('[data-order="500"]').click()
+  await waitForEvent(page, 'order-500: onDetentChange')
+  await expect(page.getByRole('dialog', { name: 'Order #48710' })).toBeVisible()
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
+})

@@ -8,6 +8,8 @@ import { Share } from './scenarios/share'
 import { Filters } from './scenarios/filters'
 import { Playlist } from './scenarios/playlist'
 import { Lab } from './scenarios/lab'
+import { Settings } from './scenarios/settings'
+import { Thousand } from './scenarios/thousand'
 import './styles.css'
 
 interface Scenario {
@@ -26,6 +28,8 @@ const SCENARIOS: Scenario[] = [
   { id: 'share', title: 'Share', blurb: 'Horizontal rows inside a vertical sheet.', icon: '↗︎', hue: 285, Component: Share },
   { id: 'filters', title: 'Filters', blurb: 'Form controls, a slider and a sticky footer.', icon: '🎛️', hue: 45, Component: Filters },
   { id: 'playlist', title: 'Playlist', blurb: 'Built from the headless parts, fully custom look.', icon: '🎧', hue: 320, Component: Playlist },
+  { id: 'settings', title: 'Stacked settings', blurb: 'Sheets on sheets, three levels deep. The one below recedes.', icon: '🗂️', hue: 200, Component: Settings },
+  { id: 'thousand', title: '1000 sheets', blurb: 'A list of 1000 rows where every row owns its own sheet.', icon: '⚡️', hue: 100, Component: Thousand },
   { id: 'lab', title: 'Lab', blurb: 'Plain test page used by the device scripts.', icon: '🧪', hue: 0, Component: Lab },
 ]
 
