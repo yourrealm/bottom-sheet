@@ -1,0 +1,12 @@
+{
+  "name": "bottom-sheet-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "dev": "pnpm --filter playground dev",
+    "build": "pnpm --filter @yourrealm/bottom-sheet build",
+    "test": "pnpm --filter @yourrealm/bottom-sheet test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
