@@ -65,6 +65,8 @@ export interface SheetController {
   destroy(): void
 }
 
+/** scrollTop at or below this counts as closed (browsers settle on sub-pixel values, e.g. 1.02 in Firefox). */
+const CLOSED_TOLERANCE = 2
 const LOCK_QUIET_MS = 150
 /** A fling can outlive a short quiet window and resume when overflow is restored (seen on Chrome and Firefox Android). */
 const LOCK_MIN_MS = 800
@@ -260,7 +262,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
       emitted = now
       options.onDetentChange?.(now)
     }
-    if (isOpen && st <= 1 && !touching) finishClose()
+    if (isOpen && st <= CLOSED_TOLERANCE) {
+      if (!touching) finishClose()
+      else dbg(`at closed, waiting for the finger to lift (st=${st.toFixed(2)})`)
+    }
   }
 
   // ---- gestures ----
@@ -275,6 +280,15 @@ export function createSheetController(els: SheetElements, options: SheetControll
     touching = false
     anchor = scroller.scrollTop
     dbg(`release @${Math.round(anchor)}`)
+    // A touch while the sheet settles at closed makes its scrollend arrive with a finger down, so it
+    // can't finish closing then. Re-check once the finger lifts; otherwise the sheet stays mounted,
+    // invisible, over the page (observed on Firefox Android: the "wedged page" report).
+    requestAnimationFrame(() => {
+      if (!touching && isOpen && !programmatic && scroller.scrollTop <= CLOSED_TOLERANCE) {
+        dbg('finger lifted at closed: finishing close')
+        finishClose()
+      }
+    })
   }
   // Wheel/trackpad. With mandatory snapping, a small wheel delta at a partial detent just snaps back,
   // so the wheel looks dead. Native rule instead (iOS: scrolling expands the sheet first): while the
@@ -400,6 +414,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   })
 
   function finishClose() {
+    dbg('finishClose')
     isOpen = false
     current = null
     emitted = null
@@ -459,7 +474,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     },
     close() {
       if (!isOpen) return
-      if (scroller.scrollTop <= 1) finishClose()
+      if (scroller.scrollTop <= CLOSED_TOLERANCE) finishClose()
       else scrollToDetent('closed')
     },
     setDetents(next) {

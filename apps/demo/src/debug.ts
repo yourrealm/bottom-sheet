@@ -28,12 +28,17 @@ export function log(message: string) {
   for (const l of listeners) l([...lines])
   if (import.meta.env.DEV && !document.hidden) {
     pending.push(`${TAB} ${line}`)
-    clearTimeout(flushTimer)
-    flushTimer = setTimeout(() => {
-      const body = pending.join('\n')
-      pending = []
-      void fetch('/__log', { method: 'POST', body, keepalive: true }).catch(() => {})
-    }, 100)
+    // Throttle, not debounce: a debounce never flushes if something logs in a tight loop, which is
+    // exactly the case we most need to see. Cap the batch so a runaway loop can't build a huge body.
+    if (pending.length > 200) pending.splice(100, pending.length - 150, `${TAB} … ${pending.length - 150} lines dropped …`)
+    if (flushTimer === undefined) {
+      flushTimer = setTimeout(() => {
+        flushTimer = undefined
+        const body = pending.join('\n')
+        pending = []
+        void fetch('/__log', { method: 'POST', body, keepalive: true }).catch(() => {})
+      }, 100)
+    }
   }
 }
 

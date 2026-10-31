@@ -110,6 +110,8 @@ export function Root(props: RootProps) {
   // Open -> mount; close -> animate out via the controller, unmount when closed.
   // Re-opening while the close animation runs reverses it.
   const closing = useRef(false)
+  const debugRef = useRef(debug)
+  debugRef.current = debug
   const returnFocus = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (open && !mounted) {
@@ -128,10 +130,11 @@ export function Root(props: RootProps) {
   }, [open, mounted, initialDetent])
 
   const onClosed = useCallback(() => {
+    debugRef.current?.(`onClosed (open=${open}, mounted=${mounted})`)
     closing.current = false
     setMounted(false)
     if (open) setOpen(false) // closed by a gesture
-  }, [open, setOpen])
+  }, [open, mounted, setOpen])
 
   const value = useMemo<SheetContextValue>(
     () => ({

@@ -330,3 +330,18 @@ test('every settings row opens its own stacked sheet', async ({ page }) => {
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
   }
 })
+
+// Regression: a finger down while the sheet settles at closed meant scrollend arrived "touching", the
+// close never finished, and the invisible sheet layer stayed over the page (Firefox Android report).
+test('a touch held while the sheet finishes closing still lets it close', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP touch events')
+  await openLab(page)
+  const cdp = await page.context().newCDPSession(page)
+  await page.mouse.click(40, 120) // tap outside: starts closing
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 700 }] })
+  await page.waitForTimeout(1200) // the close animation settles while the finger is down
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await waitForEvent(page, 'lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  await expect(page.locator('#root')).not.toHaveAttribute('inert')
+})
