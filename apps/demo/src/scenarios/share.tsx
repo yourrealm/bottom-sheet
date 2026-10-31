@@ -19,7 +19,13 @@ export function Share({ autoOpen }: { autoOpen: boolean }) {
 
   return (
     <div className="viewer">
-      <div className="viewer-image" />
+      <img
+        className="viewer-image"
+        src={`${import.meta.env.BASE_URL}dog/toy.webp`}
+        alt="A small dog holding a purple toy"
+        width={1200}
+        height={1184}
+      />
       <div className="viewer-bar">
         <span className="muted">Today 06:42</span>
         <button className="primary" onClick={() => setOpen(true)}>Share</button>

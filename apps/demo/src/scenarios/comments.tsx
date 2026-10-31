@@ -17,10 +17,16 @@ export function Comments({ autoOpen }: { autoOpen: boolean }) {
           <div className="avatar" style={{ ['--h' as string]: 200 }}>NL</div>
           <div>
             <strong>noah.lind</strong>
-            <div className="muted">Lofoten, early morning</div>
+            <div className="muted">Evening walk in the forest</div>
           </div>
         </header>
-        <div className="post-image" />
+        <img
+          className="post-image"
+          src={`${import.meta.env.BASE_URL}dog/walk.webp`}
+          alt="A small dog on a forest path at sunset"
+          width={1040}
+          height={1300}
+        />
         <div className="post-meta">
           <span>♥ 2,481</span>
           <button className="link" onClick={() => setOpen(true)}>
