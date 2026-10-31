@@ -29,6 +29,7 @@ for line in open(sys.argv[1]):
     parts = line.rstrip('\n').split(' ', 3)
     if len(parts) < 4: continue
     who, tab, t, msg = parts
+    msg = re.sub(r'^[a-z]+: ', '', msg)
     if msg.startswith('load '):
         tabrun[tab] = msg.split('run=')[-1] if 'run=' in msg else None; continue
     r = tabrun.get(tab)

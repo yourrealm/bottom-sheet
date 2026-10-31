@@ -2,3 +2,6 @@
 node_modules/
 dist/
 .logs/
+.logs/
+test-results/
+playwright-report/

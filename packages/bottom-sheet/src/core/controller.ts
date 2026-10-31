@@ -189,13 +189,21 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
   function unlock() {
     if (lock == null) return
-    dbg('unlock')
+    const pinned = lock
     lock = null
     scroller.style.overflowY = ''
+    // Firefox remembers the snap target chosen when the fling started (e.g.
+    // `closed`) and re-snaps to it when overflow is restored. An explicit
+    // programmatic scroll to the pinned position replaces that target.
+    scroller.scrollTo({ top: pinned, behavior: 'instant' })
+    dbg(`unlock @${Math.round(scroller.scrollTop)}`)
     // iOS fires no scrollend for the pinned scrollTop under overflow:hidden, so
     // settle here (idempotent if a real scrollend also arrives).
     requestAnimationFrame(() => {
-      if (lock == null && !touching && !programmatic) onScrollEnd()
+      if (lock != null || touching || programmatic) return
+      const st = scroller.scrollTop
+      if (Math.abs(st - pinned) > 2) dbg(`drift after unlock: ${Math.round(pinned)} -> ${Math.round(st)}`)
+      onScrollEnd()
     })
   }
 

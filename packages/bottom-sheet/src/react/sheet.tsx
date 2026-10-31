@@ -30,6 +30,8 @@ interface SheetContextValue {
   debug: ((m: string) => void) | undefined
   onClosed: () => void
   controller: RefObject<SheetController | null>
+  /** Element focused before the sheet opened; focus returns here after close. */
+  returnFocus: RefObject<HTMLElement | null>
   rootEl: RefObject<HTMLDivElement | null>
   sheetEl: RefObject<HTMLElement | null>
   titleId: string
@@ -107,8 +109,12 @@ export function Root(props: RootProps) {
   // Open -> mount; close -> animate out via the controller, unmount when closed.
   // Re-opening while the close animation runs reverses it.
   const closing = useRef(false)
+  const returnFocus = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    if (open && !mounted) setMounted(true)
+    if (open && !mounted) {
+      returnFocus.current = document.activeElement as HTMLElement | null
+      setMounted(true)
+    }
     if (open && mounted && closing.current) {
       closing.current = false
       controller.current?.open(initialDetent)
@@ -139,6 +145,7 @@ export function Root(props: RootProps) {
       debug,
       onClosed,
       controller,
+      returnFocus,
       rootEl,
       sheetEl,
       titleId: `${id}-title`,
@@ -210,8 +217,12 @@ export function Portal({ children, container }: PortalProps) {
     }
     return () => {
       for (const el of touched) el.removeAttribute('inert')
+      // Restore focus only now: while the page is inert, focus() is a no-op.
+      const back = ctx.returnFocus.current
+      ctx.returnFocus.current = null
+      if (back?.isConnected) back.focus({ preventScroll: true })
     }
-  }, [ctx.mounted, ctx.rootEl])
+  }, [ctx.mounted, ctx.rootEl, ctx.returnFocus])
 
   useEffect(() => {
     if (!ctx.mounted) return
@@ -274,7 +285,6 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     if (!root || !scroller.current || !markers.current || !sheet) {
       throw new Error('<Sheet.View> needs <Sheet.Content> inside it, inside <Sheet.Portal>')
     }
-    const previousFocus = document.activeElement as HTMLElement | null
     const c = createSheetController(
       { root, scroller: scroller.current, markers: markers.current, sheet },
       {
@@ -291,7 +301,6 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     return () => {
       c.destroy()
       ctx.controller.current = null
-      previousFocus?.focus?.({ preventScroll: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- created once per mount
   }, [])
