@@ -318,3 +318,15 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .badge.returned { color: #c2255c; }
 .order-actions { display: flex; gap: 10px; margin-top: 18px; }
 .order-actions > * { flex: 1; }
+.block { display: block; }
+.menu.flush { padding: 0; margin: 12px 0 16px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.storage-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; margin-top: 4px; }
+.storage-bar span { flex-basis: 0; transition: flex-grow 0.4s; }
+.faq details { border-bottom: 1px solid var(--ybs-divider); padding: 14px 0; }
+.faq summary { cursor: pointer; font-weight: 600; list-style-position: outside; }
+.faq p { margin: 8px 0 0; line-height: 1.5; color: var(--ybs-muted); }
+.faq .primary { margin-top: 18px; }
+.about { display: grid; justify-items: center; text-align: center; gap: 4px; padding-top: 8px; }
+.about-logo { font-size: 48px; line-height: 1; margin-bottom: 6px; }
+.about p { line-height: 1.5; }

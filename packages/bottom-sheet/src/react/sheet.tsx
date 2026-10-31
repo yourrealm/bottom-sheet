@@ -317,9 +317,22 @@ export function View({ children, className, bleedClassName }: ViewProps) {
   return (
     <>
       <div data-ybs-bleed="" aria-hidden="true" className={bleedClassName} />
-      <div data-ybs-scroller="" ref={scroller} className={className}>
+      <div
+        data-ybs-scroller=""
+        ref={scroller}
+        className={className}
+        // Any click in the sheet layer that isn't on the sheet itself is "outside": above it (the
+        // spacer) and beside it when the sheet is narrower than the screen (e.g. max-width on desktop).
+        onClick={(e) => {
+          const target = e.target as Element
+          // React bubbles events through portals: a click in a sheet stacked on top of this one arrives
+          // here too. Only handle clicks that are really inside this scroller's DOM.
+          if (!e.currentTarget.contains(target)) return
+          if (!target.closest('[data-ybs-sheet]')) ctx.setOpen(false)
+        }}
+      >
         <div data-ybs-track="">
-          <div data-ybs-spacer="" aria-hidden="true" onClick={() => ctx.setOpen(false)} />
+          <div data-ybs-spacer="" aria-hidden="true" />
           <div data-ybs-markers="" ref={markers} />
           {children}
         </div>

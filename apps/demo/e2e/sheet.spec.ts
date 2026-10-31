@@ -301,3 +301,32 @@ test('1000 rows, each with its own sheet: renders fast and any row opens its she
   await expect(page.getByRole('dialog', { name: 'Order #48710' })).toBeVisible()
   await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
 })
+
+test('wide screen: clicking beside the sheet closes it, clicking inside does not', async ({ page }, info) => {
+  test.skip(info.project.name !== 'firefox-desktop', 'desktop layout (sheet narrower than the screen)')
+  await page.setViewportSize({ width: 1200, height: 860 })
+  await openLab(page)
+  const box = (await page.locator('[data-ybs-sheet]').boundingBox())!
+  expect(box.width).toBeLessThan(1200)
+
+  await page.mouse.click(box.x + box.width / 2, 760) // on a row: stays open
+  await page.waitForTimeout(300)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+
+  await page.mouse.click(box.x / 2, 760) // beside the sheet, level with its content
+  await waitForEvent(page, 'lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+})
+
+test('every settings row opens its own stacked sheet', async ({ page }) => {
+  await page.goto('/?open=1#/settings')
+  await waitForEvent(page, 'settings: onDetentChange')
+  for (const name of ['Privacy', 'Storage', 'Help', 'About']) {
+    await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: new RegExp(`^${name}`) }).click()
+    await waitForEvent(page, `${name.toLowerCase()}: onDetentChange`)
+    await expect(page.getByRole('dialog', { name })).toBeVisible()
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
+    await page.mouse.click(30, 60) // above the stacked sheet: closes only it
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  }
+})
