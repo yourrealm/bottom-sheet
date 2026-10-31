@@ -145,13 +145,22 @@ test.describe('touch gestures (Chromium)', () => {
   // and skip with a clear reason rather than fail; real-device runs cover touch (scripts/android-suite.sh).
   test.beforeEach(async ({ page }) => {
     await openLab(page)
-    const before = (await geometry(page)).st
+    // Record any scroll movement during the probe (snapping may put it back afterwards).
+    await page.evaluate(() => {
+      const s = document.querySelector('[data-ybs-scroller]')!
+      const start = s.scrollTop
+      ;(window as unknown as { __moved: number }).__moved = 0
+      s.addEventListener('scroll', () => {
+        const w = window as unknown as { __moved: number }
+        w.__moved = Math.max(w.__moved, Math.abs(s.scrollTop - start))
+      })
+    })
     const cdp = await page.context().newCDPSession(page)
     await cdp.send('Input.synthesizeScrollGesture', {
       x: 200, y: 700, yDistance: -60, speed: 400, gestureSourceType: 'touch', preventFling: true,
     })
     await page.waitForTimeout(300)
-    const moved = Math.abs((await geometry(page)).st - before) > 5
+    const moved = (await page.evaluate(() => (window as unknown as { __moved: number }).__moved)) > 5
     test.skip(!moved, 'synthesized touch scrolling is not supported in this environment')
     await page.reload()
     await waitForEvent(page, /lab: onDetentChange/)
