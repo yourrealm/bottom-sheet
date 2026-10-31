@@ -141,6 +141,22 @@ test('mouse drag on the header picks a detent from velocity', async ({ page }, i
 test.describe('touch gestures (Chromium)', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'CDP only')
 
+  // Synthesized touch scrolls don't move scrollers on Linux CI Chromium (they do on macOS). Probe first,
+  // and skip with a clear reason rather than fail; real-device runs cover touch (scripts/android-suite.sh).
+  test.beforeEach(async ({ page }) => {
+    await openLab(page)
+    const before = (await geometry(page)).st
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Input.synthesizeScrollGesture', {
+      x: 200, y: 700, yDistance: -60, speed: 400, gestureSourceType: 'touch', preventFling: true,
+    })
+    await page.waitForTimeout(300)
+    const moved = Math.abs((await geometry(page)).st - before) > 5
+    test.skip(!moved, 'synthesized touch scrolling is not supported in this environment')
+    await page.reload()
+    await waitForEvent(page, /lab: onDetentChange/)
+  })
+
   async function gesture(page: Page, y: number, distance: number, speed: number, fling: boolean) {
     const cdp = await page.context().newCDPSession(page)
     await cdp.send('Input.synthesizeScrollGesture', {
