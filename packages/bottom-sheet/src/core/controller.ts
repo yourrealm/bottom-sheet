@@ -73,6 +73,21 @@ const KEYBOARD_THRESHOLD = 120
 const MAX_RETARGETS = 3
 const VELOCITY_WINDOW_MS = 80
 
+// The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
+// the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
+// lower one's 'hidden' after the lower one had already put the original back).
+let htmlLocks = 0
+let htmlPrev = ''
+function lockHtml() {
+  if (htmlLocks++ === 0) {
+    htmlPrev = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+  }
+}
+function unlockHtml() {
+  if (htmlLocks > 0 && --htmlLocks === 0) document.documentElement.style.overflow = htmlPrev
+}
+
 export function createSheetController(els: SheetElements, options: SheetControllerOptions): SheetController {
   const { root, scroller, sheet } = els
   const markerHost = els.markers
@@ -115,7 +130,11 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let lastWheel = 0
   let pageY = 0
   let keyboard = false
-  let prevHtmlOverflow = ''
+  let htmlLocked = false
+  const releaseHtml = () => {
+    if (htmlLocked) unlockHtml()
+    htmlLocked = false
+  }
 
   const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
   const behavior = (): ScrollBehavior => (reducedMotion() ? 'instant' : 'smooth')
@@ -177,6 +196,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
     anchor = null
     retries = 0
     unlock()
+    // Already there (e.g. a mouse drag released exactly on a detent, or at 0): no scroll and no scrollend will
+    // follow, so settle now. Otherwise the drag stays in `settle` (snap off), or a close never finishes.
+    if (Math.abs(scroller.scrollTop - pos(target)) < 1) {
+      requestAnimationFrame(onScrollEnd)
+      return
+    }
     scroller.scrollTo({ top: pos(target), behavior: behavior() })
     armWatchdog()
   }
@@ -451,7 +476,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     current = null
     emitted = null
     closingOnPurpose = false
-    if (modal) document.documentElement.style.overflow = prevHtmlOverflow
+    releaseHtml()
     root.removeAttribute('data-ybs-open')
     options.onClosed?.()
   }
@@ -489,9 +514,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
       closingOnPurpose = false
       pageY = window.scrollY
       keyboard = false
-      if (modal) {
-        prevHtmlOverflow = document.documentElement.style.overflow
-        document.documentElement.style.overflow = 'hidden'
+      if (modal && !htmlLocked) {
+        lockHtml()
+        htmlLocked = true
       }
       root.setAttribute('data-ybs-open', '')
       syncViewport()
@@ -536,8 +561,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
       destroyed = true
       if (isOpen) {
         isOpen = false
-        if (modal) document.documentElement.style.overflow = prevHtmlOverflow
       }
+      releaseHtml()
       clearTimeout(unlockTimer)
       clearTimeout(scrollEndTimer)
       clearTimeout(watchdog)

@@ -436,3 +436,14 @@ test.describe('persistent (non-modal) sheet', () => {
     expect((await events(page)).some((e) => e.startsWith('solved: onOpenChange'))).toBe(false)
   })
 })
+
+test('unmounting two stacked sheets at once restores page scrolling', async ({ page }) => {
+  await page.goto('/?open=1#/settings')
+  await waitForEvent(page, /settings: onDetentChange/)
+  await page.getByRole('button', { name: /Appearance/ }).click()
+  await waitForEvent(page, /appearance: onDetentChange/)
+  expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden')
+  await page.evaluate(() => (location.hash = '#/')) // route change unmounts both sheets mid-open
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+})
