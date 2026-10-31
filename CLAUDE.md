@@ -85,6 +85,13 @@ Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option
 - `onDetentChange` is deduped against the last *emitted* detent (layout changes during open briefly put the sheet between stops).
 - After unlocking, re-pin with `scrollTop = pinned`: Firefox otherwise re-snaps to the snap target it chose when the fling
   started (`closed`), which closed the sheet the instant the lock released.
+- **Closing must survive a touch.** If a finger is down when the sheet settles at closed, `scrollend` arrives while
+  touching and can't finish the close. Re-check on touch end, or the sheet stays mounted, invisible over the page, with
+  everything below inert (the Firefox "wedged page" report, 2026-10-31). Closed means `scrollTop <= 2`: Firefox settles at
+  values like 1.02. Regression test: "a touch held while the sheet finishes closing".
+- Sticky headers can leave a 1px sliver of the content scrolling underneath visible above them (fractional positions,
+  worse on a covered sheet's scale transform). `/styled` covers it with `box-shadow: 0 -2px 0 0 var(--ybs-sheet-bg)`;
+  headless users should do the same.
 - `useStyle` updates an existing `<style data-ybs-style>` when the CSS changes (hot reload, or two library copies on a page).
 - Device results (2026-10-31): `scripts/android-suite.sh` 3/3 Chrome Android + 3/3 Firefox Android PASS; the same sequence in the
   iOS 26.4 sim via idb passes (T1–T5, guard both directions, close). The last two fixes (iOS settle, dedupe) are not yet re-run on Android.

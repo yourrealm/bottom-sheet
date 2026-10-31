@@ -45,6 +45,9 @@ export const styledCss = /* css */ `
   border-radius: var(--ybs-radius) var(--ybs-radius) 0 0;
   padding: 6px 16px 12px;
   border-bottom: 1px solid var(--ybs-divider);
+  /* Content scrolls under this sticky header; at fractional positions (device scaling, or a covered
+     sheet's scale) a 1px sliver of it can show above. Cover it with the sheet colour. */
+  box-shadow: 0 -2px 0 0 var(--ybs-sheet-bg);
 }
 .ybs-handle {
   width: 36px; height: 5px; border-radius: 3px;
