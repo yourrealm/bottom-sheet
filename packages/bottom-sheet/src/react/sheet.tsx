@@ -19,11 +19,22 @@ import { structuralCss } from '../core/styles'
 import { isTopSheet, pushSheet, removeSheet, reportProgress } from './stack'
 import { useStyle } from './use-style'
 
+/** Why the sheet is asking to open or close. */
+export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'outside-press' | 'swipe'
+
+export interface OpenChangeDetails {
+  reason: OpenChangeReason
+}
+
 interface SheetContextValue {
   open: boolean
   mounted: boolean
-  setOpen: (open: boolean) => void
-  detents: readonly number[]
+  setOpen: (open: boolean, reason: OpenChangeReason) => void
+  /** Escape / outside press: closes a dismissible sheet, otherwise drops it to its lowest detent. */
+  requestDismiss: (reason: OpenChangeReason) => void
+  modal: boolean
+  dismissible: boolean
+  detents: readonly Detent[]
   initialDetent: Detent | undefined
   detent: Detent | undefined
   guard: boolean
@@ -62,9 +73,23 @@ export interface RootProps {
   children?: ReactNode
   open?: boolean
   defaultOpen?: boolean
-  onOpenChange?: (open: boolean) => void
-  /** Partial detents as fractions of the available height (e.g. [0.5]). `full` is always included. Default [0.5]. */
-  detents?: readonly number[]
+  /** Called when the user opens or closes the sheet (not when the `open` prop changes). */
+  onOpenChange?: (open: boolean, details: OpenChangeDetails) => void
+  /**
+   * Partial detents, `full` is always included. Default [0.5]. Each is a fraction of the available height (0.5)
+   * or a CSS length of visible sheet ('76px', '40dvh').
+   */
+  detents?: readonly Detent[]
+  /**
+   * Modal (default): a backdrop, the rest of the page inert, page scroll locked, focus moved into the sheet.
+   * Non-modal: the page stays visible and usable around the sheet; taps outside it go to the page.
+   */
+  modal?: boolean
+  /**
+   * Whether a swipe down, Escape or an outside press can close the sheet (default true). When false they drop it
+   * to its lowest detent instead; `open={false}` and `<Sheet.Close>` still close it.
+   */
+  dismissible?: boolean
   /** Detent to open at. Default: the smallest usable partial detent, else `full`. */
   initialDetent?: Detent
   /** Controlled resting detent. Changing it moves the sheet. */
@@ -89,6 +114,8 @@ export function Root(props: RootProps) {
     detent,
     onDetentChange,
     guard = true,
+    modal = true,
+    dismissible = true,
     debug,
   } = props
   const [openState, setOpenState] = useState(defaultOpen)
@@ -100,11 +127,18 @@ export function Root(props: RootProps) {
   const id = useId()
 
   const setOpen = useCallback(
-    (next: boolean) => {
+    (next: boolean, reason: OpenChangeReason) => {
       if (openProp === undefined) setOpenState(next)
-      onOpenChange?.(next)
+      onOpenChange?.(next, { reason })
     },
     [openProp, onOpenChange],
+  )
+  const requestDismiss = useCallback(
+    (reason: OpenChangeReason) => {
+      if (dismissible) setOpen(false, reason)
+      else controller.current?.collapse()
+    },
+    [dismissible, setOpen],
   )
 
   // Open -> mount; close -> animate out via the controller, unmount when closed.
@@ -115,7 +149,7 @@ export function Root(props: RootProps) {
   const returnFocus = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (open && !mounted) {
-      returnFocus.current = document.activeElement as HTMLElement | null
+      returnFocus.current = modal ? (document.activeElement as HTMLElement | null) : null
       setMounted(true)
     }
     if (open && mounted && closing.current) {
@@ -127,13 +161,13 @@ export function Root(props: RootProps) {
       if (controller.current) controller.current.close()
       else setMounted(false)
     }
-  }, [open, mounted, initialDetent])
+  }, [open, mounted, initialDetent, modal])
 
   const onClosed = useCallback(() => {
     debugRef.current?.(`onClosed (open=${open}, mounted=${mounted})`)
     closing.current = false
     setMounted(false)
-    if (open) setOpen(false) // closed by a gesture
+    if (open) setOpen(false, 'swipe') // closed by a gesture
   }, [open, mounted, setOpen])
 
   const value = useMemo<SheetContextValue>(
@@ -141,6 +175,9 @@ export function Root(props: RootProps) {
       open,
       mounted,
       setOpen,
+      requestDismiss,
+      modal,
+      dismissible,
       detents,
       initialDetent,
       detent,
@@ -155,7 +192,7 @@ export function Root(props: RootProps) {
       titleId: `${id}-title`,
       descriptionId: `${id}-description`,
     }),
-    [open, mounted, setOpen, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id],
+    [open, mounted, setOpen, requestDismiss, modal, dismissible, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
@@ -173,7 +210,7 @@ export function Trigger(props: ComponentPropsWithRef<'button'>) {
       {...props}
       onClick={(e) => {
         props.onClick?.(e)
-        if (!e.defaultPrevented) ctx.setOpen(true)
+        if (!e.defaultPrevented) ctx.setOpen(true, 'trigger')
       }}
     />
   )
@@ -187,7 +224,7 @@ export function Close(props: ComponentPropsWithRef<'button'>) {
       {...props}
       onClick={(e) => {
         props.onClick?.(e)
-        if (!e.defaultPrevented) ctx.setOpen(false)
+        if (!e.defaultPrevented) ctx.setOpen(false, 'close-button')
       }}
     />
   )
@@ -201,15 +238,15 @@ export interface PortalProps {
   container?: HTMLElement | null
 }
 
-/** Fixed layer. Mounted while open or animating closed. Makes the rest of the page inert. */
+/** Fixed layer. Mounted while open or animating closed. A modal sheet makes the rest of the page inert. */
 export function Portal({ children, container }: PortalProps) {
   const ctx = useSheet('Portal')
   useStyle('core', structuralCss)
 
-  // Everything outside the sheet is inert: focus can't leave, screen readers
-  // see only the dialog. (Modal sheet; non-modal is a later option.)
-  const setOpenRef = useRef(ctx.setOpen)
-  setOpenRef.current = ctx.setOpen
+  // Modal: everything outside the sheet is inert, so focus can't leave and screen readers see only the
+  // dialog. Non-modal sheets skip that but still join the stack (Escape order, stacked sheets on top).
+  const dismissRef = useRef(ctx.requestDismiss)
+  dismissRef.current = ctx.requestDismiss
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
   useEffect(() => {
@@ -218,10 +255,10 @@ export function Portal({ children, container }: PortalProps) {
     const parent = root.parentElement
     if (!parent) return
     // Stack: Escape goes to the top sheet only; the sheet below can recede.
-    const entry = { root, close: () => setOpenRef.current(false) }
+    const entry = { root, close: () => dismissRef.current('escape') }
     pushSheet(entry)
     const touched: Element[] = []
-    for (const el of Array.from(parent.children)) {
+    if (ctx.modal) for (const el of Array.from(parent.children)) {
       if (el === root || el.hasAttribute('inert') || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue
       el.setAttribute('inert', '')
       touched.push(el)
@@ -237,11 +274,11 @@ export function Portal({ children, container }: PortalProps) {
       ctx.returnFocus.current = null
       if (back?.isConnected) back.focus({ preventScroll: true })
     }
-  }, [ctx.mounted, ctx.rootEl, ctx.returnFocus])
+  }, [ctx.mounted, ctx.rootEl, ctx.returnFocus, ctx.modal])
 
   if (!ctx.mounted || typeof document === 'undefined') return null
   return createPortal(
-    <div data-ybs-root="" ref={ctx.rootEl}>
+    <div data-ybs-root="" data-ybs-modeless={ctx.modal ? undefined : ''} ref={ctx.rootEl}>
       {children}
     </div>,
     container ?? document.body,
@@ -259,7 +296,7 @@ export function Backdrop(props: ComponentPropsWithRef<'div'>) {
       {...props}
       onClick={(e) => {
         props.onClick?.(e)
-        if (!e.defaultPrevented) ctx.setOpen(false)
+        if (!e.defaultPrevented) ctx.requestDismiss('outside-press')
       }}
     />
   )
@@ -296,6 +333,8 @@ export function View({ children, className, bleedClassName }: ViewProps) {
       {
         detents: ctx.detents,
         guard: ctx.guard,
+        modal: ctx.modal,
+        dismissible: ctx.dismissible,
         onDetentChange: (d) => ctxRef.current.onDetentChange?.(d),
         onClosed: () => ctxRef.current.onClosed(),
         onProgress: (p) => reportProgress(root, p),
@@ -305,7 +344,8 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     )
     ctx.controller.current = c
     c.open(ctx.detent ?? ctx.initialDetent)
-    sheet.focus({ preventScroll: true })
+    // A non-modal sheet doesn't take focus from the page (move it yourself if it should).
+    if (ctx.modal) sheet.focus({ preventScroll: true })
     return () => {
       c.destroy()
       ctx.controller.current = null
@@ -316,6 +356,10 @@ export function View({ children, className, bleedClassName }: ViewProps) {
   useEffect(() => {
     ctx.controller.current?.setDetents(ctx.detents)
   }, [ctx.detents, ctx.controller])
+
+  useEffect(() => {
+    ctx.controller.current?.setDismissible(ctx.dismissible)
+  }, [ctx.dismissible, ctx.controller])
 
   useEffect(() => {
     const c = ctx.controller.current
@@ -336,7 +380,7 @@ export function View({ children, className, bleedClassName }: ViewProps) {
           // React bubbles events through portals: a click in a sheet stacked on top of this one arrives
           // here too. Only handle clicks that are really inside this scroller's DOM.
           if (!e.currentTarget.contains(target)) return
-          if (!target.closest('[data-ybs-sheet]')) ctx.setOpen(false)
+          if (!target.closest('[data-ybs-sheet]')) ctx.requestDismiss('outside-press')
         }}
       >
         <div data-ybs-track="">
@@ -357,7 +401,7 @@ export function Content({ ref, ...props }: ComponentPropsWithRef<'section'>) {
     <section
       data-ybs-sheet=""
       role="dialog"
-      aria-modal="true"
+      aria-modal={ctx.modal}
       aria-labelledby={ctx.titleId}
       aria-describedby={ctx.descriptionId}
       tabIndex={-1}

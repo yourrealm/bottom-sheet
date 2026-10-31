@@ -4,6 +4,7 @@ import { useStyle } from '../react/use-style'
 import { styledCss } from './styles'
 
 export type { Detent } from '../core/math'
+export type { OpenChangeDetails, OpenChangeReason } from '../react/sheet'
 
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
 
@@ -54,7 +55,7 @@ export function BottomSheet({ trigger, title, description, headerExtra, children
     <Sheet.Root {...root}>
       {trigger != null && <Sheet.Trigger className="ybs-trigger">{trigger}</Sheet.Trigger>}
       <Sheet.Portal>
-        <Sheet.Backdrop />
+        {root.modal !== false && <Sheet.Backdrop />}
         <Sheet.View>
           <Sheet.Content {...contentProps} className={cx(className, contentProps?.className)}>
             <Sheet.Header>

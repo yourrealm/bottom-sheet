@@ -320,3 +320,28 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .about { display: grid; justify-items: center; text-align: center; gap: 4px; padding-top: 8px; }
 .about-logo { font-size: 48px; line-height: 1; margin-bottom: 6px; }
 .about p { line-height: 1.5; }
+
+/* Persistent (non-modal) demo */
+.puzzle { padding: 16px; display: grid; gap: 14px; padding-bottom: 120px; }
+.board { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.cell {
+  aspect-ratio: 1; border: 0; border-radius: 8px;
+  background: hsl(var(--h) 70% 62%);
+}
+.cell:active { filter: brightness(0.85); }
+.board.cascade .cell { animation: cascade 1.6s ease-in-out calc(var(--i) * 40ms) infinite alternate; }
+@keyframes cascade { to { transform: translateY(-10px) rotate(8deg); filter: saturate(1.6) brightness(1.1); } }
+@media (prefers-reduced-motion: reduce) { .board.cascade .cell { animation: none; } }
+.solved-sheet .ybs-title { font-style: italic; }
+.peek-toggle {
+  position: absolute; top: 18px; right: 14px; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--ybs-divider, var(--line)); background: none; font-size: 18px; line-height: 1;
+  transition: transform 0.3s;
+}
+.peek-toggle[data-up] { transform: rotate(180deg); }
+.solved { display: grid; gap: 14px; }
+.thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.thumbs button { height: 56px; border-radius: 14px; border: 1px solid var(--ybs-divider, var(--line)); background: none; font-size: 16px; }
+.thumbs button[aria-pressed='true'] { border-color: var(--accent); }
+.thumbs button:disabled:not([aria-pressed='true']) { opacity: 0.35; }
+.solved-actions { display: grid; grid-template-columns: auto 1fr; gap: 10px; }

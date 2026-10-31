@@ -1,5 +1,17 @@
-/** A resting position. Numbers are fractions (0..1) of the available height that is visible. */
-export type Detent = 'closed' | 'full' | number
+/**
+ * A resting position.
+ * - `'closed'` and `'full'` are always available (`'closed'` only while the sheet is dismissible).
+ * - A number is a fraction (0..1) of the available height that is visible, e.g. `0.5`.
+ * - Any other string is a CSS length of visible sheet, e.g. `'76px'`, `'40dvh'`, `'min(320px, 50dvh)'`.
+ */
+// `string & {}` keeps editor completion for the literals while accepting any CSS length.
+export type Detent = 'closed' | 'full' | number | (string & {})
+
+/** A detent resolved for the current layout: `top` is its scrollTop (= visible sheet height in px). */
+export interface Stop {
+  detent: Detent
+  top: number
+}
 
 /** UIScrollView.DecelerationRate.normal. Used to project where a release would come to rest. */
 export const DECELERATION = 0.998
@@ -17,58 +29,36 @@ export function project(position: number, velocity: number, d = DECELERATION): n
 }
 
 /**
- * The partial detents that are usable for this layout, ascending.
- * @param fractions requested partial detents (fractions of available height)
- * @param available available height H (px)
+ * All resting positions for this layout, ascending: [closed], usable partials..., full.
+ * A partial is usable when it is above 0 and well below full (MIN_DETENT_GAP); duplicates by position are dropped.
+ * @param partials requested partial detents with their resolved positions
  * @param full scrollTop of the full detent = min(H, sheet height)
+ * @param closable include `closed` (false for a sheet that can't be dismissed)
  */
-export function usableDetents(fractions: readonly number[], available: number, full: number): number[] {
-  return [...new Set(fractions)]
-    .filter((f) => f > 0 && f < 1 && available * f < full * (1 - MIN_DETENT_GAP))
-    .sort((a, b) => a - b)
+export function buildStops(partials: readonly Stop[], full: number, closable = true): Stop[] {
+  const usable = partials
+    .filter((s) => s.detent !== 'closed' && s.detent !== 'full' && s.top > 0 && s.top < full * (1 - MIN_DETENT_GAP))
+    .sort((a, b) => a.top - b.top)
+    .filter((s, i, all) => i === 0 || Math.abs(s.top - all[i - 1]!.top) >= 1)
+  return [...(closable ? [{ detent: 'closed' as Detent, top: 0 }] : []), ...usable, { detent: 'full', top: full }]
 }
 
-/** scrollTop for a detent. Unusable numeric detents fall back to the nearest usable position. */
-export function detentPosition(d: Detent, available: number, full: number, usable: readonly number[]): number {
-  if (d === 'closed') return 0
-  if (d === 'full') return full
-  if (usable.includes(d)) return available * d
-  return positionOf(nearestDetent(available * d, available, full, usable), available, full, usable)
-}
-
-function positionOf(d: Detent, available: number, full: number, usable: readonly number[]): number {
-  return d === 'closed' ? 0 : d === 'full' ? full : available * d
-}
-
-/** All resting positions in order: closed, partials..., full. */
-export function allDetents(usable: readonly number[]): Detent[] {
-  return ['closed', ...usable, 'full']
-}
-
-/** The detent whose position is nearest to `top`. */
-export function nearestDetent(top: number, available: number, full: number, usable: readonly number[]): Detent {
-  let best: Detent = 'closed'
-  let bestDist = Infinity
-  for (const d of allDetents(usable)) {
-    const dist = Math.abs(positionOf(d, available, full, usable) - top)
-    if (dist < bestDist) {
-      best = d
-      bestDist = dist
-    }
-  }
+/** The stop nearest to `top`. */
+export function nearestStop(top: number, stops: readonly Stop[]): Stop {
+  let best = stops[0]!
+  for (const s of stops) if (Math.abs(s.top - top) < Math.abs(best.top - top)) best = s
   return best
 }
 
-/** The detent resting exactly at `top` (±tolerance), or null when between detents / inside content. */
-export function detentAt(top: number, available: number, full: number, usable: readonly number[], tolerance = 2): Detent | null {
-  for (const d of allDetents(usable)) {
-    if (Math.abs(positionOf(d, available, full, usable) - top) < tolerance) return d
-  }
-  return null
+/** The stop resting exactly at `top` (±tolerance), or null when between stops / inside content. */
+export function stopAt(top: number, stops: readonly Stop[], tolerance = 2): Stop | null {
+  return stops.find((s) => Math.abs(s.top - top) < tolerance) ?? null
 }
 
-/** Normalise a requested detent to one that exists for this layout. */
-export function resolveDetent(d: Detent, available: number, full: number, usable: readonly number[]): Detent {
-  if (d === 'closed' || d === 'full' || usable.includes(d)) return d
-  return nearestDetent(available * d, available, full, usable)
+/**
+ * The stop for a requested detent: itself when usable, otherwise the stop nearest to where it would have been.
+ * @param rawTop where the requested detent would sit (px), used when it isn't a usable stop
+ */
+export function resolveStop(d: Detent, rawTop: number, stops: readonly Stop[]): Stop {
+  return stops.find((s) => s.detent === d) ?? nearestStop(rawTop, stops)
 }

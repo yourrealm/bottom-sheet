@@ -1,13 +1,4 @@
-import {
-  type Detent,
-  allDetents,
-  detentAt,
-  detentPosition,
-  nearestDetent,
-  project,
-  resolveDetent,
-  usableDetents,
-} from './math'
+import { type Detent, type Stop, buildStops, nearestStop, project, resolveStop, stopAt } from './math'
 
 /**
  * Sheet controller. Framework-agnostic; React (or anything) renders the DOM,
@@ -32,8 +23,12 @@ import {
  */
 
 export interface SheetControllerOptions {
-  /** Partial detents as fractions of the available height. `full` is always added. */
-  detents: readonly number[]
+  /** Partial detents: fractions of the available height (0.5) or CSS lengths ('76px'). `full` is always added. */
+  detents: readonly Detent[]
+  /** Whether a swipe down can close the sheet (default true). When false, the lowest detent is the floor. */
+  dismissible?: boolean
+  /** Modal sheets lock the page scroll (default true). Non-modal sheets leave the page alone. */
+  modal?: boolean
   /** Stop momentum at the `full` line (default true). */
   guard?: boolean
   /** Called when the sheet comes to rest at a detent. */
@@ -59,7 +54,10 @@ export interface SheetController {
   open(detent?: Detent): void
   snapTo(detent: Detent): void
   close(): void
-  setDetents(detents: readonly number[]): void
+  /** Go to the lowest resting detent above closed. */
+  collapse(): void
+  setDetents(detents: readonly Detent[]): void
+  setDismissible(dismissible: boolean): void
   /** Current resting detent, or null while moving / inside content. */
   readonly detent: Detent | null
   destroy(): void
@@ -80,16 +78,26 @@ export function createSheetController(els: SheetElements, options: SheetControll
   const markerHost = els.markers
   const guard = options.guard ?? true
   const dbg = (m: string) => options.debug?.(m)
-  let fractions = [...options.detents]
+  const modal = options.modal ?? true
+  let requested = [...options.detents]
+  let dismissible = options.dismissible ?? true
+  // A programmatic close() of a non-dismissible sheet still needs `closed` as a stop.
+  let closingOnPurpose = false
+  const closable = () => dismissible || closingOnPurpose
 
   // layout
   let H = 0
   let full = 0
-  let usable: number[] = []
-  const markers = new Map<number, HTMLElement>()
+  let stops: Stop[] = []
+  const markers = new Map<Detent, HTMLElement>()
   const closedMarker = makeMarker()
   closedMarker.style.top = '0px'
   markerHost.append(closedMarker)
+  // Resolves CSS-length detents ('76px', '40dvh', 'min(...)') to pixels.
+  const probe = document.createElement('div')
+  probe.setAttribute('aria-hidden', 'true')
+  probe.style.cssText = 'position:absolute;top:0;left:0;width:0;visibility:hidden;pointer-events:none'
+  markerHost.append(probe)
 
   // state
   let isOpen = false
@@ -111,7 +119,20 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
   const behavior = (): ScrollBehavior => (reducedMotion() ? 'instant' : 'smooth')
-  const pos = (d: Detent) => detentPosition(d, H, full, usable)
+  /** Where a detent would sit (px), whether or not it is usable in this layout. */
+  function rawTop(d: Detent): number {
+    if (d === 'closed') return 0
+    if (d === 'full') return full
+    if (typeof d === 'number') return H * d
+    probe.style.height = d
+    return probe.getBoundingClientRect().height
+  }
+  const resolve = (d: Detent) => resolveStop(d, rawTop(d), stops)
+  const pos = (d: Detent) => resolve(d).top
+  /** The lowest resting detent that isn't closed. */
+  const floor = () => stops.find((s) => s.detent !== 'closed')!.detent
+  /** Where open() goes by default: the smallest usable partial detent, else full. */
+  const defaultDetent = () => floor()
 
   function makeMarker() {
     const m = document.createElement('div')
@@ -124,30 +145,33 @@ export function createSheetController(els: SheetElements, options: SheetControll
     H = scroller.clientHeight
     const sheetH = sheet.offsetHeight
     full = Math.min(H, sheetH)
-    usable = usableDetents(fractions, H, full)
+    const partials = requested.filter((d) => d !== 'closed' && d !== 'full').map((d) => ({ detent: d, top: rawTop(d) }))
+    stops = buildStops(partials, full, closable())
     root.style.setProperty('--ybs-h', `${H}px`)
     root.toggleAttribute('data-ybs-fit', sheetH < H)
+    // No snap point at 0 for a sheet that can't be dismissed: a swipe down settles on the lowest detent natively.
+    closedMarker.hidden = !closable()
 
-    for (const [f, m] of markers) {
-      if (!fractions.includes(f)) {
+    for (const [d, m] of markers) {
+      if (!requested.includes(d)) {
         m.remove()
-        markers.delete(f)
+        markers.delete(d)
       }
     }
-    for (const f of fractions) {
-      let m = markers.get(f)
+    for (const p of partials) {
+      let m = markers.get(p.detent)
       if (!m) {
         m = makeMarker()
         closedMarker.after(m)
-        markers.set(f, m)
+        markers.set(p.detent, m)
       }
-      m.style.top = `${H * f}px`
-      m.hidden = !usable.includes(f)
+      m.style.top = `${p.top}px`
+      m.hidden = !stops.some((s) => s.detent === p.detent)
     }
   }
 
   function scrollToDetent(d: Detent) {
-    target = resolveDetent(d, H, full, usable)
+    target = resolve(d).detent
     dbg(`scrollTo ${String(target)} (${Math.round(pos(target))})`)
     programmatic = true
     anchor = null
@@ -254,7 +278,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     retries = 0
     if (root.getAttribute('data-ybs-drag') === 'settle') root.removeAttribute('data-ybs-drag')
 
-    const now = detentAt(st, H, full, usable)
+    const now = stopAt(st, stops)?.detent ?? null
     programmatic = false
     target = null
     current = now
@@ -263,8 +287,17 @@ export function createSheetController(els: SheetElements, options: SheetControll
       options.onDetentChange?.(now)
     }
     if (isOpen && st <= CLOSED_TOLERANCE) {
-      if (!touching) finishClose()
-      else dbg(`at closed, waiting for the finger to lift (st=${st.toFixed(2)})`)
+      if (touching) dbg(`at closed, waiting for the finger to lift (st=${st.toFixed(2)})`)
+      else settleAtClosed()
+    }
+  }
+
+  /** Resting at 0: close, or for a sheet that can't be dismissed, go back up to its floor. */
+  function settleAtClosed() {
+    if (closable()) finishClose()
+    else {
+      dbg('not dismissible: back to the lowest detent')
+      scrollToDetent(floor())
     }
   }
 
@@ -285,8 +318,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // invisible, over the page (observed on Firefox Android: the "wedged page" report).
     requestAnimationFrame(() => {
       if (!touching && isOpen && !programmatic && scroller.scrollTop <= CLOSED_TOLERANCE) {
-        dbg('finger lifted at closed: finishing close')
-        finishClose()
+        dbg('finger lifted at closed')
+        settleAtClosed()
       }
     })
   }
@@ -317,12 +350,11 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (startedInContent) return // reached the content top: stop here, don't move the sheet
     if (wheelStepped) return // one step per gesture (trackpads send long event streams)
     wheelStepped = true
-    const order = allDetents(usable)
-    const here = nearestDetent(target != null ? pos(target) : st, H, full, usable)
-    const i = order.indexOf(here)
-    const next = order[Math.min(Math.max(i + (dy > 0 ? 1 : -1), 0), order.length - 1)]!
-    dbg(`wheel step ${String(here)} -> ${String(next)}`)
-    if (next !== here) scrollToDetent(next)
+    const here = nearestStop(target != null ? pos(target) : st, stops)
+    const i = stops.indexOf(here)
+    const next = stops[Math.min(Math.max(i + (dy > 0 ? 1 : -1), 0), stops.length - 1)]!.detent
+    dbg(`wheel step ${String(here.detent)} -> ${String(next)}`)
+    if (next !== here.detent) scrollToDetent(next)
   }
 
   // Mouse drag on [data-ybs-drag] (touch uses native scroll, never this).
@@ -364,7 +396,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       const dt = b.t - a.t
       const v = dt > 0 && ev.timeStamp - b.t < 50 ? (-(b.y - a.y) / dt) * 1000 : 0
       root.setAttribute('data-ybs-drag', 'settle')
-      scrollToDetent(nearestDetent(project(top, v), H, full, usable))
+      scrollToDetent(nearestStop(project(top, v), stops).detent)
     }
     handle.addEventListener('pointermove', move as EventListener)
     handle.addEventListener('pointerup', up as EventListener)
@@ -379,7 +411,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
     // iOS scrolls the document to reveal a focused input even with
     // html{overflow:hidden}. Undo it so the page behind doesn't jump.
-    if (Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
+    if (modal && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
     const kb = window.innerHeight - vv.height > KEYBOARD_THRESHOLD
     if (kb !== keyboard) {
       keyboard = kb
@@ -418,7 +450,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     isOpen = false
     current = null
     emitted = null
-    document.documentElement.style.overflow = prevHtmlOverflow
+    closingOnPurpose = false
+    if (modal) document.documentElement.style.overflow = prevHtmlOverflow
     root.removeAttribute('data-ybs-open')
     options.onClosed?.()
   }
@@ -445,21 +478,28 @@ export function createSheetController(els: SheetElements, options: SheetControll
     open(detent) {
       if (isOpen) {
         // already open (e.g. re-opened during the close animation)
-        scrollToDetent(detent ?? usable[0] ?? 'full')
+        if (closingOnPurpose) {
+          closingOnPurpose = false
+          layout()
+        }
+        scrollToDetent(detent ?? defaultDetent())
         return
       }
       isOpen = true
+      closingOnPurpose = false
       pageY = window.scrollY
       keyboard = false
-      prevHtmlOverflow = document.documentElement.style.overflow
-      document.documentElement.style.overflow = 'hidden'
+      if (modal) {
+        prevHtmlOverflow = document.documentElement.style.overflow
+        document.documentElement.style.overflow = 'hidden'
+      }
       root.setAttribute('data-ybs-open', '')
       syncViewport()
       layout()
       scroller.scrollTop = 0
       // Set the target synchronously: a stray scrollend at 0 before the open
       // animation starts (seen under React StrictMode) must not read as "closed".
-      target = resolveDetent(detent ?? usable[0] ?? 'full', H, full, usable)
+      target = resolve(detent ?? defaultDetent()).detent
       programmatic = true
       // Two frames: Chrome drops a smooth scroll on a scroller that was created
       // in the previous frame (the watchdog covers anything slower).
@@ -474,18 +514,29 @@ export function createSheetController(els: SheetElements, options: SheetControll
     },
     close() {
       if (!isOpen) return
+      if (!closingOnPurpose && !dismissible) {
+        closingOnPurpose = true
+        layout()
+      }
       if (scroller.scrollTop <= CLOSED_TOLERANCE) finishClose()
       else scrollToDetent('closed')
     },
+    collapse() {
+      if (isOpen) scrollToDetent(floor())
+    },
     setDetents(next) {
-      fractions = [...next]
+      requested = [...next]
+      if (isOpen) layout()
+    },
+    setDismissible(next) {
+      dismissible = next
       if (isOpen) layout()
     },
     destroy() {
       destroyed = true
       if (isOpen) {
         isOpen = false
-        document.documentElement.style.overflow = prevHtmlOverflow
+        if (modal) document.documentElement.style.overflow = prevHtmlOverflow
       }
       clearTimeout(unlockTimer)
       clearTimeout(scrollEndTimer)
@@ -502,6 +553,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       window.visualViewport?.removeEventListener('scroll', syncViewport)
       window.removeEventListener('scroll', onWindowScroll)
       closedMarker.remove()
+      probe.remove()
       for (const m of markers.values()) m.remove()
       markers.clear()
     },

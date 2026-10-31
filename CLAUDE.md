@@ -162,15 +162,27 @@ Still open: iOS on a real device (momentum feel, rubber-band at the top), Firefo
 slow mouse-drag feel, header drag while content is scrolled, page scale-back (the page behind a sheet),
 screen-reader pass (the modal currently uses inert siblings + focus on open/restore + Escape).
 
-## Roadmap: persistent (non-modal) sheet — next
-Reference case: dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-sheet.tsx`, on Base UI Drawer). It slides
-up over the victory animation, has no backdrop, keeps the page behind interactive, peeks at 76px (handle + title row), and
-never closes: swiping down, Escape and an outside tap all drop it to the peek. Needed before dapuzzler can adopt the library:
-- **Non-modal** (`modal={false}`): no backdrop, no inert siblings, no focus trap; touches outside the sheet reach the page.
-  Candidate: `pointer-events: none` on the fixed scroller, `auto` on the sheet (verify touch-drag on the sheet still scrolls the
-  scroller on Chrome Android, Firefox Android and iOS before relying on it).
-- **Pixel detents** (`'76px'` next to fractions of H).
-- **Undismissable** (`dismissible={false}`): no snap at 0; Escape and an outside tap go to the lowest detent instead of closing.
+## Persistent (non-modal) sheets
+Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-sheet.tsx`); demo `#/persistent`.
+- **`modal={false}`**: root gets `data-ybs-modeless`; the scroller (and so spacer, markers) is `pointer-events: none`,
+  the sheet `auto`. Taps outside go to the page; a touch on the sheet still scrolls the scroller (its scroll
+  container). No inert siblings, no html scroll lock, no page-scroll undo, no focus move or restore, `aria-modal=false`,
+  no backdrop in `/styled`. It still joins the stack (Escape order; a modal opened on top covers it).
+- **iOS Safari needs a scroll container under the finger**: with the scroller `pointer-events:none`, a drag on the
+  sheet did nothing in the iOS 26.4 sim (taps passed through fine). Fix (WebKit touch only, `@supports
+  (-webkit-touch-callout: none)`): every direct child of the sheet is a horizontal scroller with 1px of overflow
+  (an absolutely positioned `::after`, so side padding can't absorb it). The vertical drag then chains to the sheet
+  scroller. Verified in the sim: header drag down/up, fling to the peek, fling at the peek stays.
+  Consequence: direct children of a non-modal sheet get `overflow-x: scroll; overflow-y: hidden` on iOS, so put
+  sticky elements at the top level (like Header), not inside a wrapper.
+- **CSS-length detents** (`'76px'`, `'40dvh'`, `min()`): resolved by a hidden probe element in the markers host on every
+  layout. Detent math works on resolved `Stop {detent, top}` lists (`buildStops`, `nearestStop`, `stopAt`, `resolveStop`).
+- **`dismissible={false}`**: `closed` is left out of the stops and its snap marker hidden, so a swipe down settles on
+  the lowest detent natively; settling at 0 anyway scrolls back to it. Escape / outside press call `collapse()`.
+  A programmatic close (`open={false}`) temporarily re-adds `closed` (`closingOnPurpose`).
+- `onDetentChange` still reports `'closed'` while closing; apps mapping detents to state must ignore it (the demo
+  first reopened itself by mapping it to "peek").
+- Not yet run on the Android device suite (phone was away) or a real iPhone.
 
 ## Product decisions
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).

@@ -52,6 +52,25 @@ export const structuralCss = /* css */ `
 [data-ybs-sheet] { position: relative; scroll-snap-align: start; scroll-snap-stop: always; outline: none; }
 [data-ybs-root][data-ybs-fit] [data-ybs-sheet] { scroll-snap-align: end; }
 [data-ybs-header] { position: sticky; top: 0; z-index: 1; }
+/* Non-modal: the layer lets taps, clicks and wheel through to the page; only the sheet takes them. A drag on
+   the sheet still scrolls the scroller (its scroll container), which is how the sheet moves. */
+[data-ybs-root][data-ybs-modeless] [data-ybs-scroller] { pointer-events: none; }
+[data-ybs-root][data-ybs-modeless] [data-ybs-sheet] { pointer-events: auto; }
+/* iOS Safari won't scroll a pointer-events:none scroller from a touch on its pointer-events:auto child unless
+   there is a scroll container under the finger. Make each direct part of the sheet a 1px-wide horizontal
+   scroller (overflow-y stays clipped to its own height, so sticky headers keep sticking to the scroller); the
+   vertical drag then chains to the sheet scroller. WebKit touch only. */
+@supports (-webkit-touch-callout: none) {
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > * {
+    overflow-x: scroll; overflow-y: hidden; overscroll-behavior-x: none; scrollbar-width: none;
+  }
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *::-webkit-scrollbar { display: none; }
+  /* 1px of horizontal overflow, measured from the padding box so side padding can't absorb it. */
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-header]) { position: relative; }
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *::after {
+    content: ''; position: absolute; top: 0; left: 0; width: calc(100% + 1px); height: 1px; pointer-events: none;
+  }
+}
 /* Stacked: a covered sheet is inert (set by the sheet above), so it can't be scrolled. Don't toggle its
    overflow: Firefox re-snaps on overflow changes. The visual recede lives in /styled. */
 @media (pointer: fine) {

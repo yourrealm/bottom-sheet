@@ -345,3 +345,94 @@ test('a touch held while the sheet finishes closing still lets it close', async 
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
   await expect(page.locator('#root')).not.toHaveAttribute('inert')
 })
+
+test.describe('persistent (non-modal) sheet', () => {
+  const st = (page: Page) => page.evaluate(() => document.querySelector('[data-ybs-scroller]')!.scrollTop)
+
+  async function openSolved(page: Page) {
+    await page.goto('/#/persistent')
+    await page.locator('#solve').click()
+    await waitForEvent(page, 'solved: onDetentChange full')
+  }
+
+  test('no backdrop, the page stays usable, and taps reach it', async ({ page }) => {
+    await openSolved(page)
+    await expect(page.locator('[data-ybs-backdrop]')).toHaveCount(0)
+    await expect(page.locator('#root')).not.toHaveAttribute('inert')
+    await expect(page.getByRole('dialog', { name: 'Solved' })).toHaveAttribute('aria-modal', 'false')
+    // A tap on the board (above the sheet) reaches the page; the app drops the sheet to its peek.
+    await page.getByRole('button', { name: 'Cell 1', exact: true }).click({ force: true }) // cells animate
+    await expect(page.getByTestId('board-taps')).toHaveText('1')
+    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await expect.poll(() => st(page)).toBeCloseTo(76, -1)
+    // At the peek most of the board is uncovered and still tappable.
+    await page.getByRole('button', { name: 'Cell 20', exact: true }).click({ force: true }) // cells animate
+    await expect(page.getByTestId('board-taps')).toHaveText('2')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  })
+
+  test('Escape drops it to the peek instead of closing', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
+    await openSolved(page)
+    await page.keyboard.press('Escape')
+    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    expect((await events(page)).some((e) => e.startsWith('solved: onOpenChange'))).toBe(false)
+  })
+
+  test('the wheel steps between peek and full but never closes it', async ({ page }, info) => {
+    test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
+    await openSolved(page)
+    const box = (await page.locator('[data-ybs-header]').boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + 30)
+    await page.mouse.wheel(0, -120)
+    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await page.waitForTimeout(400)
+    const peek = (await page.locator('[data-ybs-header]').boundingBox())!
+    await page.mouse.move(peek.x + peek.width / 2, peek.y + 30)
+    await page.mouse.wheel(0, -120) // already at the floor: stays
+    await page.waitForTimeout(800)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    expect(await st(page)).toBeCloseTo(76, -1)
+  })
+
+  test('the controlled detent and New board work', async ({ page }) => {
+    await openSolved(page)
+    await page.getByRole('button', { name: 'Show less' }).click()
+    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await page.getByRole('button', { name: 'Show more' }).click()
+    await clearEvents(page)
+    await waitForEvent(page, 'solved: onDetentChange full')
+    await page.getByRole('button', { name: 'New board' }).click()
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+    await expect(page.locator('#solve')).toBeVisible()
+  })
+
+  test('touch: a drag on the sheet moves it, and a fling down stops at the peek', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP touch')
+    await openSolved(page)
+    const cdp = await page.context().newCDPSession(page)
+    const H = await page.evaluate(() => document.querySelector('[data-ybs-scroller]')!.clientHeight)
+    const header = (await page.locator('[data-ybs-header]').boundingBox())!
+    await page.evaluate(() => {
+      const s = document.querySelector('[data-ybs-scroller]')!
+      ;(window as unknown as { __min: number }).__min = s.scrollTop
+      s.addEventListener('scroll', () => {
+        const w = window as unknown as { __min: number }
+        w.__min = Math.min(w.__min, s.scrollTop)
+      })
+    })
+    await clearEvents(page)
+    // A fling down that starts on the sheet (pointer-events passthrough must still let it scroll the scroller).
+    await cdp.send('Input.synthesizeScrollGesture', {
+      x: Math.round(header.x + header.width / 2), y: Math.round(header.y + 30), yDistance: Math.round(H * 0.6),
+      speed: 5000, gestureSourceType: 'touch', preventFling: false,
+    })
+    await page.waitForTimeout(1500)
+    const moved = await page.evaluate(() => (window as unknown as { __min: number }).__min)
+    test.skip(moved > H - 50 && (await st(page)) > H - 50, 'synthesized touch scrolling is not supported in this environment')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    expect(await st(page)).toBeCloseTo(76, -1)
+    expect((await events(page)).some((e) => e.startsWith('solved: onOpenChange'))).toBe(false)
+  })
+})
