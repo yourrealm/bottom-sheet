@@ -207,6 +207,8 @@ export function Portal({ children, container }: PortalProps) {
   // see only the dialog. (Modal sheet; non-modal is a later option.)
   const setOpenRef = useRef(ctx.setOpen)
   setOpenRef.current = ctx.setOpen
+  const ctxRef = useRef(ctx)
+  ctxRef.current = ctx
   useEffect(() => {
     const root = ctx.rootEl.current
     if (!ctx.mounted || !root) return
@@ -221,9 +223,12 @@ export function Portal({ children, container }: PortalProps) {
       el.setAttribute('inert', '')
       touched.push(el)
     }
+    const dbg = (m: string) => ctxRef.current.debug?.(m)
+    dbg(`portal mount: inert ${touched.length} siblings, ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length} sheet roots inert`)
     return () => {
       removeSheet(entry)
       for (const el of touched) el.removeAttribute('inert')
+      dbg(`portal unmount: restored ${touched.length}, still-inert sheet roots ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length}`)
       // Restore focus only now: while the page is inert, focus() is a no-op.
       const back = ctx.returnFocus.current
       ctx.returnFocus.current = null
