@@ -46,7 +46,10 @@ export const structuralCss = /* css */ `
   position: absolute; left: 0; width: 1px; height: 1px;
   scroll-snap-align: start; pointer-events: none;
 }
-[data-ybs-sheet] { position: relative; scroll-snap-align: start; outline: none; }
+/* scroll-snap-stop: a fling may not skip the full position, in either direction. This is the native
+   way to stop momentum at the content top / full detent; the JS guard is only a fallback. (Firefox
+   Android: the JS overflow toggle made the next touch get swallowed as a "stop the fling" tap.) */
+[data-ybs-sheet] { position: relative; scroll-snap-align: start; scroll-snap-stop: always; outline: none; }
 [data-ybs-root][data-ybs-fit] [data-ybs-sheet] { scroll-snap-align: end; }
 [data-ybs-header] { position: sticky; top: 0; z-index: 1; }
 @media (pointer: fine) {

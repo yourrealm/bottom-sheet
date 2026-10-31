@@ -13,7 +13,8 @@ declare global {
 }
 
 window.__ybs = { events: [] }
-const TAB = Math.random().toString(36).slice(2, 6)
+// Device runs pass ?run=<id>; every line carries it, so logs group by run even if the load line is dropped.
+const TAB = new URLSearchParams(location.search).get('run') ?? Math.random().toString(36).slice(2, 6)
 const lines: string[] = []
 const listeners = new Set<Listener>()
 let pending: string[] = []

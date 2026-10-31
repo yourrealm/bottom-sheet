@@ -85,38 +85,37 @@ test('tapping the dimmed area closes', async ({ page }) => {
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
 })
 
-test('wheel: one gesture stops at full, the next one scrolls the content', async ({ page }, info) => {
+test('wheel steps detents, then scrolls content, and stops at the content top', async ({ page }, info) => {
   test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
   await openLab(page)
   const p = await headerPoint(page)
-  await page.mouse.move(p.x, p.y + 200)
+  await page.mouse.move(p.x, p.y + 120)
+  const gap = () => page.waitForTimeout(400) // > the 250ms wheel-gesture gap
 
-  // One continuous wheel gesture far past full: the guard stops it at full.
-  for (let i = 0; i < 20; i++) {
-    await page.mouse.wheel(0, 120)
-    await page.waitForTimeout(16)
-  }
+  // A small wheel at a partial detent steps the sheet up (it must not snap back and look dead).
+  await page.mouse.wheel(0, 100)
   await waitForEvent(page, 'lab: onDetentChange full')
-  let g = await geometry(page)
-  expect(Math.abs(g.st - g.full)).toBeLessThan(3)
+  const { full } = await geometry(page)
 
-  // A new gesture (after the gesture gap) continues into the content.
-  await page.waitForTimeout(400)
-  for (let i = 0; i < 5; i++) {
-    await page.mouse.wheel(0, 120)
-    await page.waitForTimeout(16)
-  }
-  await expect.poll(async () => (await geometry(page)).st).toBeGreaterThan(g.full + 100)
+  // At full, the next gesture scrolls the content.
+  // (one wheel event per gesture: Playwright's wheel calls can land >250ms apart, i.e. separate gestures)
+  await gap()
+  await page.mouse.wheel(0, 450)
+  await expect.poll(async () => (await geometry(page)).st).toBeGreaterThan(full + 100)
 
-  // Scrolling back up in one gesture stops at the content top (full), not lower.
-  await page.waitForTimeout(400)
-  for (let i = 0; i < 30; i++) {
-    await page.mouse.wheel(0, -120)
-    await page.waitForTimeout(16)
-  }
-  await page.waitForTimeout(600)
-  g = await geometry(page)
-  expect(Math.abs(g.st - g.full)).toBeLessThan(3)
+  // Scrolling back up in one gesture stops at the content top, not lower.
+  await gap()
+  await page.mouse.wheel(0, -3000)
+  await page.waitForTimeout(700)
+  expect(Math.abs((await geometry(page)).st - full)).toBeLessThan(3)
+
+  // A new upward gesture at full steps down a detent, then another closes.
+  await gap()
+  await page.mouse.wheel(0, -100)
+  await waitForEvent(page, /lab: onDetentChange 0\.5$/)
+  await gap()
+  await page.mouse.wheel(0, -100)
+  await waitForEvent(page, 'lab: onOpenChange false')
 })
 
 test('mouse drag on the header picks a detent from velocity', async ({ page }, info) => {

@@ -1,5 +1,6 @@
 import {
   type Detent,
+  allDetents,
   detentAt,
   detentPosition,
   nearestDetent,
@@ -195,7 +196,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // Firefox remembers the snap target chosen when the fling started (e.g.
     // `closed`) and re-snaps to it when overflow is restored. An explicit
     // programmatic scroll to the pinned position replaces that target.
-    scroller.scrollTo({ top: pinned, behavior: 'instant' })
+    scroller.scrollTop = pinned
     dbg(`unlock @${Math.round(scroller.scrollTop)}`)
     // iOS fires no scrollend for the pinned scrollTop under overflow:hidden, so
     // settle here (idempotent if a real scrollend also arrives).
@@ -217,7 +218,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
       if (Math.abs(st - lock) > 0.5) scroller.scrollTop = lock
       armUnlock()
     } else if (guard && !touching && !programmatic && anchor != null) {
-      if ((anchor > full + 1 && st < full) || (anchor < full - 1 && st > full)) clamp(full)
+      // scroll-snap-stop normally stops momentum at full natively; this only catches a real overshoot
+      // (2px tolerance: snap-stop lands on full with sub-pixel rounding).
+      if ((anchor > full + 2 && st < full - 2) || (anchor < full - 2 && st > full + 2)) clamp(full)
     }
 
     if (!('onscrollend' in window)) {
@@ -267,14 +270,39 @@ export function createSheetController(els: SheetElements, options: SheetControll
     anchor = scroller.scrollTop
     dbg(`release @${Math.round(anchor)}`)
   }
-  function onWheel() {
+  // Wheel/trackpad. With mandatory snapping, a small wheel delta at a partial detent just snaps back,
+  // so the wheel looks dead. Native rule instead (iOS: scrolling expands the sheet first): while the
+  // sheet is below full, or at full and scrolling up, each wheel *gesture* steps one detent. At full
+  // and scrolling down (or inside the content), the wheel scrolls the content natively.
+  let wheelStepped = false
+  function onWheel(e: WheelEvent) {
+    if (e.ctrlKey) return // pinch-zoom
     const t = performance.now()
-    if (t - lastWheel > WHEEL_GESTURE_GAP_MS) {
-      unlock()
-      anchor = scroller.scrollTop
-      programmatic = false
-    }
+    const newGesture = t - lastWheel > WHEEL_GESTURE_GAP_MS
     lastWheel = t
+    const st = scroller.scrollTop
+    const dy = e.deltaY
+    const inSheetTravel = st < full - 1 || (st <= full + 1 && dy < 0)
+    if (newGesture) {
+      unlock()
+      anchor = st
+      programmatic = false
+      wheelStepped = false
+    }
+    // A gesture that started inside the content stops at the content top (native snap-stop / guard);
+    // it never goes on to move the sheet.
+    const startedInContent = anchor != null && anchor > full + 1
+    if (!inSheetTravel || dy === 0 || Math.abs(e.deltaX) > Math.abs(dy)) return
+    e.preventDefault()
+    if (startedInContent) return // reached the content top: stop here, don't move the sheet
+    if (wheelStepped) return // one step per gesture (trackpads send long event streams)
+    wheelStepped = true
+    const order = allDetents(usable)
+    const here = nearestDetent(target != null ? pos(target) : st, H, full, usable)
+    const i = order.indexOf(here)
+    const next = order[Math.min(Math.max(i + (dy > 0 ? 1 : -1), 0), order.length - 1)]!
+    dbg(`wheel step ${String(here)} -> ${String(next)}`)
+    if (next !== here) scrollToDetent(next)
   }
 
   // Mouse drag on [data-ybs-drag] (touch uses native scroll, never this).
@@ -381,7 +409,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('touchstart', onTouchStart, passive)
   scroller.addEventListener('touchend', onTouchEnd, passive)
   scroller.addEventListener('touchcancel', onTouchEnd, passive)
-  scroller.addEventListener('wheel', onWheel, passive)
+  scroller.addEventListener('wheel', onWheel, { passive: false })
   sheet.addEventListener('pointerdown', onPointerDown)
   window.visualViewport?.addEventListener('resize', syncViewport)
   window.visualViewport?.addEventListener('scroll', syncViewport)

@@ -47,8 +47,15 @@ the same handoff gap.
 `scrollTop` is the only source of truth for sheet position. Native momentum, rubber-banding and velocity come
 from the OS.
 
+### Stopping momentum at full: CSS first
+`[data-ybs-sheet] { scroll-snap-stop: always }` makes the browser itself refuse to let a fling skip the full position,
+in both directions (a content fling stops at the content top; a sheet fling stops at full). Verified natively, with the JS
+guard never firing, on Chrome Android, Firefox Android and the iOS 26.4 sim (2026-10-31). This replaced the JS guard as the
+primary mechanism because the guard's `overflow` toggle made **Firefox Android swallow the next touch** (it treated it as a
+"stop the fling" tap: the first fling down from full after a clamp did nothing, the second worked).
+
 ### Required JS (keep it minimal; it never drives the gesture)
-- **Momentum guard at the full line:** if the finger was released on one side of `full` and momentum crosses
+- **Momentum guard at the full line (fallback only, 2px tolerance):** if the finger was released on one side of `full` and momentum crosses
   it, stop at `full`. This matches native: a content fling stops at the content top, and a sheet fling stops at full.
   A live finger may cross freely. Wheel/trackpad: the anchor is the gesture start (gap > 250ms = new gesture).
 - **Stopping momentum:** set `overflow:hidden`, pin `scrollTop`, and **hold until there have been no scroll events for 150ms** or a new
@@ -56,6 +63,11 @@ from the OS.
 - **Re-snap on resize:** browsers don't re-snap when snap positions move (the URL bar showing or hiding mid-animation).
   Track the current (named) detent and re-target it in a ResizeObserver.
 - **Close** when `scrollend` lands at 0 (debounce fallback when `onscrollend` is missing).
+- **Wheel/trackpad steps detents.** With mandatory snapping, a small wheel delta at a partial detent snaps straight back,
+  so the wheel looked dead on desktop (reported on the Comments demo). Now: while below full, or at full and scrolling up,
+  each wheel *gesture* (events < 250ms apart) is `preventDefault`ed and steps exactly one detent. At full scrolling down, or
+  inside the content, the wheel scrolls natively. A gesture that started in the content stops at the content top and never
+  moves the sheet. Touch never produces wheel events.
 
 Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option toggles via URL query).
 
@@ -71,6 +83,9 @@ Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option
 - **iOS fires no `scrollend`** for the pinned `scrollTop` under `overflow:hidden`. `unlock()` runs the settle check itself
   (idempotent), otherwise `onDetentChange('full')` after a guard stop would never fire.
 - `onDetentChange` is deduped against the last *emitted* detent (layout changes during open briefly put the sheet between stops).
+- After unlocking, re-pin with `scrollTop = pinned`: Firefox otherwise re-snaps to the snap target it chose when the fling
+  started (`closed`), which closed the sheet the instant the lock released.
+- `useStyle` updates an existing `<style data-ybs-style>` when the CSS changes (hot reload, or two library copies on a page).
 - Device results (2026-10-31): `scripts/android-suite.sh` 3/3 Chrome Android + 3/3 Firefox Android PASS; the same sequence in the
   iOS 26.4 sim via idb passes (T1–T5, guard both directions, close). The last two fixes (iOS settle, dedupe) are not yet re-run on Android.
 - iOS test artifacts to ignore: swiping down on the closed page triggers Safari pull-to-refresh (a new `load` in the log), and a quick
@@ -152,6 +167,13 @@ screen-reader pass (the modal currently uses inert siblings + focus on open/rest
 - Pointer velocity on 120Hz input; whole-gesture-average velocity feels wrong.
 
 ## Testing
+- **Demo site:** https://yourrealm.github.io/bottom-sheet/ (GitHub Pages, deployed by `.github/workflows/pages.yml` on push to
+  main). CI (`ci.yml`) runs typecheck, unit tests, build and Playwright.
+- **Playwright** (`pnpm e2e`, `apps/demo/e2e`): Chromium (Pixel 7) and WebKit (iPhone 15) with touch emulation, Firefox desktop.
+  Chromium also gets real touch-scroll gestures via CDP `Input.synthesizeScrollGesture`. Tests read `window.__ybs.events`.
+  One wheel event per "gesture" in tests: Playwright's wheel calls can land more than 250ms apart.
+- **Device suite:** `scripts/android-suite.sh [runs] [browsers]` → `scripts/summarize-device-log.py`. URLs carry a nonce,
+  because Firefox reuses an open tab for an identical URL (a stale page with old injected CSS). Log lines carry `?run=` as the tab id.
 - Playground: `pnpm dev` (port 5180). The spike can be served with `python3 -m http.server 5173 --bind 0.0.0.0` from `spikes/`.
 - **Reading device behaviour as text:** pass `debug` to `Sheet.Root`/`BottomSheet`. The playground forwards those lines (plus
   onDetentChange/onOpenChange) to `apps/demo/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.

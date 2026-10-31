@@ -9,8 +9,9 @@ BROWSERS=${2:-"com.android.chrome org.mozilla.firefox"}
 LOG="$(dirname "$0")/../apps/demo/.logs/device.log"
 mkdir -p "$(dirname "$LOG")"; : > "$LOG"
 
+NONCE=$(date +%s) # unique URL per invocation: Firefox reuses an open tab for an identical URL (stale page)
 for B in $BROWSERS; do for i in $(seq 1 "$RUNS"); do
-  adb shell am start -a android.intent.action.VIEW -p "$B" -d "'http://localhost:5180/?open=1&run=$B-$i#/lab'" >/dev/null; sleep 4
+  adb shell am start -a android.intent.action.VIEW -p "$B" -d "'http://localhost:5180/?open=1&n=$NONCE&run=$B-$i#/lab'" >/dev/null; sleep 4
   adb shell input swipe 540 2000 540 200 2500; sleep 1.5   # T1 slow drag up from medium: expands, then scrolls content
   adb shell input swipe 540 1800 540 400 800;  sleep 1.5   #    deeper into content
   adb shell input swipe 540 600 540 1900 80;   sleep 2.5   # T3 fling down from content: guard stops at full
@@ -30,8 +31,8 @@ for line in open(sys.argv[1]):
     if len(parts) < 4: continue
     who, tab, t, msg = parts
     msg = re.sub(r'^[a-z]+: ', '', msg)
-    if msg.startswith('load '):
-        tabrun[tab] = msg.split('run=')[-1] if 'run=' in msg else None; continue
+    if 'load ' in msg and msg.lstrip('- ').startswith('load '):
+        tabrun[tab] = msg.split('run=')[-1].split('#')[0] if 'run=' in msg else None; continue
     r = tabrun.get(tab)
     if r and re.match(r'(release|clamp|onDetentChange|onOpenChange|watchdog|unlock)', msg):
         runs.setdefault(r, []).append(f"{t} {msg.split(' (')[0]}")
