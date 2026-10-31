@@ -12,7 +12,7 @@ packages/bottom-sheet/          the library (tsdown → dist/, ESM only)
   src/core/styles.ts            structural CSS (mechanics only, [data-ybs-*] selectors), injected at runtime
   src/react/sheet.tsx           headless compound parts: Root/Trigger/Close/Portal/Backdrop/View/Content/Header/Handle/Title/Description
   src/styled/                   preset look (classes .ybs-*, tokens --ybs-*) + all-in-one <BottomSheet>
-apps/playground/                Vite app for device testing (port 5180), POSTs debug lines to .logs/device.log
+apps/demo/                Vite app for device testing (port 5180), POSTs debug lines to .logs/device.log
 spikes/01-single-scroller/      the original plain-HTML spike (reference)
 scripts/android-suite.sh        on-device gesture suite (adb), prints PASS/CHECK per run
 ```
@@ -154,7 +154,7 @@ screen-reader pass (the modal currently uses inert siblings + focus on open/rest
 ## Testing
 - Playground: `pnpm dev` (port 5180). The spike can be served with `python3 -m http.server 5173 --bind 0.0.0.0` from `spikes/`.
 - **Reading device behaviour as text:** pass `debug` to `Sheet.Root`/`BottomSheet`. The playground forwards those lines (plus
-  onDetentChange/onOpenChange) to `apps/playground/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.
+  onDetentChange/onOpenChange) to `apps/demo/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.
   Prefer this over screenshots. `scripts/android-suite.sh` runs the gesture suite and summarises it per run.
 - Chrome Android can be inspected live: `adb forward tcp:9222 localabstract:chrome_devtools_remote`, then a small CDP
   `Runtime.evaluate` over `ws://localhost:9222/devtools/page/<id>` (list pages at `localhost:9222/json`). Firefox release builds

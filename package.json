@@ -4,9 +4,11 @@
   "type": "module",
   "packageManager": "pnpm@10.13.1",
   "scripts": {
-    "dev": "pnpm --filter playground dev",
+    "dev": "pnpm --filter demo dev",
     "build": "pnpm --filter @yourrealm/bottom-sheet build",
     "test": "pnpm --filter @yourrealm/bottom-sheet test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "e2e": "pnpm --filter demo e2e",
+    "build:demo": "pnpm --filter demo build"
   }
 }

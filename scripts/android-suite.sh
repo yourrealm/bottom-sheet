@@ -6,11 +6,11 @@
 set -euo pipefail
 RUNS=${1:-3}
 BROWSERS=${2:-"com.android.chrome org.mozilla.firefox"}
-LOG="$(dirname "$0")/../apps/playground/.logs/device.log"
+LOG="$(dirname "$0")/../apps/demo/.logs/device.log"
 mkdir -p "$(dirname "$LOG")"; : > "$LOG"
 
 for B in $BROWSERS; do for i in $(seq 1 "$RUNS"); do
-  adb shell am start -a android.intent.action.VIEW -p "$B" -d "'http://localhost:5180/?open=1&run=$B-$i'" >/dev/null; sleep 4
+  adb shell am start -a android.intent.action.VIEW -p "$B" -d "'http://localhost:5180/?open=1&run=$B-$i#/lab'" >/dev/null; sleep 4
   adb shell input swipe 540 2000 540 200 2500; sleep 1.5   # T1 slow drag up from medium: expands, then scrolls content
   adb shell input swipe 540 1800 540 400 800;  sleep 1.5   #    deeper into content
   adb shell input swipe 540 600 540 1900 80;   sleep 2.5   # T3 fling down from content: guard stops at full
