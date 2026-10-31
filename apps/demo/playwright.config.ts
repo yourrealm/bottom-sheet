@@ -22,7 +22,9 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
   },
   projects: [
-    { name: 'chromium-mobile', use: { ...devices['Pixel 7'] } },
+    // channel 'chromium' = full Chromium (new headless). The default headless shell ignores synthesized
+    // touch-scroll gestures on Linux CI.
+    { name: 'chromium-mobile', use: { ...devices['Pixel 7'], channel: 'chromium' } },
     { name: 'webkit-mobile', use: { ...devices['iPhone 15'] } },
     { name: 'firefox-desktop', use: { ...devices['Desktop Firefox'], viewport: { width: 420, height: 860 } } },
   ],
