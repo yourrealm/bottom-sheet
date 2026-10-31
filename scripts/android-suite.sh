@@ -21,22 +21,6 @@ for B in $BROWSERS; do for i in $(seq 1 "$RUNS"); do
   adb shell input swipe 540 1000 540 2100 60;  sleep 2     # T5 fling down: closes
 done; done
 
-# Summarise per run. Expected per run:
-#   onDetentChange 0.5 | release(content) | clamp->full | full | ... | 0.5 | clamp->full | full | closed | onOpenChange false
-python3 - "$LOG" <<'EOF'
-import re, sys, collections
-runs, tabrun = collections.OrderedDict(), {}
-for line in open(sys.argv[1]):
-    parts = line.rstrip('\n').split(' ', 3)
-    if len(parts) < 4: continue
-    who, tab, t, msg = parts
-    msg = re.sub(r'^[a-z]+: ', '', msg)
-    if 'load ' in msg and msg.lstrip('- ').startswith('load '):
-        tabrun[tab] = msg.split('run=')[-1].split('#')[0] if 'run=' in msg else None; continue
-    r = tabrun.get(tab)
-    if r and re.match(r'(release|clamp|onDetentChange|onOpenChange|watchdog|unlock)', msg):
-        runs.setdefault(r, []).append(f"{t} {msg.split(' (')[0]}")
-for r, ev in runs.items():
-    ok = sum('clamp' in e for e in ev) >= 1 and ev[-1].endswith('onOpenChange false')
-    print('PASS' if ok else 'CHECK', r, '|', ' | '.join(ev))
-EOF
+
+sleep 1 # let the last batched log lines reach the file
+python3 "$(dirname "$0")/summarize-device-log.py" "$LOG"

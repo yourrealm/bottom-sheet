@@ -159,8 +159,18 @@ the sheet behind the keyboard.
   (the on-screen keyboard is then hidden until Cmd+K). Only tap in keyboard tests.
 
 Still open: iOS on a real device (momentum feel, rubber-band at the top), Firefox desktop,
-slow mouse-drag feel, header drag while content is scrolled, non-modal (Maps-style) sheets, page scale-back (the page behind a sheet),
+slow mouse-drag feel, header drag while content is scrolled, page scale-back (the page behind a sheet),
 screen-reader pass (the modal currently uses inert siblings + focus on open/restore + Escape).
+
+## Roadmap: persistent (non-modal) sheet — next
+Reference case: dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-sheet.tsx`, on Base UI Drawer). It slides
+up over the victory animation, has no backdrop, keeps the page behind interactive, peeks at 76px (handle + title row), and
+never closes: swiping down, Escape and an outside tap all drop it to the peek. Needed before dapuzzler can adopt the library:
+- **Non-modal** (`modal={false}`): no backdrop, no inert siblings, no focus trap; touches outside the sheet reach the page.
+  Candidate: `pointer-events: none` on the fixed scroller, `auto` on the sheet (verify touch-drag on the sheet still scrolls the
+  scroller on Chrome Android, Firefox Android and iOS before relying on it).
+- **Pixel detents** (`'76px'` next to fractions of H).
+- **Undismissable** (`dismissible={false}`): no snap at 0; Escape and an outside tap go to the lowest detent instead of closing.
 
 ## Product decisions
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
