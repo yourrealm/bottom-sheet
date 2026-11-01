@@ -70,7 +70,7 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   Track the current (named) detent and re-target it in a ResizeObserver.
   Skipped within 100ms of a user scroll event (`USER_SCROLL_QUIET`): during a fling or a content scroll, `current` is
   where the sheet last rested, and pinning to it yanked the sheet back when content changed height mid-fling.
-  Test: "content that changes height mid-scroll". Device suite after this change (2026-11-01): 3/3 Chrome + 3/3 Firefox Android PASS.
+  Test: "content that changes height mid-scroll". Device suite after this change (2026-11-01): 3/3 Chrome + 3/3 Firefox Android PASS; again after fullscreen/floating/recede/detached drag: 6/6.
 - **Close** when `scrollend` lands at 0 (debounce fallback when `onscrollend` is missing).
 - **Wheel/trackpad steps detents.** With mandatory snapping, a small wheel delta at a partial detent snaps straight back,
   so the wheel looked dead on desktop (reported on the Comments demo). Now: while below full, or at full and scrolling up,
@@ -143,6 +143,12 @@ on the Comments demo: "trying to close via the handle just scrolls up"). Native 
 - Header controls still work: no preventDefault/capture until 4px of movement, and the click after a real drag is swallowed.
 - Device (2026-11-01): Chrome + Firefox Android: a small drag springs back with the offset kept, a fling closes. Tests:
   "header drag while the content is scrolled".
+
+### Closing releases the page at once
+A modal sheet's siblings are inert only while it is open (`blocking` in Portal), not while it animates closed: as soon as
+closing starts, inert is lifted and focus returns to the trigger, and the closing root itself becomes `inert` (taps go
+through to the page). Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
+reopened on Space). Test: "the page takes focus and input back as soon as the sheet starts closing".
 
 ### Stacked sheets (`src/react/stack.ts`)
 - A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes all
@@ -253,6 +259,15 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   a sheet opened on a timer may close together with the one below, or back may leave the page.
 - Tests: "back button (CloseWatcher)", "a non-modal sheet leaves back…", "without CloseWatcher (Safari today)…".
   All three Playwright browsers expose `CloseWatcher`; the last test deletes it.
+
+## dapuzzler trial (2026-11-01, local only, nothing committed there)
+Packed tarball unpacked into `../dapuzzler/node_modules/@yourrealm/bottom-sheet` (no package.json/lock change; `deno install`
+removes it). All three sheets ported: `ui/sheet.tsx` (wrapper with dapuzzler's look, `header` prop, defaults `detents=[]`
+because Base UI drawers opened at full), the solved sheet, What's new, and the toss setup picker (was a Dialog styled as a
+sheet). Its e2e suite passes 22/22; Chrome Android: solved sheet peek/fling/chevron/tap-through, picker scroll + header-drag close.
+Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial focus (Enter = New board) focuses itself
+after the content mounts (two rAFs); and don't put `touch-action` utilities on Header (Tailwind's utilities layer beats
+`ybs`, which would disable the detached drag).
 
 ## Product decisions
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).

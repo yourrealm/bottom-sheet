@@ -295,8 +295,22 @@ export function Portal({ children, container }: PortalProps) {
     const entry: StackEntry = { root, close: () => dismissRef.current('escape'), recede: ctx.recede && ctx.modal }
     entryRef.current = entry
     pushSheet(entry)
+    return () => {
+      removeSheet(entry)
+      entryRef.current = null
+    }
+  }, [ctx.mounted, ctx.rootEl, ctx.modal, ctx.recede])
+
+  // The page is inert only while the sheet is open, not while it animates closed: as soon as it starts
+  // closing, the page (or the sheet below) takes input and focus again, like a native dialog. Otherwise
+  // focus can't return, and a key pressed during the close animation still lands in the sheet.
+  const blocking = ctx.mounted && ctx.open && ctx.modal
+  useEffect(() => {
+    const root = ctx.rootEl.current
+    const parent = root?.parentElement
+    if (!blocking || !root || !parent) return
     const touched: Element[] = []
-    if (ctx.modal) for (const el of Array.from(parent.children)) {
+    for (const el of Array.from(parent.children)) {
       if (el === root || el.hasAttribute('inert') || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue
       el.setAttribute('inert', '')
       touched.push(el)
@@ -304,16 +318,21 @@ export function Portal({ children, container }: PortalProps) {
     const dbg = (m: string) => ctxRef.current.debug?.(m)
     dbg(`portal mount: inert ${touched.length} siblings, ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length} sheet roots inert`)
     return () => {
-      removeSheet(entry)
-      entryRef.current = null
       for (const el of touched) el.removeAttribute('inert')
       dbg(`portal unmount: restored ${touched.length}, still-inert sheet roots ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length}`)
-      // Restore focus only now: while the page is inert, focus() is a no-op.
+      // Restore focus only after lifting inert: while the page is inert, focus() is a no-op.
       const back = ctx.returnFocus.current
       ctx.returnFocus.current = null
       if (back?.isConnected) back.focus({ preventScroll: true })
     }
-  }, [ctx.mounted, ctx.rootEl, ctx.returnFocus, ctx.modal, ctx.recede])
+  }, [blocking, ctx.rootEl, ctx.returnFocus])
+
+  // A sheet animating closed takes no input: taps go through to the page, and focus can't land in it.
+  useEffect(() => {
+    const root = ctx.rootEl.current
+    if (!ctx.mounted || !root) return
+    root.toggleAttribute('inert', !ctx.open)
+  }, [ctx.open, ctx.mounted, ctx.rootEl])
 
   // Android back: one CloseWatcher per open sheet. The browser sends back (and Escape) to the newest one,
   // which is the top sheet. It's dropped as soon as the sheet starts closing, so a back press during the

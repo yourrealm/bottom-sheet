@@ -78,6 +78,26 @@ test('modal semantics: dialog role, inert page, Escape closes and restores focus
   await expect(page.locator('#open-lab')).toBeFocused()
 })
 
+// Found porting dapuzzler: a key pressed right after Escape still landed in the sheet, because the page stayed
+// inert (and focus in the sheet) until the close animation finished.
+test('the page takes focus and input back as soon as the sheet starts closing', async ({ page }, info) => {
+  test.skip(info.project.name !== 'firefox-desktop', 'keyboard focus flow is a desktop concern')
+  await page.goto('/#/lab')
+  await page.locator('#open-lab').focus()
+  await page.keyboard.press('Enter')
+  await waitForEvent(page, 'lab: onDetentChange 0.5')
+  await page.keyboard.press('Escape')
+  // Synchronously after Escape, while the sheet is still on screen sliding out:
+  const now = await page.evaluate(() => ({
+    mounted: !!document.querySelector('[data-ybs-root]'),
+    closingInert: document.querySelector('[data-ybs-root]')?.hasAttribute('inert') ?? null,
+    pageInert: document.getElementById('root')!.hasAttribute('inert'),
+    focused: document.activeElement?.id,
+  }))
+  expect(now).toEqual({ mounted: true, closingInert: true, pageInert: false, focused: 'open-lab' })
+  await waitForEvent(page, 'lab: onOpenChange false')
+})
+
 test('tapping the dimmed area closes', async ({ page }) => {
   await openLab(page)
   await page.mouse.click(40, 120) // above the sheet at the 0.5 detent: the spacer
