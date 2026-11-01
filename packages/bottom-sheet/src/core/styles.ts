@@ -42,7 +42,8 @@ export const structuralCss = /* css */ `
   pointer-events: auto;
 }
 [data-ybs-scroller]::-webkit-scrollbar { display: none; }
-[data-ybs-root][data-ybs-drag] [data-ybs-scroller] { scroll-snap-type: none; }
+[data-ybs-root][data-ybs-drag] [data-ybs-scroller],
+[data-ybs-root][data-ybs-glide] [data-ybs-scroller] { scroll-snap-type: none; }
 [data-ybs-track] { position: relative; }
 [data-ybs-spacer] { height: var(--ybs-h, 100dvh); touch-action: none; }
 [data-ybs-markers] { position: absolute; top: 0; left: 0; width: 1px; height: 0; }

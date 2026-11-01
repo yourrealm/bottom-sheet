@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStops, nearestStop, project, resolveStop, type Stop, stopAt } from './math'
+import { buildStops, cubicBezier, easeAccelerate, easeDecelerate, nearestStop, project, resolveStop, type Stop, stopAt } from './math'
 
 const ids = (stops: Stop[]) => stops.map((s) => s.detent)
 const frac = (f: number, H: number): Stop => ({ detent: f, top: H * f })
@@ -52,5 +52,28 @@ describe('positions', () => {
     const persistent = buildStops([{ detent: '76px', top: 76 }], 800, false)
     expect(nearestStop(0, persistent).detent).toBe('76px')
     expect(resolveStop('closed', 0, persistent).detent).toBe('76px')
+  })
+})
+
+describe('cubicBezier', () => {
+  it('matches the end points and is monotonic', () => {
+    for (const ease of [easeDecelerate, easeAccelerate, cubicBezier(0.25, 0.1, 0.25, 1)]) {
+      expect(ease(0)).toBe(0)
+      expect(ease(1)).toBe(1)
+      let prev = 0
+      for (let k = 0.01; k <= 1; k += 0.01) {
+        const v = ease(k)
+        expect(v).toBeGreaterThanOrEqual(prev - 1e-9)
+        prev = v
+      }
+    }
+  })
+  it('linear when the control points lie on the diagonal', () => {
+    const lin = cubicBezier(1 / 3, 1 / 3, 2 / 3, 2 / 3)
+    for (const k of [0.1, 0.37, 0.5, 0.9]) expect(lin(k)).toBeCloseTo(k, 5)
+  })
+  it('decelerate front-loads the motion, accelerate back-loads it', () => {
+    expect(easeDecelerate(0.25)).toBeGreaterThan(0.6)
+    expect(easeAccelerate(0.5)).toBeLessThan(0.25)
   })
 })

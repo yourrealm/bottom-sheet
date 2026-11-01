@@ -402,6 +402,17 @@ export interface ViewProps {
   bleedClassName?: string
 }
 
+const TAP_MS = 500
+const TAP_SLOP = 10
+/**
+ * Whether an event target is in the sheet layer but not on the sheet: above it (the spacer) or beside it when the
+ * sheet is narrower than the screen. React bubbles events through portals, so an event from a sheet stacked on top
+ * arrives here too; only targets really inside this scroller's DOM count.
+ */
+function outside(scroller: Element, target: Element) {
+  return scroller.contains(target) && !target.closest('[data-ybs-sheet]')
+}
+
 /** The single native scroller: spacer (closed area), detent markers, and the sheet (Sheet.Content). */
 export function View({ children, className, bleedClassName }: ViewProps) {
   const ctx = useSheet('View')
@@ -457,6 +468,9 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     if (c && ctx.detent !== undefined && ctx.open && c.detent !== ctx.detent) c.snapTo(ctx.detent)
   }, [ctx.detent, ctx.open, ctx.controller])
 
+  const tap = useRef<{ id: number; x: number; y: number; t: number } | null>(null)
+  const tapClosedAt = useRef(-Infinity)
+
   return (
     <>
       <div data-ybs-bleed="" aria-hidden="true" className={bleedClassName} />
@@ -466,12 +480,27 @@ export function View({ children, className, bleedClassName }: ViewProps) {
         className={className}
         // Any click in the sheet layer that isn't on the sheet itself is "outside": above it (the
         // spacer) and beside it when the sheet is narrower than the screen (e.g. max-width on desktop).
+        // Touch taps outside the sheet are detected from pointer events, not `click`: after a swipe on the spacer
+        // (touch-action: none) Chrome Android keeps a fling alive for a moment and spends the next tap stopping it,
+        // with no click, so it took two taps to close (reported on the stacked "1000 rows" demo, 2026-11-01).
+        onPointerDown={(e) => {
+          tap.current = null
+          if (e.pointerType === 'mouse' || !outside(e.currentTarget, e.target as Element)) return
+          tap.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp }
+        }}
+        onPointerUp={(e) => {
+          const t = tap.current
+          tap.current = null
+          if (!t || t.id !== e.pointerId || e.timeStamp - t.t > TAP_MS) return
+          if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > TAP_SLOP) return
+          tapClosedAt.current = e.timeStamp
+          ctx.requestDismiss('outside-press')
+        }}
+        onPointerCancel={() => (tap.current = null)}
         onClick={(e) => {
-          const target = e.target as Element
-          // React bubbles events through portals: a click in a sheet stacked on top of this one arrives
-          // here too. Only handle clicks that are really inside this scroller's DOM.
-          if (!e.currentTarget.contains(target)) return
-          if (!target.closest('[data-ybs-sheet]')) ctx.requestDismiss('outside-press')
+          // The click that follows a touch tap we already handled.
+          if (e.timeStamp - tapClosedAt.current < 800) return
+          if (outside(e.currentTarget, e.target as Element)) ctx.requestDismiss('outside-press')
         }}
       >
         <div data-ybs-track="">

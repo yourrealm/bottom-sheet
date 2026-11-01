@@ -1,4 +1,4 @@
-import { type Detent, type Stop, buildStops, nearestStop, project, resolveStop, stopAt } from './math'
+import { type Detent, type Stop, buildStops, easeAccelerate, easeDecelerate, nearestStop, project, resolveStop, stopAt } from './math'
 
 /**
  * Sheet controller. Framework-agnostic; React (or anything) renders the DOM,
@@ -75,6 +75,13 @@ const MAX_RETARGETS = 3
 /** A resize this soon after a user scroll event is mid-gesture or mid-momentum: don't re-target. */
 const USER_SCROLL_QUIET = 100
 const VELOCITY_WINDOW_MS = 80
+/**
+ * Programmatic moves (open, close, snapTo, wheel steps, keyboard) are animated here, not by the browser's smooth
+ * scroll: that took 660-770ms on a phone (Chrome/Firefox Android, measured 2026-11-01) and varies by browser.
+ * Platform guidance for a sheet: ~400ms decelerating in, ~30% faster accelerating out.
+ */
+const GLIDE_UP_MS = 400
+const GLIDE_DOWN_MS = 280
 
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
 // the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
@@ -142,7 +149,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-  const behavior = (): ScrollBehavior => (reducedMotion() ? 'instant' : 'smooth')
   /** Where a detent would sit (px), whether or not it is usable in this layout. */
   function rawTop(d: Detent): number {
     if (d === 'closed') return 0
@@ -201,33 +207,54 @@ export function createSheetController(els: SheetElements, options: SheetControll
     anchor = null
     retries = 0
     unlock()
-    // Already there (e.g. a mouse drag released exactly on a detent, or at 0): no scroll and no scrollend will
-    // follow, so settle now. Otherwise the drag stays in `settle` (snap off), or a close never finishes.
+    // Already there (e.g. a mouse drag released exactly on a detent, or at 0): nothing moves, so settle now.
+    // Otherwise the drag stays in `settle` (snap off), or a close never finishes.
     if (Math.abs(scroller.scrollTop - pos(target)) < 1) {
+      stopGlide()
       requestAnimationFrame(onScrollEnd)
       return
     }
-    scroller.scrollTo({ top: pos(target), behavior: behavior() })
-    armWatchdog()
+    glide()
   }
 
-  // Chrome Android silently drops a smooth scrollTo on a scroller created in
-  // the same frame (observed on page load: no scroll, no scrollend). If a
-  // programmatic move hasn't started shortly after, issue it again.
-  let watchdog: ReturnType<typeof setTimeout> | undefined
-  function armWatchdog(attempt = 0) {
-    clearTimeout(watchdog)
+  // ---- glide: our own animation of scrollTop toward `target` ----
+  // Snapping is off while it runs ([data-ybs-glide]); each frame aims at the target's current position, so a
+  // layout change mid-way (keyboard, URL bar, content) is followed. A touch, wheel or mouse drag stops it.
+  let gliding = false
+  let glideRaf = 0
+  function glide() {
+    stopGlide()
+    if (target == null) return
     const from = scroller.scrollTop
-    const want = target
-    watchdog = setTimeout(() => {
-      if (destroyed || document.hidden || !programmatic || target !== want || want == null || touching) return
-      const st = scroller.scrollTop
-      if (Math.abs(st - from) < 1 && Math.abs(st - pos(want)) > 2 && attempt < MAX_RETARGETS) {
-        dbg(`watchdog: move to ${String(want)} never started, re-issuing`)
-        scroller.scrollTo({ top: pos(want), behavior: behavior() })
-        armWatchdog(attempt + 1)
+    const up = pos(target) > from
+    const ms = reducedMotion() ? 0 : up ? GLIDE_UP_MS : GLIDE_DOWN_MS
+    if (ms === 0) {
+      scroller.scrollTop = pos(target)
+      requestAnimationFrame(onScrollEnd)
+      return
+    }
+    const ease = up ? easeDecelerate : easeAccelerate
+    gliding = true
+    root.setAttribute('data-ybs-glide', '')
+    let t0: number | null = null
+    const step = (now: number) => {
+      if (destroyed || !gliding || target == null) return
+      t0 ??= now
+      const k = Math.min((now - t0) / ms, 1)
+      scroller.scrollTop = from + (pos(target) - from) * ease(k)
+      if (k < 1) glideRaf = requestAnimationFrame(step)
+      else {
+        stopGlide()
+        onScrollEnd()
       }
-    }, 150)
+    }
+    glideRaf = requestAnimationFrame(step)
+  }
+  function stopGlide() {
+    if (!gliding) return
+    gliding = false
+    cancelAnimationFrame(glideRaf)
+    root.removeAttribute('data-ybs-glide')
   }
 
   // ---- momentum lock ----
@@ -311,7 +338,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   function onScrollEnd() {
-    if (destroyed) return
+    if (destroyed || gliding) return // a glide settles itself when it ends
     const st = scroller.scrollTop
     dbg(`scrollend @${Math.round(st)} prog=${programmatic} target=${String(target)} lock=${String(lock)}`)
 
@@ -320,7 +347,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (programmatic && target != null && !touching) {
       const to = pos(target)
       if (Math.abs(st - to) > 2 && retries++ < MAX_RETARGETS) {
-        scroller.scrollTo({ top: to, behavior: behavior() })
+        glide()
         return
       }
     }
@@ -360,6 +387,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   // ---- gestures ----
   function onTouchStart() {
+    stopGlide()
     touching = true
     anchor = null
     programmatic = false
@@ -394,6 +422,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const dy = e.deltaY
     const inSheetTravel = st < full - 1 || (st <= full + 1 && dy < 0)
     if (newGesture) {
+      stopGlide()
       unlock()
       anchor = st
       programmatic = false
@@ -423,6 +452,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let dropAnim = 0
   function detachedDrag(e: PointerEvent, handle: HTMLElement) {
     // No preventDefault/capture yet: a tap (a button or field in the header) must still work.
+    stopGlide()
     unlock()
     cancelAnimationFrame(dropAnim)
     const st0 = scroller.scrollTop
@@ -522,6 +552,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (e.pointerType !== 'mouse') return
     e.preventDefault()
     ;(handle as HTMLElement).setPointerCapture(e.pointerId)
+    stopGlide()
     unlock()
 
     const startTop = scroller.scrollTop
@@ -599,10 +630,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (!programmatic && performance.now() - lastUserScroll < USER_SCROLL_QUIET) return
     const d = programmatic ? target : current
     if (d == null) return
-    if (programmatic) {
-      scroller.scrollTo({ top: pos(d), behavior: behavior() })
-      armWatchdog()
-    } else scroller.scrollTop = pos(d)
+    if (gliding) return // the glide aims at the target's current position every frame
+    scroller.scrollTop = pos(d)
   })
 
   function finishClose() {
@@ -661,13 +690,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
       // animation starts (seen under React StrictMode) must not read as "closed".
       target = resolve(detent ?? defaultDetent()).detent
       programmatic = true
-      // Two frames: Chrome drops a smooth scroll on a scroller that was created
-      // in the previous frame (the watchdog covers anything slower).
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          if (!destroyed && isOpen && target != null) scrollToDetent(target)
-        }),
-      )
+      // Start right away (the glide's first frame paints the sheet at closed, then it moves). The old two-frame
+      // wait was for Chrome dropping a smooth scrollTo on a new scroller; the glide sets scrollTop directly.
+      scrollToDetent(target)
     },
     snapTo(detent) {
       if (isOpen) scrollToDetent(detent)
@@ -700,7 +725,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       releaseHtml()
       clearTimeout(unlockTimer)
       clearTimeout(scrollEndTimer)
-      clearTimeout(watchdog)
+      stopGlide()
       cancelAnimationFrame(dropAnim)
       scroller.style.transform = ''
       ro.disconnect()

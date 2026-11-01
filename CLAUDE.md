@@ -80,6 +80,25 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
 
 Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option toggles via URL query).
 
+### Programmatic moves glide (our own animation, not smooth scroll)
+Open, close, snapTo, wheel steps and the keyboard move animate scrollTop per frame (`glide()` in the controller):
+~400ms Material 3 emphasized-decelerate moving up, ~280ms emphasized-accelerate moving down, instant with reduced
+motion. Snapping is off while it runs (`[data-ybs-glide]`), each frame aims at the target's current position (layout
+changes are followed), and touch/wheel/mouse-drag stop it. Why: native `scrollTo({behavior:'smooth'})` measured
+660-770ms on the maintainer's phone (Chrome 660-680, Firefox 760-770, from scrollTo to scrollend), fixed per browser.
+Research summary (agent, 2026-11-01): no study measures sheet timing; platform guidance is 350-450ms in, ~30% faster out.
+Opening no longer waits two frames (that was for Chrome dropping a smooth scrollTo on a new scroller).
+Tests: "glide (programmatic moves)". Not yet re-run: the Android suite with the glide.
+- Seen once, not reproduced (2026-11-01): a Chrome Android tab where touch scrolling of the sheet stopped working
+  (touches arrived, programmatic scrollTop worked). That tab had gone lab sheet -> closed -> Comments sheet glide-open
+  during an interrupted device-suite run. Watch for it.
+
+### Outside taps use pointer events (touch)
+After a swipe on the spacer (touch-action: none) Chrome Android keeps an invisible fling alive for up to ~2s and spends
+the next tap stopping it: pointerdown/up arrive, no click, so closing took two taps (stacked "1000 rows" demo; same
+on a single sheet). The View now dismisses on a touch tap (pointerdown/up outside the sheet, <10px, <500ms) and
+ignores the click that follows. Mouse keeps `click`. Test: "a touch tap on the dimmed area closes once".
+
 ### Lessons from the React package (not in the spike)
 - **Ref order:** React attaches an ancestor's ref *after* its descendants' layout effects run. `View` therefore finds the portal
   root with `scroller.closest('[data-ybs-root]')`, not from a ref.

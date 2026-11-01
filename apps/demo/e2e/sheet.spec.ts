@@ -727,3 +727,60 @@ test('the styled body is padded like the header; --ybs-body-padding: 0 makes it 
   await openLab(page) // the lab's rows run edge to edge (className="edge")
   expect(await pad()).toBe('0px')
 })
+
+// Programmatic moves are our own animation (~400ms up, ~280ms down), not the browser's smooth scroll, which
+// took 660-770ms on a phone. Snapping is off only while it runs.
+test.describe('glide (programmatic moves)', () => {
+  /** Record scrollTop and the glide attribute every frame, from now. */
+  const record = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as { __frames: Array<[number, number, boolean]> }
+      w.__frames = []
+      const t0 = performance.now()
+      const tick = () => {
+        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')
+        const r = document.querySelector('[data-ybs-root]')
+        if (s) w.__frames.push([performance.now() - t0, s.scrollTop, !!r?.hasAttribute('data-ybs-glide')])
+        if (performance.now() - t0 < 1500) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
+  const frames = (page: Page) => page.evaluate(() => (window as unknown as { __frames: Array<[number, number, boolean]> }).__frames)
+
+  test('opening glides with snapping off, then rests with snapping back on', async ({ page }) => {
+    await page.goto('/#/lab')
+    await record(page)
+    await page.locator('#open-lab').click()
+    await waitForEvent(page, 'lab: onDetentChange 0.5')
+    await page.waitForTimeout(1600)
+    const f = await frames(page)
+    const moving = f.filter(([, st, glide]) => glide && st > 1)
+    expect(moving.length).toBeGreaterThan(3) // several in-between frames: an animation, not a jump
+    expect(f.at(-1)![2]).toBe(false) // snapping restored at rest
+  })
+
+  test('reduced motion: programmatic moves jump straight to the detent', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/#/lab')
+    await record(page)
+    await page.locator('#open-lab').click()
+    await waitForEvent(page, 'lab: onDetentChange 0.5')
+    const f = await frames(page)
+    const { H } = await geometry(page)
+    const between = f.filter(([, st]) => st > 2 && Math.abs(st - H * 0.5) > 2)
+    expect(between).toEqual([])
+    expect(f.some(([, , glide]) => glide)).toBe(false)
+  })
+})
+
+// Touch taps outside the sheet close it from pointer events: after a swipe on the spacer, Chrome Android spends
+// the next tap stopping an invisible fling and sends no click (it took two taps to close).
+test('a touch tap on the dimmed area closes once (pointer path, the following click ignored)', async ({ page, browserName }) => {
+  test.skip(browserName === 'firefox', 'touch emulation: mobile projects only')
+  await openLab(page)
+  await clearEvents(page)
+  await page.touchscreen.tap(40, 120)
+  await waitForEvent(page, 'lab: onOpenChange false')
+  await page.waitForTimeout(500)
+  expect((await events(page)).filter((e) => e === 'lab: onOpenChange false')).toHaveLength(1)
+})
