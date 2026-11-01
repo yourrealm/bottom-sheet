@@ -9,7 +9,7 @@
  *   --ybs-progress  0..1, closed -> full
  *   --ybs-bleed     0|1, whether the bleed (sheet colour under the visual viewport) shows
  * Consumer-settable:
- *   --ybs-inset     gap above the sheet at the full detent (default: safe area + 10px)
+ *   --ybs-inset     gap above the sheet at the full detent (default: safe area + 10px; 0 with fullscreen)
  *   --ybs-sheet-bg  colour of the bleed, should match the sheet
  */
 export const structuralCss = /* css */ `
@@ -17,6 +17,9 @@ export const structuralCss = /* css */ `
   --ybs-inset: calc(env(safe-area-inset-top, 0px) + 10px);
   position: fixed; inset: 0; z-index: 50; pointer-events: none;
 }
+[data-ybs-root][data-ybs-fullscreen] { --ybs-inset: 0px; }
+/* Fullscreen means the full detent covers the screen, even with short content. */
+[data-ybs-root][data-ybs-fullscreen] [data-ybs-sheet] { min-height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset)); }
 [data-ybs-backdrop] {
   position: fixed; left: 0; right: 0; top: var(--ybs-vv-top, 0px); height: 200lvh;
   pointer-events: auto;

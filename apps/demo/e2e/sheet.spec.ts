@@ -544,3 +544,43 @@ test('content that changes height mid-scroll does not yank the sheet back to its
   })
   await expect.poll(async () => (await geometry(page)).st, { timeout: 3000 }).toBeGreaterThan(full + 500)
 })
+
+test.describe('page sheet and fullscreen', () => {
+  test('a page sheet opens straight to full and fills the screen, even with short content', async ({ page }) => {
+    await page.goto('/?open=1#/notes')
+    await waitForEvent(page, 'notes: onDetentChange full')
+    const g = await geometry(page)
+    expect(g.full).toBe(g.H) // not fit-content
+    expect(Math.abs(g.st - g.H)).toBeLessThan(3)
+    // Header bar: Cancel / title / Save, title centred between them.
+    const bar = page.locator('.ybs-bar')
+    await expect(bar.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    await expect(bar.getByRole('button', { name: 'Save' })).toBeVisible()
+    const title = (await bar.locator('.ybs-title').boundingBox())!
+    const sheet = (await page.locator('[data-ybs-sheet]').boundingBox())!
+    expect(Math.abs(title.x + title.width / 2 - (sheet.x + sheet.width / 2))).toBeLessThan(2)
+    await bar.getByRole('button', { name: 'Cancel' }).click()
+    await waitForEvent(page, 'notes: onOpenChange false (close-button)')
+  })
+
+  test('full width: the sheet spans the window, the content stays in a column', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'desktop layout')
+    await page.setViewportSize({ width: 1400, height: 880 })
+    await page.goto('/?open=1#/notes')
+    await waitForEvent(page, 'notes: onDetentChange full')
+    expect((await page.locator('[data-ybs-sheet]').boundingBox())!.width).toBe(1400)
+    const cancel = (await page.getByRole('button', { name: 'Cancel' }).boundingBox())!
+    expect(cancel.x).toBeGreaterThan(200) // (1400 - 960) / 2 = 220
+  })
+
+  test('fullscreen: no gap at the top and square corners there', async ({ page }) => {
+    await page.goto('/?open=1&fullscreen=1#/notes')
+    await waitForEvent(page, 'notes: onDetentChange full')
+    const box = (await page.locator('[data-ybs-sheet]').boundingBox())!
+    expect(Math.abs(box.y)).toBeLessThan(2)
+    const radius = await page.locator('[data-ybs-sheet]').evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius))
+    expect(radius).toBeLessThan(0.5)
+    await page.keyboard.press('Escape')
+    await waitForEvent(page, 'notes: onOpenChange false (escape)')
+  })
+})

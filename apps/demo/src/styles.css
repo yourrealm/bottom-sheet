@@ -345,3 +345,16 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .thumbs button[aria-pressed='true'] { border-color: var(--accent); }
 .thumbs button:disabled:not([aria-pressed='true']) { opacity: 0.35; }
 .solved-actions { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+
+/* Notes (page sheet) */
+.notes-actions { display: flex; gap: 10px; margin-bottom: 16px; }
+.notes-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.notes-list li { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.bar-button { border: 0; background: none; padding: 6px 0; font-size: 16px; color: var(--ybs-muted); }
+.bar-button.strong { color: var(--ybs-sheet-fg); font-weight: 600; }
+.note-toolbar { display: flex; gap: 4px; margin-top: 12px; }
+.note-toolbar button { width: 40px; height: 36px; border: 0; border-radius: 8px; background: none; font-size: 16px; }
+.note-toolbar button:hover { background: var(--ybs-divider); }
+.note-editor { display: grid; gap: 8px; padding: 16px; }
+.note-title { border: 0; background: none; color: inherit; font: 700 26px/1.2 system-ui, sans-serif; outline: none; }
+.note-body { border: 0; background: none; color: inherit; font: 16px/1.6 system-ui, sans-serif; resize: none; outline: none; min-height: 50dvh; }

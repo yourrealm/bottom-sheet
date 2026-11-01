@@ -3,7 +3,8 @@ import * as Base from '../react/sheet'
 import { useStyle } from '../react/use-style'
 import { styledCss } from './styles'
 
-export type { Detent } from '../core/math'
+import type { Detent } from '../core/math'
+export type { Detent }
 export type { OpenChangeDetails, OpenChangeReason } from '../react/sheet'
 
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
@@ -39,6 +40,21 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   trigger?: ReactNode
   title: ReactNode
   description?: ReactNode
+  /**
+   * - `'sheet'` (default): detents as given, a card-width sheet.
+   * - `'page'`: an iOS-style page sheet for a task (compose, edit): opens straight to full (`detents` default `[]`),
+   *   spans the full width (`width` default `'full'`). Pair it with `leading` / `trailing` (Cancel / Save).
+   */
+  variant?: 'sheet' | 'page'
+  /**
+   * - `'card'` (default for `sheet`): the sheet is at most 640px wide (`--ybs-max-width`), centred.
+   * - `'full'` (default for `page`): the sheet spans the window; its header and body stay in a centred column
+   *   (`--ybs-content-width`, default 960px).
+   */
+  width?: 'card' | 'full'
+  /** Header bar slots, iOS navigation-bar style: e.g. `leading={<Sheet.Close>Cancel</Sheet.Close>}`. The title centres between them. */
+  leading?: ReactNode
+  trailing?: ReactNode
   /** Extra content placed in the sticky header under the title (e.g. a search field). */
   headerExtra?: ReactNode
   children?: ReactNode
@@ -46,21 +62,49 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   contentProps?: ComponentPropsWithRef<'section'>
 }
 
+const PAGE_DETENTS: readonly Detent[] = []
+
 /**
  * The simple path:
  *   <BottomSheet trigger="Open" title="Settings">…</BottomSheet>
  */
-export function BottomSheet({ trigger, title, description, headerExtra, children, className, contentProps, ...root }: BottomSheetProps) {
+export function BottomSheet({
+  trigger,
+  title,
+  description,
+  variant = 'sheet',
+  width = variant === 'page' ? 'full' : 'card',
+  leading,
+  trailing,
+  headerExtra,
+  children,
+  className,
+  contentProps,
+  ...rootProps
+}: BottomSheetProps) {
+  const root = variant === 'page' ? { detents: PAGE_DETENTS, ...rootProps } : rootProps
+  const bar = leading != null || trailing != null
   return (
     <Sheet.Root {...root}>
       {trigger != null && <Sheet.Trigger className="ybs-trigger">{trigger}</Sheet.Trigger>}
       <Sheet.Portal>
         {root.modal !== false && <Sheet.Backdrop />}
         <Sheet.View>
-          <Sheet.Content {...contentProps} className={cx(className, contentProps?.className)}>
+          <Sheet.Content
+            {...contentProps}
+            className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', className, contentProps?.className)}
+          >
             <Sheet.Header>
               <Sheet.Handle />
-              <Sheet.Title>{title}</Sheet.Title>
+              {bar ? (
+                <div className="ybs-bar">
+                  <div className="ybs-leading">{leading}</div>
+                  <Sheet.Title>{title}</Sheet.Title>
+                  <div className="ybs-trailing">{trailing}</div>
+                </div>
+              ) : (
+                <Sheet.Title>{title}</Sheet.Title>
+              )}
               {description != null && <Sheet.Description>{description}</Sheet.Description>}
               {headerExtra}
             </Sheet.Header>

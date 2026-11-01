@@ -9,6 +9,10 @@ export const styledCss = /* css */ `
   --ybs-radius: 14px;
   --ybs-backdrop: #000;
   --ybs-backdrop-max: 0.4;
+  --ybs-max-width: 640px;
+  --ybs-content-width: 960px;
+  /* 1 within the last 10% of travel to full, else 0..: corners square off as a fullscreen sheet reaches the top. */
+  --ybs-at-top: clamp(0, (var(--ybs-progress, 0) - 0.9) * 10, 1);
 }
 @media (prefers-color-scheme: dark) {
   [data-ybs-root] {
@@ -38,8 +42,27 @@ export const styledCss = /* css */ `
   box-shadow: 0 -1px 0 var(--ybs-divider), 0 -8px 30px rgba(0, 0, 0, 0.08);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   font-family: system-ui, -apple-system, sans-serif;
-  max-width: 640px; margin-inline: auto;
+  max-width: var(--ybs-max-width); margin-inline: auto;
 }
+/* Full width: the surface spans the window; header and body keep their full width (no corner seams) but pad
+   their contents into a readable centred column. */
+.ybs-sheet.ybs-sheet-full { max-width: none; }
+.ybs-sheet-full > .ybs-header, .ybs-sheet-full > .ybs-body {
+  padding-inline: max(16px, (100% - var(--ybs-content-width)) / 2);
+}
+/* A page sheet fills the screen at full even when its content is short (no fit-content). */
+.ybs-sheet.ybs-sheet-page { min-height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset)); }
+/* Header bar: leading | title | trailing, the title centred like an iOS navigation bar. */
+.ybs-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+.ybs-bar > .ybs-title { text-align: center; }
+.ybs-leading { justify-self: start; }
+.ybs-trailing { justify-self: end; }
+/* Fullscreen: square corners at the top (they would show the page through), header clear of the notch. */
+[data-ybs-fullscreen] .ybs-sheet, [data-ybs-fullscreen] .ybs-header {
+  --ybs-r: calc(var(--ybs-radius) * (1 - var(--ybs-at-top)));
+  border-radius: var(--ybs-r) var(--ybs-r) 0 0;
+}
+[data-ybs-fullscreen] .ybs-header { padding-top: calc(6px + env(safe-area-inset-top, 0px)); }
 .ybs-header {
   background: var(--ybs-sheet-bg);
   border-radius: var(--ybs-radius) var(--ybs-radius) 0 0;

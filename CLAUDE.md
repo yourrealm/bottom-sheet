@@ -198,6 +198,15 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   fling down to the peek, fling down at the peek): Chrome Android ✅, Firefox Android ✅ (after the fix above),
   never an `onOpenChange`. A real iPhone is still untested.
 
+## Page sheet and fullscreen (demo `#/notes`, `?fullscreen=1`)
+- `fullscreen` (core): `--ybs-inset: 0` and the sheet gets `min-height: calc(var(--ybs-vv-h) - var(--ybs-inset))`, so full
+  covers the screen even with short content (no fit-content). `min-height: 100%` does NOT work there (doesn't resolve).
+  `/styled`: corner radius follows `--ybs-at-top` (0 below 90% progress, 1 at full), header padded by the top safe area.
+- `/styled`: `variant="page"` = `detents=[]` + `width="full"` + the min-height. `width="full"` keeps header/body
+  full width (a narrower header showed corner seams) and centres their content with `padding-inline: max(16px, (100% - --ybs-content-width) / 2)`.
+  `leading`/`trailing` render a 3-column `.ybs-bar` grid with the title centred.
+- Device (2026-11-01): Chrome + Firefox Android, page and fullscreen open at full and a header swipe closes.
+
 ## Android back closes the top sheet (`closeOnBack`, default = `modal`)
 - One `CloseWatcher` per open sheet (Portal effect; `src/react/stack.ts` holds it on the stack entry). The browser
   routes back and Escape to the newest watcher = the top sheet. No history entries, so no router/URL interference

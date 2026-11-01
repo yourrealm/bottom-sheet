@@ -71,6 +71,15 @@ import { Sheet } from '@yourrealm/bottom-sheet'
   no scroll lock, focus stays where it is).
 - `dismissible` (default `true`): `false` means a swipe down, Escape or an outside press drop the sheet to its lowest
   detent instead of closing it. `open={false}` and `<Sheet.Close>` still close it.
+- `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with short
+  content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
+- `/styled` only: `variant="page"` (an iOS page sheet for a task: opens straight to full, full width), `width`
+  (`'card'`: at most 640px, centred; `'full'`: spans the window with the content in a centred 960px column), and
+  `leading` / `trailing` header slots (Cancel / title / Save, title centred):
+
+  ```tsx
+  <BottomSheet variant="page" title="New Note" leading={<Sheet.Close>Cancel</Sheet.Close>} trailing={<button onClick={save}>Save</button>}>
+  ```
 - `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
   [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
   never touches your URLs or router. Works in Chrome Android; Firefox Android has the API but doesn't route its back

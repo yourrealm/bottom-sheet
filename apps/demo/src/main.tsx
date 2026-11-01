@@ -11,6 +11,7 @@ import { Lab } from './scenarios/lab'
 import { Settings } from './scenarios/settings'
 import { Thousand } from './scenarios/thousand'
 import { Persistent } from './scenarios/persistent'
+import { Notes } from './scenarios/notes'
 import './styles.css'
 
 interface Scenario {
@@ -32,6 +33,7 @@ const SCENARIOS: Scenario[] = [
   { id: 'settings', title: 'Stacked settings', blurb: 'Sheets on sheets, three levels deep. The one below recedes.', icon: '🗂️', hue: 200, Component: Settings },
   { id: 'thousand', title: '1000 sheets', blurb: 'A list of 1000 rows where every row owns its own sheet.', icon: '⚡️', hue: 100, Component: Thousand },
   { id: 'persistent', title: 'Persistent (non-modal)', blurb: 'Never closes, peeks at 76px; the page behind stays usable.', icon: '🧩', hue: 260, Component: Persistent },
+  { id: 'notes', title: 'New note (page sheet)', blurb: 'Opens straight to full, Cancel / Save header, full width on desktop. Try fullscreen.', icon: '📝', hue: 50, Component: Notes },
   { id: 'lab', title: 'Lab', blurb: 'Plain test page used by the device scripts.', icon: '🧪', hue: 0, Component: Lab },
 ]
 

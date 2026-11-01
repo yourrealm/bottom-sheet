@@ -35,6 +35,7 @@ interface SheetContextValue {
   modal: boolean
   dismissible: boolean
   closeOnBack: boolean
+  fullscreen: boolean
   detents: readonly Detent[]
   initialDetent: Detent | undefined
   detent: Detent | undefined
@@ -102,6 +103,12 @@ export interface RootProps {
    * hasn't been interacted with since the sheet opened (its anti-trap rule).
    */
   closeOnBack?: boolean
+  /**
+   * The full detent reaches the very top of the screen (no gap above the sheet). Sets `data-ybs-fullscreen` on the
+   * root; `/styled` then squares off the corners as the sheet arrives at the top and pads the header by the top
+   * safe area. Headless: pad your header with `env(safe-area-inset-top)` yourself.
+   */
+  fullscreen?: boolean
   /** Detent to open at. Default: the smallest usable partial detent, else `full`. */
   initialDetent?: Detent
   /** Controlled resting detent. Changing it moves the sheet. */
@@ -129,6 +136,7 @@ export function Root(props: RootProps) {
     modal = true,
     dismissible = true,
     closeOnBack = modal,
+    fullscreen = false,
     debug,
   } = props
   const [openState, setOpenState] = useState(defaultOpen)
@@ -193,6 +201,7 @@ export function Root(props: RootProps) {
       modal,
       dismissible,
       closeOnBack,
+      fullscreen,
       detents,
       initialDetent,
       detent,
@@ -209,7 +218,7 @@ export function Root(props: RootProps) {
       hasDescription,
       setHasDescription,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id, hasDescription],
+    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, fullscreen, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id, hasDescription],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
@@ -325,7 +334,12 @@ export function Portal({ children, container }: PortalProps) {
 
   if (!ctx.mounted || typeof document === 'undefined') return null
   return createPortal(
-    <div data-ybs-root="" data-ybs-modeless={ctx.modal ? undefined : ''} ref={ctx.rootEl}>
+    <div
+      data-ybs-root=""
+      data-ybs-modeless={ctx.modal ? undefined : ''}
+      data-ybs-fullscreen={ctx.fullscreen ? '' : undefined}
+      ref={ctx.rootEl}
+    >
       {children}
     </div>,
     container ?? document.body,
