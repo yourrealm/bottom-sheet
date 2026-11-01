@@ -3,12 +3,32 @@
  * - Escape closes only the top sheet,
  * - the sheet below the top one is marked covered (`data-ybs-covered`, `--ybs-covered` 0..1 following the
  *   upper sheet's progress) so it can recede like iOS stacked sheets,
- * - only the top sheet reacts to the keyboard.
+ * - only the top sheet reacts to the keyboard,
+ * - Android back closes the top sheet, through `CloseWatcher` (Chrome 126+, Firefox 149+). No history entries,
+ *   so app URLs and routers are never touched. Browsers without it (Safari) keep the Escape listener only.
  */
 export interface StackEntry {
   root: HTMLElement
   close: () => void
+  /** Set while the sheet listens for back; it then also gets Escape from the browser, not from our listener. */
+  watcher?: CloseWatcherLike | null
 }
+
+/** The bits of CloseWatcher we use (not in TypeScript's DOM lib yet). */
+export interface CloseWatcherLike {
+  onclose: ((e: Event) => void) | null
+  destroy(): void
+}
+type CloseWatcherCtor = new () => CloseWatcherLike
+
+/** The CloseWatcher constructor, or null where the browser doesn't have it. */
+export function closeWatcher(): CloseWatcherCtor | null {
+  return typeof window !== 'undefined' ? ((window as unknown as { CloseWatcher?: CloseWatcherCtor }).CloseWatcher ?? null) : null
+}
+
+/** True during the task in which Escape was pressed, so a watcher's close can report 'escape' instead of 'back'. */
+let escapePressed = false
+export const closedByEscape = () => escapePressed
 
 const stack: StackEntry[] = []
 let escapeListening = false
@@ -17,6 +37,13 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Escape' || e.defaultPrevented) return
   const top = stack[stack.length - 1]
   if (!top) return
+  if (top.watcher) {
+    // The browser turns this Escape into a close request for the newest watcher (the top sheet's).
+    escapePressed = true
+    setTimeout(() => (escapePressed = false))
+    return
+  }
+  // Cancelling the keydown also stops the browser from closing a watcher further down the stack.
   e.preventDefault()
   top.close()
 }

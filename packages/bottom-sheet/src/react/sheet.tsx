@@ -16,11 +16,11 @@ import { createPortal } from 'react-dom'
 import { createSheetController, type SheetController } from '../core/controller'
 import type { Detent } from '../core/math'
 import { structuralCss } from '../core/styles'
-import { isTopSheet, pushSheet, removeSheet, reportProgress } from './stack'
+import { closedByEscape, closeWatcher, isTopSheet, pushSheet, removeSheet, reportProgress, type StackEntry } from './stack'
 import { useStyle } from './use-style'
 
 /** Why the sheet is asking to open or close. */
-export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'outside-press' | 'swipe'
+export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'
 
 export interface OpenChangeDetails {
   reason: OpenChangeReason
@@ -34,6 +34,7 @@ interface SheetContextValue {
   requestDismiss: (reason: OpenChangeReason) => void
   modal: boolean
   dismissible: boolean
+  closeOnBack: boolean
   detents: readonly Detent[]
   initialDetent: Detent | undefined
   detent: Detent | undefined
@@ -90,6 +91,14 @@ export interface RootProps {
    * to its lowest detent instead; `open={false}` and `<Sheet.Close>` still close it.
    */
   dismissible?: boolean
+  /**
+   * Android back closes the sheet (the top one when stacked), like a native sheet; on a sheet that isn't
+   * dismissible it drops to the lowest detent. Default: true for modal sheets, false for non-modal ones.
+   * Uses `CloseWatcher` (Chrome, Firefox), so no history entries are added and URLs are never touched.
+   * Browsers without it (Safari) ignore this. The browser may let back navigate instead when the page
+   * hasn't been interacted with since the sheet opened (its anti-trap rule).
+   */
+  closeOnBack?: boolean
   /** Detent to open at. Default: the smallest usable partial detent, else `full`. */
   initialDetent?: Detent
   /** Controlled resting detent. Changing it moves the sheet. */
@@ -116,6 +125,7 @@ export function Root(props: RootProps) {
     guard = true,
     modal = true,
     dismissible = true,
+    closeOnBack = modal,
     debug,
   } = props
   const [openState, setOpenState] = useState(defaultOpen)
@@ -178,6 +188,7 @@ export function Root(props: RootProps) {
       requestDismiss,
       modal,
       dismissible,
+      closeOnBack,
       detents,
       initialDetent,
       detent,
@@ -192,7 +203,7 @@ export function Root(props: RootProps) {
       titleId: `${id}-title`,
       descriptionId: `${id}-description`,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dismissible, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id],
+    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
@@ -249,13 +260,15 @@ export function Portal({ children, container }: PortalProps) {
   dismissRef.current = ctx.requestDismiss
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
+  const entryRef = useRef<StackEntry | null>(null)
   useEffect(() => {
     const root = ctx.rootEl.current
     if (!ctx.mounted || !root) return
     const parent = root.parentElement
     if (!parent) return
     // Stack: Escape goes to the top sheet only; the sheet below can recede.
-    const entry = { root, close: () => dismissRef.current('escape') }
+    const entry: StackEntry = { root, close: () => dismissRef.current('escape') }
+    entryRef.current = entry
     pushSheet(entry)
     const touched: Element[] = []
     if (ctx.modal) for (const el of Array.from(parent.children)) {
@@ -267,6 +280,7 @@ export function Portal({ children, container }: PortalProps) {
     dbg(`portal mount: inert ${touched.length} siblings, ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length} sheet roots inert`)
     return () => {
       removeSheet(entry)
+      entryRef.current = null
       for (const el of touched) el.removeAttribute('inert')
       dbg(`portal unmount: restored ${touched.length}, still-inert sheet roots ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length}`)
       // Restore focus only now: while the page is inert, focus() is a no-op.
@@ -275,6 +289,30 @@ export function Portal({ children, container }: PortalProps) {
       if (back?.isConnected) back.focus({ preventScroll: true })
     }
   }, [ctx.mounted, ctx.rootEl, ctx.returnFocus, ctx.modal])
+
+  // Android back: one CloseWatcher per open sheet. The browser sends back (and Escape) to the newest one,
+  // which is the top sheet. It's dropped as soon as the sheet starts closing, so a back press during the
+  // close animation goes to the sheet below. A watcher fires once; `rearm` makes a new one when the sheet
+  // stays open (not dismissible, or the app kept it open).
+  const [rearm, setRearm] = useState(0)
+  const listenForBack = ctx.mounted && ctx.open && ctx.closeOnBack
+  useEffect(() => {
+    const Watcher = closeWatcher()
+    const entry = entryRef.current
+    if (!listenForBack || !Watcher || !entry) return
+    const watcher = new Watcher()
+    watcher.onclose = () => {
+      entry.watcher = null
+      ctxRef.current.debug?.(`close watcher: ${closedByEscape() ? 'escape' : 'back'}`)
+      dismissRef.current(closedByEscape() ? 'escape' : 'back')
+      setRearm((n) => n + 1)
+    }
+    entry.watcher = watcher
+    return () => {
+      if (entry.watcher === watcher) entry.watcher = null
+      watcher.destroy()
+    }
+  }, [listenForBack, rearm, ctx.modal]) // modal: the stack entry is rebuilt
 
   if (!ctx.mounted || typeof document === 'undefined') return null
   return createPortal(

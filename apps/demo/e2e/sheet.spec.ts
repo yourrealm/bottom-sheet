@@ -463,3 +463,40 @@ test('Tailwind v4 layers: utilities beat the preset, preflight does not wipe it'
   await sheet.evaluate((el) => el.classList.add('max-w-none'))
   await expect(sheet).toHaveCSS('max-width', 'none') // a utility on a part wins
 })
+
+test('back button (CloseWatcher): Escape goes through the watcher and closes only the top sheet', async ({ page }) => {
+  await page.goto('/?open=1#/settings')
+  await waitForEvent(page, 'settings: onDetentChange')
+  const hasWatcher = await page.evaluate(() => 'CloseWatcher' in window)
+  await page.getByRole('button', { name: /Appearance/ }).click() // a real tap: the watcher gets its own group
+  await waitForEvent(page, 'appearance: onDetentChange')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
+
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+  // Where the browser has CloseWatcher, the top sheet's watcher handled it (and reported Escape, not back).
+  if (hasWatcher) expect(await events(page)).toContain('appearance: close watcher: escape')
+  else expect((await events(page)).some((e) => e.includes('close watcher'))).toBe(false)
+})
+
+test('a non-modal sheet leaves back and Escape order alone: no watcher', async ({ page }) => {
+  await page.goto('/?open=1#/persistent')
+  await waitForEvent(page, /solved: onDetentChange full/)
+  await page.keyboard.press('Escape')
+  await waitForEvent(page, 'solved: onDetentChange 76px')
+  expect((await events(page)).some((e) => e.includes('close watcher'))).toBe(false)
+})
+
+test('without CloseWatcher (Safari today), the Escape listener still closes only the top sheet', async ({ page }) => {
+  await page.addInitScript(() => delete (window as { CloseWatcher?: unknown }).CloseWatcher)
+  await page.goto('/?open=1#/settings')
+  await waitForEvent(page, 'settings: onDetentChange')
+  await page.getByRole('button', { name: /Appearance/ }).click()
+  await waitForEvent(page, 'appearance: onDetentChange')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  expect((await events(page)).some((e) => e.includes('close watcher'))).toBe(false)
+})

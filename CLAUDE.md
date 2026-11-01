@@ -186,6 +186,22 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   first reopened itself by mapping it to "peek").
 - Not yet run on the Android device suite (phone was away) or a real iPhone.
 
+## Android back closes the top sheet (`closeOnBack`, default = `modal`)
+- One `CloseWatcher` per open sheet (Portal effect; `src/react/stack.ts` holds it on the stack entry). The browser
+  routes back and Escape to the newest watcher = the top sheet. No history entries, so no router/URL interference
+  (rejected: pushState + popstate, which re-runs router loaders and leaves stray entries).
+- The watcher is dropped as soon as the sheet starts closing, and re-armed after it fires if the sheet stays open
+  (not dismissible). Our own Escape listener skips a top sheet that has a watcher (the browser sends Escape to it;
+  `closedByEscape()` tells the reasons apart); for a top sheet without one it cancels the keydown, which also stops
+  the browser from closing a watcher further down.
+- Device results (2026-11-01): Chrome Android ✅ (Settings → Appearance, back, back: closes top then bottom, reason `back`).
+  Firefox Android 159 ❌: `CloseWatcher` exists but the system back button bypasses it and leaves the page. Possible
+  later: an opt-in history fallback for Firefox.
+- Browsers apply an anti-trap rule: watchers created without a user activation since the last one are grouped, so
+  a sheet opened on a timer may close together with the one below, or back may leave the page.
+- Tests: "back button (CloseWatcher)", "a non-modal sheet leaves back…", "without CloseWatcher (Safari today)…".
+  All three Playwright browsers expose `CloseWatcher`; the last test deletes it.
+
 ## Product decisions
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
   Parts must stay className/Tailwind friendly. A shadcn-registry variant may come later for dapuzzler.

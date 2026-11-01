@@ -56,4 +56,4 @@ export function logged(name: string) {
   }
 }
 
-log(`--- load ${location.search}${location.hash}`)
+log(`--- load ${location.search}${location.hash} closewatcher=${"CloseWatcher" in window}`)

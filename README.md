@@ -66,11 +66,15 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 - `detents`: partial resting heights, as fractions of the screen (`0.5`) or CSS lengths of visible sheet (`'76px'`,
   `'40dvh'`). Full height is always included, and is the content's own height when the content is short.
 - `open` / `onOpenChange(open, { reason })`, `detent` / `onDetentChange`: controlled or uncontrolled. The reason is
-  `'trigger' | 'close-button' | 'escape' | 'outside-press' | 'swipe'`.
+  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`.
 - `modal` (default `true`): `false` gives a sheet without a backdrop that leaves the page usable around it (no inert,
   no scroll lock, focus stays where it is).
 - `dismissible` (default `true`): `false` means a swipe down, Escape or an outside press drop the sheet to its lowest
   detent instead of closing it. `open={false}` and `<Sheet.Close>` still close it.
+- `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
+  [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
+  never touches your URLs or router. Works in Chrome Android; Firefox Android has the API but doesn't route its back
+  button to it yet, and Safari has no back button. Elsewhere it does nothing.
 
 A persistent "result" sheet that peeks at 76px and never closes by gesture:
 
