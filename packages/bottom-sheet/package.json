@@ -3,10 +3,28 @@
   "version": "0.0.0",
   "description": "Native-feeling bottom sheet for the web. One native scroller for sheet travel and content.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourrealm/bottom-sheet.git",
+    "directory": "packages/bottom-sheet"
+  },
+  "homepage": "https://yourrealm.github.io/bottom-sheet/",
+  "bugs": "https://github.com/yourrealm/bottom-sheet/issues",
+  "keywords": [
+    "react",
+    "bottom-sheet",
+    "sheet",
+    "drawer",
+    "scroll-snap",
+    "mobile",
+    "headless"
+  ],
   "type": "module",
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": "./src/index.ts",
@@ -16,7 +34,11 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "prepack": "node scripts/prepack.mjs && pnpm build",
+    "postpack": "rm -f README.md LICENSE",
+    "pack:check": "node scripts/prepack.mjs && pnpm build && pnpm pack; rm -f README.md LICENSE",
+    "release": "node scripts/prepack.mjs && pnpm build && pnpm publish --access public; rm -f README.md LICENSE"
   },
   "peerDependencies": {
     "react": ">=19",

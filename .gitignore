@@ -5,3 +5,5 @@ dist/
 .logs/
 test-results/
 playwright-report/
+packages/bottom-sheet/README.md
+packages/bottom-sheet/LICENSE

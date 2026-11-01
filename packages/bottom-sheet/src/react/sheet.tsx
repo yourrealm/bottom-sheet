@@ -49,6 +49,9 @@ interface SheetContextValue {
   sheetEl: RefObject<HTMLElement | null>
   titleId: string
   descriptionId: string
+  /** A <Description> is mounted (aria-describedby must not point at a missing element). */
+  hasDescription: boolean
+  setHasDescription: (has: boolean) => void
 }
 
 const SheetContext = createContext<SheetContextValue | null>(null)
@@ -135,6 +138,7 @@ export function Root(props: RootProps) {
   const rootEl = useRef<HTMLDivElement | null>(null)
   const sheetEl = useRef<HTMLElement | null>(null)
   const id = useId()
+  const [hasDescription, setHasDescription] = useState(false)
 
   const setOpen = useCallback(
     (next: boolean, reason: OpenChangeReason) => {
@@ -202,8 +206,10 @@ export function Root(props: RootProps) {
       sheetEl,
       titleId: `${id}-title`,
       descriptionId: `${id}-description`,
+      hasDescription,
+      setHasDescription,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id],
+    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id, hasDescription],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
@@ -296,6 +302,9 @@ export function Portal({ children, container }: PortalProps) {
   // stays open (not dismissible, or the app kept it open).
   const [rearm, setRearm] = useState(0)
   const listenForBack = ctx.mounted && ctx.open && ctx.closeOnBack
+  useEffect(() => {
+    if (entryRef.current) entryRef.current.closing = !ctx.open
+  }, [ctx.open, ctx.mounted])
   useEffect(() => {
     const Watcher = closeWatcher()
     const entry = entryRef.current
@@ -441,7 +450,7 @@ export function Content({ ref, ...props }: ComponentPropsWithRef<'section'>) {
       role="dialog"
       aria-modal={ctx.modal}
       aria-labelledby={ctx.titleId}
-      aria-describedby={ctx.descriptionId}
+      aria-describedby={ctx.hasDescription ? ctx.descriptionId : undefined}
       tabIndex={-1}
       {...props}
       ref={mergeRefs(ref, ctx.sheetEl)}
@@ -466,5 +475,10 @@ export function Title(props: ComponentPropsWithRef<'h2'>) {
 
 export function Description(props: ComponentPropsWithRef<'p'>) {
   const ctx = useSheet('Description')
+  const { setHasDescription } = ctx
+  useLayoutEffect(() => {
+    setHasDescription(true)
+    return () => setHasDescription(false)
+  }, [setHasDescription])
   return <p id={ctx.descriptionId} {...props} />
 }

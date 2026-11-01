@@ -12,6 +12,8 @@ export interface StackEntry {
   close: () => void
   /** Set while the sheet listens for back; it then also gets Escape from the browser, not from our listener. */
   watcher?: CloseWatcherLike | null
+  /** Animating out: Escape skips it and goes to the sheet below. */
+  closing?: boolean
 }
 
 /** The bits of CloseWatcher we use (not in TypeScript's DOM lib yet). */
@@ -35,7 +37,7 @@ let escapeListening = false
 
 function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Escape' || e.defaultPrevented) return
-  const top = stack[stack.length - 1]
+  const top = stack.findLast((s) => !s.closing)
   if (!top) return
   if (top.watcher) {
     // The browser turns this Escape into a close request for the newest watcher (the top sheet's).

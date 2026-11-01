@@ -500,3 +500,25 @@ test('without CloseWatcher (Safari today), the Escape listener still closes only
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
   expect((await events(page)).some((e) => e.includes('close watcher'))).toBe(false)
 })
+
+for (const watcher of [true, false]) {
+  test(`Escape pressed while the top sheet is closing goes to the sheet below (CloseWatcher ${watcher ? 'on' : 'off'})`, async ({ page }) => {
+    if (!watcher) await page.addInitScript(() => delete (window as { CloseWatcher?: unknown }).CloseWatcher)
+    await page.goto('/?open=1#/settings')
+    await waitForEvent(page, 'settings: onDetentChange')
+    await page.getByRole('button', { name: /Appearance/ }).click()
+    await waitForEvent(page, 'appearance: onDetentChange')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape') // Appearance is still animating out
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+}
+
+test('aria-describedby only points at a Description that exists', async ({ page }) => {
+  await openLab(page)
+  const describedBy = await page.locator('[data-ybs-sheet]').getAttribute('aria-describedby')
+  if (describedBy) await expect(page.locator(`[id="${describedBy}"]`)).toHaveCount(1)
+  await page.goto('/?open=1#/persistent') // no description
+  await waitForEvent(page, /solved: onDetentChange full/)
+  await expect(page.locator('[data-ybs-sheet]')).not.toHaveAttribute('aria-describedby')
+})

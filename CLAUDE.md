@@ -18,6 +18,10 @@ scripts/android-suite.sh        on-device gesture suite (adb), prints PASS/CHECK
 ```
 Commands: `pnpm dev` (playground), `pnpm test`, `pnpm typecheck`, `pnpm build`.
 In the workspace, package `exports` point at `src/` (no build needed for the playground); `publishConfig.exports` points at `dist/`.
+**Publishing:** `pnpm -F @yourrealm/bottom-sheet release` (or `pack:check` to inspect the tarball). It copies the repo
+README/LICENSE into the package, builds, and publishes. Only pnpm applies `publishConfig.exports`, so
+`scripts/prepack.mjs` refuses npm/yarn. The maintainer's pnpm has `ignore-scripts=true`, so lifecycle hooks
+(`prepack`) don't run; that's why the explicit scripts exist.
 The peer dependency is React >= 19 (parts use ref-as-prop). Styles are injected with `useInsertionEffect` (`<style data-ybs-style>`, prepended),
 so consumers need no CSS import. They live in `@layer ybs`, ordered by `@layer theme, base, ybs, components, utilities;`
 (Tailwind v4's names): unlayered consumer CSS and Tailwind utilities win, and preflight (in `base`) can't wipe the preset.
