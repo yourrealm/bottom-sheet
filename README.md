@@ -24,8 +24,9 @@ on-screen keyboard, and re-snapping when the layout changes.
 pnpm add @yourrealm/bottom-sheet
 ```
 
-Requires React 19. No CSS import needed: styles are injected at low specificity, so your own classes (Tailwind
-included) win.
+Requires React 19. No CSS import needed: styles are injected into the `ybs` cascade layer, so your own CSS wins.
+With Tailwind v4 the layer sits between `base` and `components`: utility classes on the parts win, and preflight
+doesn't reset the preset.
 
 ## Use
 

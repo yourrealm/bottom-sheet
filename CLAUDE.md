@@ -18,8 +18,10 @@ scripts/android-suite.sh        on-device gesture suite (adb), prints PASS/CHECK
 ```
 Commands: `pnpm dev` (playground), `pnpm test`, `pnpm typecheck`, `pnpm build`.
 In the workspace, package `exports` point at `src/` (no build needed for the playground); `publishConfig.exports` points at `dist/`.
-The peer dependency is React >= 19 (parts use ref-as-prop). Styles are injected with `useInsertionEffect` (`<style data-ybs-style>`, prepended
-so consumer/Tailwind classes win), so consumers need no CSS import.
+The peer dependency is React >= 19 (parts use ref-as-prop). Styles are injected with `useInsertionEffect` (`<style data-ybs-style>`, prepended),
+so consumers need no CSS import. They live in `@layer ybs`, ordered by `@layer theme, base, ybs, components, utilities;`
+(Tailwind v4's names): unlayered consumer CSS and Tailwind utilities win, and preflight (in `base`) can't wipe the preset.
+The style must stay first in the document for that order statement to count. Test: "Tailwind v4 layers".
 
 ## Core idea (validated by spike 01)
 

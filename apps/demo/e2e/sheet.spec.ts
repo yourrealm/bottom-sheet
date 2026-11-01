@@ -447,3 +447,19 @@ test('unmounting two stacked sheets at once restores page scrolling', async ({ p
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
 })
+
+test('Tailwind v4 layers: utilities beat the preset, preflight does not wipe it', async ({ page }) => {
+  await openLab(page)
+  // What `@import "tailwindcss"` emits: an order statement, preflight in `base`, utilities in `utilities`.
+  await page.addStyleTag({
+    content: `@layer theme, base, components, utilities;
+      @layer base { *, ::after, ::before { margin: 0; padding: 0; border: 0 solid; } }
+      @layer utilities { .max-w-none { max-width: none; } }`,
+  })
+  const header = page.locator('.ybs-header')
+  await expect(header).toHaveCSS('padding-left', '16px') // the preset survives preflight
+  const sheet = page.locator('.ybs-sheet')
+  await expect(sheet).toHaveCSS('max-width', '640px')
+  await sheet.evaluate((el) => el.classList.add('max-w-none'))
+  await expect(sheet).toHaveCSS('max-width', 'none') // a utility on a part wins
+})
