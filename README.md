@@ -64,7 +64,8 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 ```
 
 - `detents`: partial resting heights, as fractions of the screen (`0.5`) or CSS lengths of visible sheet (`'76px'`,
-  `'40dvh'`). Full height is always included, and is the content's own height when the content is short.
+  `'40dvh'`). Full height is always included, and is the content's own height when the content is short. Default `[]`:
+  the sheet opens straight to full, like iOS. It opens at the smallest partial detent when you give some.
 - `open` / `onOpenChange(open, { reason })`, `detent` / `onDetentChange`: controlled or uncontrolled. The reason is
   `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`.
 - `modal` (default `true`): `false` gives a sheet without a backdrop that leaves the page usable around it (no inert,

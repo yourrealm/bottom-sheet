@@ -42,7 +42,7 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   description?: ReactNode
   /**
    * - `'sheet'` (default): detents as given, a card-width sheet.
-   * - `'page'`: an iOS-style page sheet for a task (compose, edit): opens straight to full (`detents` default `[]`),
+   * - `'page'`: an iOS-style page sheet for a task (compose, edit): opens straight to full,
    *   spans the full width (`width` default `'full'`), and the page behind recedes (`recede` default true; mark your
    *   app wrapper with `data-ybs-background`). Pair it with `leading` / `trailing` (Cancel / Save).
    */
@@ -68,7 +68,6 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   contentProps?: ComponentPropsWithRef<'section'>
 }
 
-const PAGE_DETENTS: readonly Detent[] = []
 
 /**
  * The simple path:
@@ -89,7 +88,7 @@ export function BottomSheet({
   contentProps,
   ...rootProps
 }: BottomSheetProps) {
-  const root = variant === 'page' ? { detents: PAGE_DETENTS, recede: true, ...rootProps } : rootProps
+  const root = variant === 'page' ? { recede: true, ...rootProps } : rootProps
   const bar = leading != null || trailing != null
   return (
     <Sheet.Root {...root}>

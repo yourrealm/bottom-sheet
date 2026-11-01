@@ -262,14 +262,15 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
 
 ## dapuzzler trial (2026-11-01, local only, nothing committed there)
 Packed tarball unpacked into `../dapuzzler/node_modules/@yourrealm/bottom-sheet` (no package.json/lock change; `deno install`
-removes it). All three sheets ported: `ui/sheet.tsx` (wrapper with dapuzzler's look, `header` prop, defaults `detents=[]`
-because Base UI drawers opened at full), the solved sheet, What's new, and the toss setup picker (was a Dialog styled as a
+removes it). All three sheets ported: `ui/sheet.tsx` (wrapper with dapuzzler's look, `header` prop), the solved sheet, What's new, and the toss setup picker (was a Dialog styled as a
 sheet). Its e2e suite passes 22/22; Chrome Android: solved sheet peek/fling/chevron/tap-through, picker scroll + header-drag close.
 Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial focus (Enter = New board) focuses itself
 after the content mounts (two rAFs); and don't put `touch-action` utilities on Header (Tailwind's utilities layer beats
 `ybs`, which would disable the detached drag).
 
 ## Product decisions
+- **Default detents `[]`** (decided 2026-11-01): a sheet opens at full unless it asks for partial detents, like iOS
+  (`[.large()]`), Base UI and Vaul. The old default `[0.5]` opened dapuzzler's picker half-way, cutting off its content.
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
   Parts must stay className/Tailwind friendly. A shadcn-registry variant may come later for dapuzzler.
 - **License:** MIT.

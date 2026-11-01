@@ -21,6 +21,7 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
       </div>
       <p className="filler">{'Background page text. '.repeat(400)}</p>
       <BottomSheet
+        detents={[0.5]}
         {...logged('lab')}
         open={open}
         onOpenChange={(o) => {

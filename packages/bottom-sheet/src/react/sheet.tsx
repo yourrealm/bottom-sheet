@@ -82,8 +82,8 @@ export interface RootProps {
   /** Called when the user opens or closes the sheet (not when the `open` prop changes). */
   onOpenChange?: (open: boolean, details: OpenChangeDetails) => void
   /**
-   * Partial detents, `full` is always included. Default [0.5]. Each is a fraction of the available height (0.5)
-   * or a CSS length of visible sheet ('76px', '40dvh').
+   * Partial detents; `full` is always included. Default `[]`: the sheet opens straight to full (fit to short content).
+   * Each is a fraction of the available height (0.5) or a CSS length of visible sheet ('76px', '40dvh').
    */
   detents?: readonly Detent[]
   /**
@@ -128,7 +128,8 @@ export interface RootProps {
   debug?: (message: string) => void
 }
 
-const DEFAULT_DETENTS = [0.5] as const
+/** Full only, like iOS (`[.large()]`), Base UI and Vaul. Partial detents are opt-in. */
+const DEFAULT_DETENTS: readonly Detent[] = []
 
 export function Root(props: RootProps) {
   const {
