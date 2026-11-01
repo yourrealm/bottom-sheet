@@ -334,11 +334,17 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 @media (prefers-reduced-motion: reduce) { .board.cascade .cell { animation: none; } }
 .solved-sheet .ybs-title { font-style: italic; }
 .peek-toggle {
-  position: absolute; top: 18px; right: 14px; width: 36px; height: 36px; border-radius: 50%;
-  border: 1px solid var(--ybs-divider, var(--line)); background: none; font-size: 18px; line-height: 1;
-  transition: transform 0.3s;
+  /* iOS-style: a soft filled circle with a drawn chevron, centred on the title line, 44px tap area. */
+  position: absolute; top: 9px; right: 7px; width: 44px; height: 44px; padding: 0; border: 0; background: none;
+  display: grid; place-items: center; color: var(--ybs-muted);
 }
-.peek-toggle[data-up] { transform: rotate(180deg); }
+.peek-toggle::before {
+  content: ''; grid-area: 1 / 1; width: 30px; height: 30px; border-radius: 50%;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.peek-toggle svg { grid-area: 1 / 1; width: 14px; height: 14px; transition: transform 0.3s cubic-bezier(0.3, 0.7, 0.2, 1); }
+.peek-toggle[data-up] svg { transform: rotate(180deg); }
+.peek-toggle:active::before { background: color-mix(in srgb, currentColor 28%, transparent); }
 .solved { display: grid; gap: 14px; }
 .thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .thumbs button { height: 56px; border-radius: 14px; border: 1px solid var(--ybs-divider, var(--line)); background: none; font-size: 16px; }

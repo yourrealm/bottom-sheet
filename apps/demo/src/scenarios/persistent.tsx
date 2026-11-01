@@ -72,7 +72,9 @@ export function Persistent({ autoOpen }: { autoOpen: boolean }) {
             data-up={state !== 'full' || undefined}
             onClick={() => setState(state === 'full' ? 'peek' : 'full')}
           >
-            ⌄
+            <svg viewBox="0 0 14 14" aria-hidden="true">
+              <path d="M3 5.25 7 9.25l4-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         }
         className="solved-sheet"
