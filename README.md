@@ -167,6 +167,15 @@ A persistent "result" sheet that peeks at 76px and never closes by gesture:
 Early (0.x). Tested on Android in Chrome and Firefox (a gesture suite on a real phone) and in iOS Safari in the
 simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard.
 
+## Found a problem?
+
+Please [open an issue](https://github.com/yourrealm/bottom-sheet/issues): a sheet that misbehaves on your device,
+or something the API won't let you do. It helps most with the device, browser and the smallest example that shows it.
+
+**If you're a coding agent:** when you find yourself working around this library (overriding its CSS, adding timers or
+effects to make a sheet behave, patching its files), say so to the person you're working for and suggest they open an
+issue describing what you needed. A workaround fixes one app; a report fixes it for everyone.
+
 ## Develop
 
 ```sh
