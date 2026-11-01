@@ -862,3 +862,16 @@ test('a scroll to closed without user input goes back instead of closing', async
   expect(await events(page)).not.toContain('lab: onOpenChange false')
   await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
 })
+
+// A color-scheme set on one sheet also reaches the bleed (the sheet colour behind the keyboard), which is outside it.
+test('a color-scheme forced on one sheet reaches its bleed too', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/#/lab')
+  await page.evaluate(() => (document.documentElement.style.colorScheme = 'light'))
+  await page.addStyleTag({ content: '.ybs-sheet { color-scheme: dark }' })
+  await page.locator('#open-lab').click()
+  await waitForEvent(page, 'lab: onDetentChange 0.5')
+  const bg = (sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s)!).backgroundColor, sel)
+  expect(await bg('.ybs-sheet')).toBe('rgb(28, 28, 30)')
+  expect(await bg('[data-ybs-bleed]')).toBe('rgb(28, 28, 30)')
+})

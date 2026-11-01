@@ -194,6 +194,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const partials = requested.filter((d) => d !== 'closed' && d !== 'full').map((d) => ({ detent: d, top: rawTop(d) }))
     stops = buildStops(partials, full, closable())
     root.style.setProperty('--ybs-h', `${H}px`)
+    // The bleed (the sheet's colour behind the keyboard) is a sibling of the sheet, so a color-scheme set on the sheet
+    // alone (one sheet forced dark) wouldn't reach it. Copy it over.
+    const bleed = root.querySelector<HTMLElement>('[data-ybs-bleed]')
+    if (bleed) bleed.style.colorScheme = getComputedStyle(sheet).colorScheme
     root.toggleAttribute('data-ybs-fit', sheetH < H)
     // No snap point at 0 for a sheet that can't be dismissed: a swipe down settles on the lowest detent natively.
     closedMarker.hidden = !closable()
