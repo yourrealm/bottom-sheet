@@ -15,8 +15,8 @@ one to the other mid-touch, so you get dead zones, lost momentum, or "drag from 
 
 This library puts the sheet's travel **and** its content in one native scroll container. Resting positions
 (detents) are scroll-snap points. Momentum, rubber-banding and velocity come from the browser itself; a small
-controller only handles what native sheets also do on top: stopping a fling at the full detent, following the
-on-screen keyboard, and re-snapping when the layout changes.
+controller only handles what native sheets also do on top: stopping a fling at the full detent, animating opens and
+closes, following the on-screen keyboard, and re-snapping when the layout changes.
 
 ## Install
 
@@ -63,36 +63,41 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 </Sheet.Root>
 ```
 
+### Options
+
 - `detents`: partial resting heights, as fractions of the screen (`0.5`) or CSS lengths of visible sheet (`'76px'`,
   `'40dvh'`). Full height is always included, and is the content's own height when the content is short. Default `[]`:
   the sheet opens straight to full, like iOS. It opens at the smallest partial detent when you give some.
 - `open` / `onOpenChange(open, { reason })`, `detent` / `onDetentChange`: controlled or uncontrolled. The reason is
-  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`.
+  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`. Use `open` when a sheet has several
+  openers, or opening runs your own logic.
+- `trigger` (`/styled`): text or elements go inside our trigger button; a function renders your own button (a
+  design-system `<Button>`), receiving `type`, `onClick` and the ARIA state:
+  `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Headless: `<Sheet.Trigger render={…} />`.
 - `modal` (default `true`): `false` gives a sheet without a backdrop that leaves the page usable around it (no inert,
-  no scroll lock, focus stays where it is).
+  no scroll lock). It never moves focus: focus a button in it yourself if, say, Enter should press it.
 - `dismissible` (default `true`): `false` means a swipe down, Escape or an outside press drop the sheet to its lowest
   detent instead of closing it. `open={false}` and `<Sheet.Close>` still close it.
+- `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
+  [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
+  never touches your URLs or router. Works in Chrome and Firefox on Android; Safari has no `CloseWatcher` yet, and
+  elsewhere it does nothing.
 - `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with short
   content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
 - `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
   `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
   positioned against it. Page sheets (`variant="page"`) recede by default.
-- `trigger` (`/styled`): text or elements go inside our trigger button; a function renders your own button (a
-  design-system `<Button>`), receiving `type`, `onClick` and the ARIA state:
-  `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Headless: `<Sheet.Trigger render={…} />`.
-- `/styled` only: `floating` (iOS 26 style: inset from the screen edges with large corners at lower detents, attaching
-  as it reaches full; tokens `--ybs-float-gap`, `--ybs-float-radius`).
-- `/styled` only: `variant="page"` (an iOS page sheet for a task: opens straight to full, full width), `width`
-  (`'card'`: at most 640px, centred; `'full'`: spans the window with the content in a centred 960px column), and
-  `leading` / `trailing` header slots (Cancel / title / Save, title centred):
+- `/styled` only:
+  - `title`, `description`, and `leading` / `trailing` header slots (Cancel / title / Save, title centred), plus
+    `headerExtra` for things under the title (a search field).
+  - `variant="page"`: an iOS page sheet for a task: opens straight to full, full width.
+  - `width`: `'card'` (at most 640px, centred) or `'full'` (spans the window, content in a centred 960px column).
+  - `floating`: iOS 26 style, inset from the screen edges with large corners at lower detents, attaching as it reaches
+    full (tokens `--ybs-float-gap`, `--ybs-float-radius`).
 
   ```tsx
   <BottomSheet variant="page" title="New Note" leading={<Sheet.Close>Cancel</Sheet.Close>} trailing={<button onClick={save}>Save</button>}>
   ```
-- `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
-  [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
-  never touches your URLs or router. Works in Chrome and Firefox on Android; Safari has no `CloseWatcher` yet, and
-  elsewhere it does nothing.
 
 A persistent "result" sheet that peeks at 76px and never closes by gesture:
 
@@ -101,17 +106,36 @@ A persistent "result" sheet that peeks at 76px and never closes by gesture:
   …
 </BottomSheet>
 ```
-- `/styled` light and dark: the sheet follows your app's `color-scheme` (inherited from `<html>`), so a theme switch
-  that sets it gets a matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no
-  `color-scheme` at all the sheet stays light. The body gets 16px side padding like the header (`--ybs-body-padding`;
-  set it to `0` for edge-to-edge lists). All colours are `--ybs-*` tokens.
-- CSS variables on `[data-ybs-root]`: `--ybs-progress` (0 to 1, closed to full) for your own backdrop or effects, and
-  `--ybs-sheet-bg` (the colour that continues behind the keyboard).
+
+### Styling
+
+- `/styled` light and dark follow your app's `color-scheme` (inherited from `<html>`), so a theme switch that sets it
+  gets a matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no `color-scheme`
+  at all the sheet stays light. All colours are `--ybs-*` tokens.
+- The `/styled` body gets 16px side padding like the header (`--ybs-body-padding`; set it to `0` for edge-to-edge lists).
+- CSS variables on `[data-ybs-root]`: `--ybs-progress` (0 to 1, closed to full) for your own backdrop or effects,
+  `--ybs-visible` (px of the sheet on screen), and `--ybs-sheet-bg` (the colour that continues behind the keyboard).
+  While the content is scrolled the root has `data-ybs-scrolled`.
+- Headless: content scrolling under a sticky `Sheet.Header` can show a 1px sliver above it; cover it with a
+  `box-shadow: 0 -2px 0 0 <sheet colour>` on the header (only while `data-ybs-scrolled` if your sheet has a border).
+- Don't put `touch-action` classes on `Sheet.Header` (Tailwind's utilities layer beats ours): the library turns it off
+  there while the content is scrolled, so that dragging the header moves the whole sheet.
+
+### Behaviour
+
+- Opening, closing and the other moves the library makes (a new `detent`, the keyboard appearing, wheel steps) animate
+  in about 400ms going up and 280ms going down (Material 3 emphasized easing), and are instant with reduced motion. Drags and flings are the
+  browser's own scrolling.
+- With the content scrolled, dragging the header moves the whole sheet and keeps the content where it is, like native.
+- A tap on content that is still scrolling only stops it, and a drag never presses what it started on.
+- A sheet closes from a swipe, Escape, back, an outside press, a close button or `open={false}`, never from a scroll
+  nobody asked for: one that lands at closed (the browser revealing a focused field, say) is undone.
 
 ## Status
 
-Early. The core works in Chrome and Firefox on Android and in iOS Safari (simulator). See `CLAUDE.md` for the design
-notes, what's been tested where, and what's still open.
+Early (0.x). Tested on Android in Chrome and Firefox (a gesture suite on a real phone) and in iOS Safari in the
+simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard. See `CLAUDE.md` for
+the design notes, what's been tested where, and what's still open.
 
 ## Develop
 
