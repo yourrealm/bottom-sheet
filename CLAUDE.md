@@ -94,7 +94,7 @@ changes are followed), and touch/wheel/mouse-drag stop it. Why: native `scrollTo
 660-770ms on the maintainer's phone (Chrome 660-680, Firefox 760-770, from scrollTo to scrollend), fixed per browser.
 Research summary (agent, 2026-11-01): no study measures sheet timing; platform guidance is 350-450ms in, ~30% faster out.
 Opening no longer waits two frames (that was for Chrome dropping a smooth scrollTo on a new scroller).
-Tests: "glide (programmatic moves)". Device suite with the glide and the press arbiter (2026-11-01): 3/3 Chrome + 3/3 Firefox Android PASS.
+Tests: "glide (programmatic moves)". Device suite with the glide and the press arbiter (2026-11-01): 3/3 Chrome + 3/3 Firefox Android PASS. Again after both pre-release review rounds (`ed4300c`): 3/3 + 3/3 PASS.
 - Seen once, not reproduced (2026-11-01): a Chrome Android tab where touch scrolling of the sheet stopped working
   (touches arrived, programmatic scrollTop worked). That tab had gone lab sheet -> closed -> Comments sheet glide-open
   during an interrupted device-suite run. Watch for it.
