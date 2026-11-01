@@ -707,3 +707,23 @@ test.describe('header drag while the content is scrolled', () => {
     await waitForEvent(page, 'lab: onOpenChange false')
   })
 })
+
+// /styled follows the app's color-scheme (inherited from <html>), not only the OS: an app with its own theme
+// switch gets a matching sheet.
+test('the styled sheet follows the page color-scheme', async ({ page }) => {
+  await openLab(page)
+  const bg = () => page.evaluate(() => getComputedStyle(document.querySelector('.ybs-sheet')!).backgroundColor)
+  await page.evaluate(() => (document.documentElement.style.colorScheme = 'dark'))
+  expect(await bg()).toBe('rgb(28, 28, 30)')
+  await page.evaluate(() => (document.documentElement.style.colorScheme = 'light'))
+  expect(await bg()).toBe('rgb(255, 255, 255)')
+})
+
+test('the styled body is padded like the header; --ybs-body-padding: 0 makes it edge to edge', async ({ page }) => {
+  const pad = () => page.evaluate(() => getComputedStyle(document.querySelector('.ybs-body')!).paddingLeft)
+  await page.goto('/?open=1#/filters')
+  await waitForEvent(page, /filters: onDetentChange/)
+  expect(await pad()).toBe('16px')
+  await openLab(page) // the lab's rows run edge to edge (className="edge")
+  expect(await pad()).toBe('0px')
+})

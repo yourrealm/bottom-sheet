@@ -1,12 +1,18 @@
-/** The polished preset. Light/dark via prefers-color-scheme. Override with the --ybs-* tokens. */
+/**
+ * The polished preset. Override with the --ybs-* tokens.
+ * Light/dark follow the app's `color-scheme` (inherited from <html>), via light-dark(): an app with its own theme
+ * switch that sets `color-scheme` gets a matching sheet; `html { color-scheme: light dark }` follows the OS.
+ */
 export const styledCss = /* css */ `
 [data-ybs-root] {
-  --ybs-sheet-bg: #fff;
-  --ybs-sheet-fg: #111;
-  --ybs-muted: #6b6b70;
-  --ybs-handle: rgba(60, 60, 67, 0.3);
-  --ybs-divider: rgba(60, 60, 67, 0.12);
+  --ybs-sheet-bg: light-dark(#fff, #1c1c1e);
+  --ybs-sheet-fg: light-dark(#111, #f2f2f7);
+  --ybs-muted: light-dark(#6b6b70, #98989f);
+  --ybs-handle: light-dark(rgba(60, 60, 67, 0.3), rgba(235, 235, 245, 0.3));
+  --ybs-divider: light-dark(rgba(60, 60, 67, 0.12), rgba(235, 235, 245, 0.12));
   --ybs-radius: 14px;
+  /* Side padding of the body, matching the header. 0 for edge-to-edge lists that pad their own rows. */
+  --ybs-body-padding: 16px;
   --ybs-backdrop: #000;
   --ybs-backdrop-max: 0.4;
   --ybs-max-width: 640px;
@@ -15,15 +21,6 @@ export const styledCss = /* css */ `
   --ybs-float-radius: 32px;
   /* 1 within the last 10% of travel to full, else 0..: corners square off as a fullscreen sheet reaches the top. */
   --ybs-at-top: clamp(0, (var(--ybs-progress, 0) - 0.9) * 10, 1);
-}
-@media (prefers-color-scheme: dark) {
-  [data-ybs-root] {
-    --ybs-sheet-bg: #1c1c1e;
-    --ybs-sheet-fg: #f2f2f7;
-    --ybs-muted: #98989f;
-    --ybs-handle: rgba(235, 235, 245, 0.3);
-    --ybs-divider: rgba(235, 235, 245, 0.12);
-  }
 }
 .ybs-backdrop {
   background: var(--ybs-backdrop);
@@ -49,9 +46,8 @@ export const styledCss = /* css */ `
 /* Full width: the surface spans the window; header and body keep their full width (no corner seams) but pad
    their contents into a readable centred column. */
 .ybs-sheet.ybs-sheet-full { max-width: none; }
-.ybs-sheet-full > .ybs-header, .ybs-sheet-full > .ybs-body {
-  padding-inline: max(16px, (100% - var(--ybs-content-width)) / 2);
-}
+.ybs-sheet-full > .ybs-header { padding-inline: max(16px, (100% - var(--ybs-content-width)) / 2); }
+.ybs-sheet-full > .ybs-body { padding-inline: max(var(--ybs-body-padding), (100% - var(--ybs-content-width)) / 2); }
 /* A page sheet sits lower than the receded page's top edge (+10px), so a strip of that page shows above it, like iOS. */
 [data-ybs-root]:has(.ybs-sheet-page):not([data-ybs-fullscreen]) { --ybs-inset: calc(env(safe-area-inset-top, 0px) + 22px); }
 /* A page sheet fills the screen at full even when its content is short (no fit-content). */
@@ -95,7 +91,7 @@ export const styledCss = /* css */ `
 }
 .ybs-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
 .ybs-description { margin: 4px 0 0; font-size: 14px; color: var(--ybs-muted); }
-.ybs-body { padding: 0 0 12px; }
+.ybs-body { padding: 0 var(--ybs-body-padding) 12px; }
 /* The page behind recedes (Sheet.Root recede + data-ybs-background on the app wrapper), like iOS: it scales back
    from the top of the screen, drops below the status bar and rounds its top corners over black. The wrapper needs
    its own background (html and body turn black). */

@@ -98,6 +98,10 @@ A persistent "result" sheet that peeks at 76px and never closes by gesture:
   …
 </BottomSheet>
 ```
+- `/styled` light and dark: the sheet follows your app's `color-scheme` (inherited from `<html>`), so a theme switch
+  that sets it gets a matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no
+  `color-scheme` at all the sheet stays light. The body gets 16px side padding like the header (`--ybs-body-padding`;
+  set it to `0` for edge-to-edge lists). All colours are `--ybs-*` tokens.
 - CSS variables on `[data-ybs-root]`: `--ybs-progress` (0 to 1, closed to full) for your own backdrop or effects, and
   `--ybs-sheet-bg` (the colour that continues behind the keyboard).
 

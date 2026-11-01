@@ -32,7 +32,7 @@ export function Share({ autoOpen }: { autoOpen: boolean }) {
       </div>
       {done && <div className="toast" role="status">{done}</div>}
 
-      <BottomSheet {...logged('share')} open={open} onOpenChange={setOpen} detents={[]} title="Share photo">
+      <BottomSheet {...logged('share')} open={open} onOpenChange={setOpen} detents={[]} title="Share photo" className="edge">
         <div className="share">
           <div className="share-row" aria-label="People">
             {people.slice(0, 10).map((p, i) => (

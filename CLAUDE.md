@@ -269,6 +269,10 @@ after the content mounts (two rAFs); and don't put `touch-action` utilities on H
 `ybs`, which would disable the detached drag).
 
 ## Product decisions
+- **`/styled` theme follows `color-scheme`** (2026-11-01): tokens use `light-dark()`, so an app's own theme switch (which
+  sets `color-scheme`, like dapuzzler or next-themes) drives the sheet; `prefers-color-scheme` alone gave a dark sheet
+  on a light-themed app. Apps with no `color-scheme` get light. Body side padding `--ybs-body-padding` (16px) matches
+  the header; the demo uses it as-is and only edge-to-edge sheets (lab, share) set it to 0 (`.edge`).
 - **Default detents `[]`** (decided 2026-11-01): a sheet opens at full unless it asks for partial detents, like iOS
   (`[.large()]`), Base UI and Vaul. The old default `[0.5]` opened dapuzzler's picker half-way, cutting off its content.
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).

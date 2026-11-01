@@ -117,7 +117,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .pin span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); }
 .pin.main { font-weight: 700; }
 .pin.main span { background: #e8613c; color: #fff; }
-.place { padding: 4px 16px 24px; }
+.place { padding: 4px 0 24px; }
 .rating { display: flex; gap: 6px; align-items: baseline; margin: 10px 0 14px; }
 .stars { color: #f5a623; letter-spacing: 1px; }
 .stars.small { font-size: 12px; }
@@ -146,7 +146,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .post-head { display: flex; gap: 10px; align-items: center; padding: 12px; }
 .post-image { display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; background: var(--fill); }
 .post-meta { display: flex; justify-content: space-between; padding: 12px; }
-.comments { list-style: none; margin: 0; padding: 0 16px; }
+.comments { list-style: none; margin: 0; padding: 0; }
 .comment { display: flex; gap: 12px; padding: 12px 0; }
 .comment p { margin: 3px 0 4px; line-height: 1.4; }
 .composer {
@@ -172,7 +172,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .product-info h2 { margin: 4px 0; font-size: 26px; }
 .price { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
 .product-info p { line-height: 1.5; }
-.options { padding: 0 16px 20px; }
+.options { padding: 0 0 20px; }
 .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .chip { border: 1px solid var(--ybs-divider); background: none; border-radius: 10px; padding: 12px 0; font-weight: 600; }
 .chip.on { background: var(--ybs-sheet-fg); color: var(--ybs-sheet-bg); border-color: transparent; }
@@ -205,7 +205,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .result-img { aspect-ratio: 1; background: linear-gradient(135deg, hsl(var(--h) 55% 70%), hsl(calc(var(--h) + 60) 50% 45%)); }
 .result-name { padding: 8px 10px 2px; font-weight: 600; }
 .result-card .small { padding: 0 10px; }
-.filters { padding: 0 16px; }
+.filters { padding: 0; }
 .segmented { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--fill); border-radius: 10px; padding: 2px; }
 .segmented button { border: 0; background: none; padding: 8px 0; border-radius: 8px; font-size: 14px; }
 .segmented button.on { background: var(--ybs-sheet-bg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); font-weight: 600; }
@@ -272,12 +272,14 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 }
 
 /* ---------- shared: rows that are sheet triggers ---------- */
-.pad { padding: 0 16px 16px; }
+/* Sheet bodies get the preset's side padding (--ybs-body-padding); edge-to-edge lists opt out with .edge. */
+.edge { --ybs-body-padding: 0px; }
+.pad { padding: 0 0 16px; }
 .secondary { border: 1px solid var(--ybs-divider, var(--line)); background: none; border-radius: 12px; padding: 12px 18px; font-weight: 600; }
 .ybs-trigger:has(> .menu-row), .ybs-trigger:has(> .order) {
   display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: left; font: inherit;
 }
-.menu { list-style: none; margin: 0; padding: 0 16px 16px; }
+.menu { list-style: none; margin: 0; padding: 0 0 16px; }
 .menu li + li { border-top: 1px solid var(--ybs-divider); }
 .menu-row {
   display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%;
@@ -361,7 +363,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .note-toolbar { display: flex; gap: 4px; margin-top: 12px; }
 .note-toolbar button { width: 40px; height: 36px; border: 0; border-radius: 8px; background: none; font-size: 16px; }
 .note-toolbar button:hover { background: var(--ybs-divider); }
-.note-editor { display: grid; gap: 8px; padding: 16px; }
+.note-editor { display: grid; gap: 8px; padding: 16px 0; }
 .note-title { border: 0; background: none; color: inherit; font: 700 26px/1.2 system-ui, sans-serif; outline: none; }
 .note-body { border: 0; background: none; color: inherit; font: 16px/1.6 system-ui, sans-serif; resize: none; outline: none; min-height: 50dvh; }
 

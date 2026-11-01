@@ -29,6 +29,7 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
           log(`lab: onOpenChange ${o}`)
         }}
         title="Sheet"
+        className="edge"
         description="Drag, fling, scroll."
         headerExtra={<input className="search" placeholder="Search (keyboard test)" />}
       >
