@@ -71,6 +71,8 @@ const LOCK_MIN_MS = 800
 const WHEEL_GESTURE_GAP_MS = 250
 const KEYBOARD_THRESHOLD = 120
 const MAX_RETARGETS = 3
+/** A resize this soon after a user scroll event is mid-gesture or mid-momentum: don't re-target. */
+const USER_SCROLL_QUIET = 100
 const VELOCITY_WINDOW_MS = 80
 
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
@@ -122,6 +124,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let programmatic = false
   let target: Detent | null = null // destination of a programmatic move
   let current: Detent | null = null // resting detent
+  /** Last scroll event the user caused (finger, momentum, wheel): not ours, not the momentum lock's pin. */
+  let lastUserScroll = -Infinity
   let emitted: Detent | null = null // last detent reported to onDetentChange
   let retries = 0
   let lock: number | null = null
@@ -266,6 +270,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // ---- scroll ----
   function onScroll() {
     const st = scroller.scrollTop
+    if (!programmatic && lock == null) lastUserScroll = performance.now()
     const progress = full > 0 ? Math.min(Math.max(st / full, 0), 1) : 0
     root.style.setProperty('--ybs-progress', String(progress))
     options.onProgress?.(progress)
@@ -470,6 +475,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // Browsers don't reliably re-snap when snap positions move (URL bar,
     // keyboard, content change). Re-target ourselves.
     if (touching) return
+    // Momentum still running (a fling, or content scrolling): `current` is where it last rested, not where it
+    // is. Pinning to it would yank the sheet back mid-fling; scrollend settles it instead.
+    if (!programmatic && performance.now() - lastUserScroll < USER_SCROLL_QUIET) return
     const d = programmatic ? target : current
     if (d == null) return
     if (programmatic) {

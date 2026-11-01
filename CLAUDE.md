@@ -68,6 +68,9 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   touch/wheel gesture starts, with a minimum hold of 800ms. One frame is not enough: Firefox Android's fling keeps running after it.
 - **Re-snap on resize:** browsers don't re-snap when snap positions move (the URL bar showing or hiding mid-animation).
   Track the current (named) detent and re-target it in a ResizeObserver.
+  Skipped within 100ms of a user scroll event (`USER_SCROLL_QUIET`): during a fling or a content scroll, `current` is
+  where the sheet last rested, and pinning to it yanked the sheet back when content changed height mid-fling.
+  Test: "content that changes height mid-scroll". Not yet re-run on the Android device suite (2026-11-01, phone locked).
 - **Close** when `scrollend` lands at 0 (debounce fallback when `onscrollend` is missing).
 - **Wheel/trackpad steps detents.** With mandatory snapping, a small wheel delta at a partial detent snaps straight back,
   so the wheel looked dead on desktop (reported on the Comments demo). Now: while below full, or at full and scrolling up,

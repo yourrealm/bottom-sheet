@@ -522,3 +522,25 @@ test('aria-describedby only points at a Description that exists', async ({ page 
   await waitForEvent(page, /solved: onDetentChange full/)
   await expect(page.locator('[data-ybs-sheet]')).not.toHaveAttribute('aria-describedby')
 })
+
+test('content that changes height mid-scroll does not yank the sheet back to its detent', async ({ page }) => {
+  await openLab(page)
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    const sheet = document.querySelector<HTMLElement>('[data-ybs-sheet]')!
+    s.scrollTo({ top: Math.min(s.clientHeight, sheet.offsetHeight) }) // rest at full
+  })
+  await waitForEvent(page, 'lab: onDetentChange full')
+  await page.waitForTimeout(200)
+  const full = (await geometry(page)).full
+  // A user-driven smooth scroll into the content (not one of the controller's own moves)…
+  await page.evaluate(() => document.querySelector<HTMLElement>('[data-ybs-scroller]')!.scrollBy({ top: 1500, behavior: 'smooth' }))
+  await page.waitForTimeout(60)
+  // …while the content grows (an image loading, a list appending).
+  await page.evaluate(() => {
+    const extra = document.createElement('div')
+    extra.style.height = '400px'
+    document.querySelector('[data-ybs-sheet]')!.append(extra)
+  })
+  await expect.poll(async () => (await geometry(page)).st, { timeout: 3000 }).toBeGreaterThan(full + 500)
+})
