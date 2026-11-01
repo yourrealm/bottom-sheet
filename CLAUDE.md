@@ -70,7 +70,7 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   Track the current (named) detent and re-target it in a ResizeObserver.
   Skipped within 100ms of a user scroll event (`USER_SCROLL_QUIET`): during a fling or a content scroll, `current` is
   where the sheet last rested, and pinning to it yanked the sheet back when content changed height mid-fling.
-  Test: "content that changes height mid-scroll". Not yet re-run on the Android device suite (2026-11-01, phone locked).
+  Test: "content that changes height mid-scroll". Device suite after this change (2026-11-01): 3/3 Chrome + 3/3 Firefox Android PASS.
 - **Close** when `scrollend` lands at 0 (debounce fallback when `onscrollend` is missing).
 - **Wheel/trackpad steps detents.** With mandatory snapping, a small wheel delta at a partial detent snaps straight back,
   so the wheel looked dead on desktop (reported on the Comments demo). Now: while below full, or at full and scrolling up,
