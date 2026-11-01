@@ -931,3 +931,115 @@ test('opening a sheet without its CSS logs an error naming the import', async ({
   await expect.poll(() => errors.filter((e) => e.includes('@yourrealm/bottom-sheet')).length).toBeGreaterThan(0)
   expect(errors.find((e) => e.includes('styles.css'))).toContain('@import "@yourrealm/bottom-sheet/styles.css"')
 })
+
+// ---------- found by the pre-release review (2026-11-01) ----------
+
+test.describe('closing on purpose', () => {
+  test('a wheel during the close animation does not bring the sheet back', async ({ page }, info) => {
+    test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
+    await openLab(page)
+    await page.mouse.move(200, 600)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(60)
+    await page.mouse.wheel(0, 100)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+    expect((await events(page)).filter((e) => e.startsWith('lab: onOpenChange'))).toEqual(['lab: onOpenChange false'])
+  })
+
+  test('a mouse header drag released off the header leaves nothing over the page', async ({ page }) => {
+    await openLab(page)
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.clientHeight + 300
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await page.waitForTimeout(200)
+    const p = await headerPoint(page)
+    await page.mouse.move(p.x, p.y)
+    await page.mouse.down()
+    await page.mouse.move(p.x, p.y + 300) // one jump: the first move already lands on the content
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+
+  test('reopening during the close animation reverses it', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
+    await page.goto('/#/lab')
+    await page.locator('#open-lab').click()
+    await waitForEvent(page, 'lab: onDetentChange 0.5')
+    await clearEvents(page)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('#open-lab')).toBeFocused() // focus is back on the trigger at once
+    await page.keyboard.press('Enter') // the demo's button sets open={true}
+    await page.waitForTimeout(800)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    const g = await geometry(page)
+    expect(Math.abs(g.st - g.H * 0.5)).toBeLessThan(3)
+    expect(await events(page)).not.toContain('lab: finishClose') // it never finished closing
+  })
+})
+
+// `detent={d} onDetentChange={setD}` must round-trip: reporting 'closed' made the next open start (and end) at closed.
+test("onDetentChange never reports 'closed'", async ({ page }) => {
+  await openLab(page)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  expect(await events(page)).not.toContain('lab: onDetentChange closed')
+})
+
+test('a tap right after a header drag that springs back presses what it lands on', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP touch')
+  await page.goto('/?open=1#/thousand')
+  await waitForEvent(page, /orders: onDetentChange/)
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTop = s.clientHeight + 300
+  })
+  await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+  await page.waitForTimeout(300)
+  const b = (await page.locator('[data-ybs-header]').boundingBox())!
+  const x = b.x + b.width / 2
+  const y = b.y + 20
+  const cdp = await page.context().newCDPSession(page)
+  const touch = (type: string, yy: number) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: yy }] })
+  await touch('touchStart', y)
+  for (let i = 1; i <= 5; i++) await touch('touchMove', y + i * 6)
+  await page.waitForTimeout(200) // no velocity: springs back
+  await touch('touchEnd', y + 30)
+  await page.waitForTimeout(500)
+  const rows = await page.locator('[data-order]').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as DOMRect))
+  const r = rows.find((r) => r.y > b.y + 120 && r.y < 600)!
+  await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(2) // the row's own sheet opened on top
+})
+
+test('the dialog is named by its title (aria-labelledby points at it)', async ({ page }) => {
+  await openLab(page)
+  const named = await page.evaluate(() => {
+    const id = document.querySelector('[data-ybs-sheet]')!.getAttribute('aria-labelledby')
+    return id ? document.getElementById(id)?.textContent ?? null : null
+  })
+  expect(named).toBeTruthy()
+})
+
+test('a right-click above the sheet does not close it', async ({ page }, info) => {
+  test.skip(info.project.name === 'webkit-mobile', 'no right-click on mobile WebKit')
+  await openLab(page)
+  await page.mouse.click(200, 40, { button: 'right' })
+  await page.waitForTimeout(500)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  await page.mouse.click(200, 40)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+})
+
+test('a non-modal sheet ignores Escape while focus is elsewhere on the page', async ({ page }, info) => {
+  test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
+  await page.goto('/?open=1#/persistent')
+  await waitForEvent(page, 'solved: onDetentChange full')
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(600)
+  expect(await events(page)).not.toContain('solved: onDetentChange 76px')
+})

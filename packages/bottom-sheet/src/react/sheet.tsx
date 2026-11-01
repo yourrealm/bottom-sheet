@@ -17,7 +17,19 @@ import {
 import { createPortal } from 'react-dom'
 import { createSheetController, type SheetController } from '../core/controller'
 import type { Detent } from '../core/math'
-import { closedByEscape, closeWatcher, isTopSheet, pushSheet, removeSheet, reportProgress, type StackEntry } from './stack'
+import {
+  closedByEscape,
+  closeWatcher,
+  holdInert,
+  isTopSheet,
+  pushSheet,
+  releaseInert,
+  removeSheet,
+  reportProgress,
+  type StackEntry,
+  takesEscape,
+  updateSheet,
+} from './stack'
 import { checkCss } from './css-check'
 
 /** Why the sheet is asking to open or close. */
@@ -41,7 +53,6 @@ interface SheetContextValue {
   detents: readonly Detent[]
   initialDetent: Detent | undefined
   detent: Detent | undefined
-  guard: boolean
   onDetentChange: ((d: Detent) => void) | undefined
   debug: ((m: string) => void) | undefined
   onClosed: () => void
@@ -54,7 +65,9 @@ interface SheetContextValue {
   initialFocus: RefObject<InitialFocus | undefined>
   titleId: string
   descriptionId: string
-  /** A <Description> is mounted (aria-describedby must not point at a missing element). */
+  /** A <Title> / <Description> is mounted (aria-labelledby/-describedby must not point at a missing element). */
+  hasTitle: boolean
+  setHasTitle: (has: boolean) => void
   hasDescription: boolean
   setHasDescription: (has: boolean) => void
 }
@@ -91,7 +104,8 @@ export interface RootProps {
   detents?: readonly Detent[]
   /**
    * Modal (default): a backdrop, the rest of the page inert, page scroll locked, focus moved into the sheet.
-   * Non-modal: the page stays visible and usable around the sheet; taps outside it go to the page.
+   * Non-modal: the page stays visible and usable around the sheet; taps outside it go to the page, and Escape only
+   * acts while focus is inside the sheet. Read when the sheet opens: changing it while open applies on the next open.
    */
   modal?: boolean
   /**
@@ -124,14 +138,12 @@ export interface RootProps {
   initialDetent?: Detent
   /** Controlled resting detent. Changing it moves the sheet. */
   detent?: Detent
+  /** The sheet came to rest at a detent. Never `'closed'`: closing is `onOpenChange(false)`. */
   onDetentChange?: (detent: Detent) => void
-  /** Stop momentum at the full line, as native does. Default true. */
-  guard?: boolean
   /** Receives the controller's internal decision log (for device testing). */
   debug?: (message: string) => void
 }
 
-/** Full only, like iOS (`[.large()]`), Base UI and Vaul. Partial detents are opt-in. */
 /** How the sheet was opened, as Base UI reports it to `initialFocus`. */
 export type InteractionType = 'mouse' | 'touch' | 'pen' | 'keyboard'
 /**
@@ -166,6 +178,7 @@ function initialFocusTarget(pref: InitialFocus | undefined, modal: boolean, shee
   return v.current ?? fallback
 }
 
+/** Full only, like iOS (`[.large()]`), Base UI and Vaul. Partial detents are opt-in. */
 const DEFAULT_DETENTS: readonly Detent[] = []
 
 export function Root(props: RootProps) {
@@ -178,7 +191,6 @@ export function Root(props: RootProps) {
     initialDetent,
     detent,
     onDetentChange,
-    guard = true,
     modal = true,
     dismissible = true,
     closeOnBack = modal,
@@ -195,6 +207,7 @@ export function Root(props: RootProps) {
   const initialFocus = useRef<InitialFocus | undefined>(undefined)
   useEffect(trackInteraction, [])
   const id = useId()
+  const [hasTitle, setHasTitle] = useState(false)
   const [hasDescription, setHasDescription] = useState(false)
 
   const setOpen = useCallback(
@@ -226,14 +239,15 @@ export function Root(props: RootProps) {
     }
     if (open && mounted && closing.current) {
       closing.current = false
-      controller.current?.open(initialDetent)
+      controller.current?.open(detent ?? initialDetent)
     }
     if (!open && mounted) {
       closing.current = true
       if (controller.current) controller.current.close()
       else setMounted(false)
     }
-  }, [open, mounted, initialDetent, modal])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detent is read when (re)opening, not followed here
+  }, [open, mounted])
 
   const onClosed = useCallback(() => {
     debugRef.current?.(`onClosed (open=${open}, mounted=${mounted})`)
@@ -256,7 +270,6 @@ export function Root(props: RootProps) {
       detents,
       initialDetent,
       detent,
-      guard,
       onDetentChange,
       debug,
       onClosed,
@@ -267,10 +280,12 @@ export function Root(props: RootProps) {
       initialFocus,
       titleId: `${id}-title`,
       descriptionId: `${id}-description`,
+      hasTitle,
+      setHasTitle,
       hasDescription,
       setHasDescription,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id, hasDescription],
+    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
@@ -344,17 +359,19 @@ export function Portal({ children, container }: PortalProps) {
   useEffect(() => {
     const root = ctx.rootEl.current
     if (!ctx.mounted || !root) return
-    const parent = root.parentElement
-    if (!parent) return
     // Stack: Escape goes to the top sheet only; the sheet below can recede.
-    const entry: StackEntry = { root, close: () => dismissRef.current('escape'), recede: ctx.recede && ctx.modal }
+    const { recede, modal } = ctxRef.current
+    const entry: StackEntry = { root, close: () => dismissRef.current('escape'), recede: recede && modal, modal }
     entryRef.current = entry
     pushSheet(entry)
     return () => {
       removeSheet(entry)
       entryRef.current = null
     }
-  }, [ctx.mounted, ctx.rootEl, ctx.modal, ctx.recede])
+  }, [ctx.mounted, ctx.rootEl])
+  useEffect(() => {
+    if (entryRef.current) updateSheet(entryRef.current, { recede: ctx.recede && ctx.modal, modal: ctx.modal })
+  }, [ctx.recede, ctx.modal])
 
   // The page is inert only while the sheet is open, not while it animates closed: as soon as it starts
   // closing, the page (or the sheet below) takes input and focus again, like a native dialog. Otherwise
@@ -362,19 +379,13 @@ export function Portal({ children, container }: PortalProps) {
   const blocking = ctx.mounted && ctx.open && ctx.modal
   useEffect(() => {
     const root = ctx.rootEl.current
-    const parent = root?.parentElement
-    if (!blocking || !root || !parent) return
-    const touched: Element[] = []
-    for (const el of Array.from(parent.children)) {
-      if (el === root || el.hasAttribute('inert') || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue
-      el.setAttribute('inert', '')
-      touched.push(el)
-    }
+    if (!blocking || !root) return
+    const held = holdInert(root)
     const dbg = (m: string) => ctxRef.current.debug?.(m)
-    dbg(`portal mount: inert ${touched.length} siblings, ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length} sheet roots inert`)
+    dbg(`portal mount: inert ${held.length} elements`)
     return () => {
-      for (const el of touched) el.removeAttribute('inert')
-      dbg(`portal unmount: restored ${touched.length}, still-inert sheet roots ${parent.querySelectorAll(':scope > [data-ybs-root][inert]').length}`)
+      releaseInert(held)
+      dbg(`portal unmount: released ${held.length}`)
       // Restore focus only after lifting inert: while the page is inert, focus() is a no-op.
       const back = ctx.returnFocus.current
       ctx.returnFocus.current = null
@@ -403,8 +414,10 @@ export function Portal({ children, container }: PortalProps) {
     const watcher = new Watcher()
     watcher.onclose = () => {
       entry.watcher = null
-      ctxRef.current.debug?.(`close watcher: ${closedByEscape() ? 'escape' : 'back'}`)
-      dismissRef.current(closedByEscape() ? 'escape' : 'back')
+      const escape = closedByEscape()
+      ctxRef.current.debug?.(`close watcher: ${escape ? 'escape' : 'back'}`)
+      // The browser routes Escape to the newest watcher wherever focus is; a non-modal sheet only takes it from inside.
+      if (!escape || takesEscape(entry)) dismissRef.current(escape ? 'escape' : 'back')
       setRearm((n) => n + 1)
     }
     entry.watcher = watcher
@@ -412,7 +425,7 @@ export function Portal({ children, container }: PortalProps) {
       if (entry.watcher === watcher) entry.watcher = null
       watcher.destroy()
     }
-  }, [listenForBack, rearm, ctx.modal]) // modal: the stack entry is rebuilt
+  }, [listenForBack, rearm])
 
   if (!ctx.mounted || typeof document === 'undefined') return null
   return createPortal(
@@ -475,7 +488,6 @@ export function View({ children, className, bleedClassName }: ViewProps) {
       { root, scroller: scroller.current, markers: markers.current, sheet },
       {
         detents: ctx.detents,
-        guard: ctx.guard,
         modal: ctx.modal,
         dismissible: ctx.dismissible,
         onDetentChange: (d) => ctxRef.current.onDetentChange?.(d),
@@ -489,6 +501,11 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     )
     ctx.controller.current = c
     c.open(ctx.detent ?? ctx.initialDetent)
+    // Title/Description report themselves in a layout effect, which re-renders only after this one: name the dialog
+    // now so focusing it below announces it.
+    for (const [attr, id] of [['aria-labelledby', ctx.titleId], ['aria-describedby', ctx.descriptionId]] as const) {
+      if (!sheet.hasAttribute(attr) && sheet.querySelector(`[id="${id}"]`)) sheet.setAttribute(attr, id)
+    }
     // Modal: focus the sheet by default. Non-modal: leave focus on the page unless `initialFocus` says otherwise.
     // preventScroll: the target may still be below the screen (the sheet is about to slide up).
     initialFocusTarget(ctx.initialFocus.current, ctx.modal, sheet)?.focus({ preventScroll: true })
@@ -504,9 +521,11 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- created once per mount
   }, [])
 
+  // By value: an inline `detents={[0.5]}` is a new array on every render, and each setDetents is a layout pass.
+  const detentsKey = ctx.detents.join('|')
   useEffect(() => {
-    ctx.controller.current?.setDetents(ctx.detents)
-  }, [ctx.detents, ctx.controller])
+    ctx.controller.current?.setDetents(ctxRef.current.detents)
+  }, [detentsKey, ctx.controller])
 
   useEffect(() => {
     ctx.controller.current?.setDismissible(ctx.dismissible)
@@ -552,7 +571,7 @@ export function Content({ ref, initialFocus, ...props }: ContentProps) {
       data-ybs-sheet=""
       role="dialog"
       aria-modal={ctx.modal}
-      aria-labelledby={ctx.titleId}
+      aria-labelledby={ctx.hasTitle ? ctx.titleId : undefined}
       aria-describedby={ctx.hasDescription ? ctx.descriptionId : undefined}
       tabIndex={-1}
       {...props}
@@ -573,6 +592,11 @@ export function Handle(props: ComponentPropsWithRef<'div'>) {
 
 export function Title(props: ComponentPropsWithRef<'h2'>) {
   const ctx = useSheet('Title')
+  const { setHasTitle } = ctx
+  useLayoutEffect(() => {
+    setHasTitle(true)
+    return () => setHasTitle(false)
+  }, [setHasTitle])
   return <h2 id={ctx.titleId} {...props} />
 }
 

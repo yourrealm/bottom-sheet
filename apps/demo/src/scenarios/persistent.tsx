@@ -63,7 +63,7 @@ export function Persistent({ autoOpen }: { autoOpen: boolean }) {
         detent={state === 'peek' ? PEEK : 'full'}
         onDetentChange={(d) => {
           log(`solved: onDetentChange ${String(d)}`)
-          if (d !== 'closed') setState(d === 'full' ? 'full' : 'peek')
+          setState(d === 'full' ? 'full' : 'peek')
         }}
         title="Solved"
         // With a mouse or keyboard, New board gets focus so Enter goes on; not after a tap (no keyboard, and the

@@ -1,5 +1,3 @@
 export * as Sheet from './react/sheet'
 export type { RootProps, PortalProps, ViewProps, TriggerProps, TriggerRenderProps, ContentProps, InitialFocus, InteractionType, OpenChangeDetails, OpenChangeReason } from './react/sheet'
-export { createSheetController } from './core/controller'
-export type { SheetController, SheetControllerOptions, SheetElements } from './core/controller'
 export type { Detent } from './core/math'

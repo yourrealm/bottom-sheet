@@ -16,6 +16,13 @@ export interface StackEntry {
   closing?: boolean
   /** The page behind recedes while this (modal) sheet is open; the lowest such sheet drives it. */
   recede?: boolean
+  /** Non-modal sheets only take Escape while focus is inside them. */
+  modal?: boolean
+}
+
+/** Whether Escape (or a close request it caused) is for this sheet: always for a modal one, else only with focus in it. */
+export function takesEscape(entry: Pick<StackEntry, 'modal' | 'root'>) {
+  return entry.modal !== false || entry.root.contains(document.activeElement)
 }
 
 /** The bits of CloseWatcher we use (not in TypeScript's DOM lib yet). */
@@ -40,7 +47,7 @@ let escapeListening = false
 function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Escape' || e.defaultPrevented) return
   const top = stack.findLast((s) => !s.closing)
-  if (!top) return
+  if (!top || !takesEscape(top)) return
   if (top.watcher) {
     // The browser turns this Escape into a close request for the newest watcher (the top sheet's).
     escapePressed = true
@@ -70,6 +77,46 @@ export function removeSheet(entry: StackEntry) {
   if (!stack.length && escapeListening) {
     document.removeEventListener('keydown', onKeyDown)
     escapeListening = false
+  }
+}
+
+/** Apply changed props to an open sheet's entry (it keeps its place in the stack and its watcher). */
+export function updateSheet(entry: StackEntry, next: { recede: boolean; modal: boolean }) {
+  entry.modal = next.modal
+  if (entry.recede === next.recede) return
+  entry.recede = next.recede
+  if (!next.recede && !stack.some((e) => e.recede)) setRecede(0)
+}
+
+/**
+ * `inert` on everything outside the open modal sheets, counted per element: two stacked modal sheets both hold the
+ * page, so it stays inert until the last one lets go, whichever closes first. An element the app made inert itself
+ * is left alone. Covers the siblings of the sheet's root and of each of its ancestors up to <body>, so a sheet
+ * portalled into a container still blocks the whole page.
+ */
+const inertHolds = new Map<Element, number>()
+export function holdInert(root: HTMLElement): Element[] {
+  const held: Element[] = []
+  for (let node: Element = root; node.parentElement && node !== document.body; node = node.parentElement) {
+    for (const el of Array.from(node.parentElement.children)) {
+      if (el === node || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue
+      const n = inertHolds.get(el)
+      if (n === undefined && el.hasAttribute('inert')) continue // the app's own
+      inertHolds.set(el, (n ?? 0) + 1)
+      el.setAttribute('inert', '')
+      held.push(el)
+    }
+  }
+  return held
+}
+export function releaseInert(held: Element[]) {
+  for (const el of held) {
+    const n = (inertHolds.get(el) ?? 1) - 1
+    if (n > 0) inertHolds.set(el, n)
+    else {
+      inertHolds.delete(el)
+      el.removeAttribute('inert')
+    }
   }
 }
 

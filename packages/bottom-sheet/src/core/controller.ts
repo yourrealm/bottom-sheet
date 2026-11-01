@@ -1,8 +1,7 @@
 import { type Detent, type Stop, buildStops, easeAccelerate, easeDecelerate, nearestStop, project, resolveStop, stopAt } from './math'
 
 /**
- * Sheet controller. Framework-agnostic; React (or anything) renders the DOM,
- * this drives it. See CLAUDE.md for why it is shaped like this.
+ * Sheet controller. Framework-agnostic; React (or anything) renders the DOM, this drives it.
  *
  * DOM contract:
  *   root      fixed layer; receives CSS vars and state attributes
@@ -31,12 +30,11 @@ export interface SheetControllerOptions {
   modal?: boolean
   /** Stop momentum at the `full` line (default true). */
   guard?: boolean
-  /** Called when the sheet comes to rest at a detent. */
+  /** Called when the sheet comes to rest at a detent. Never 'closed': closing is reported by onClosed. */
   onDetentChange?: (detent: Detent) => void
   /** Called once the sheet has fully closed (scrolled to 0). */
   onClosed?: () => void
-  /** Progress 0 (closed) .. 1 (full), on every scroll. Used to drive stacked-sheet effects. */
-  /** progress 0..1 closed -> full; cover 0..1 = share of the available height the sheet covers. */
+  /** On every scroll: progress 0 (closed) .. 1 (full), and cover 0..1, the share of the available height the sheet covers. */
   onProgress?: (progress: number, cover: number) => void
   /** A tap (no drag) on the sheet layer outside the sheet: above it, or beside it when it is narrower than the screen. */
   onOutsideTap?: () => void
@@ -102,16 +100,23 @@ const GLIDE_DOWN_MS = 280
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
 // the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
 // lower one's 'hidden' after the lower one had already put the original back).
+// A page with a classic (space-taking) scrollbar keeps its gutter, so the layout doesn't shift sideways.
 let htmlLocks = 0
-let htmlPrev = ''
+let htmlPrev = { overflow: '', gutter: '' }
 function lockHtml() {
   if (htmlLocks++ === 0) {
-    htmlPrev = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
+    const html = document.documentElement
+    htmlPrev = { overflow: html.style.overflow, gutter: html.style.scrollbarGutter }
+    if (window.innerWidth - html.clientWidth > 0) html.style.scrollbarGutter = 'stable'
+    html.style.overflow = 'hidden'
   }
 }
 function unlockHtml() {
-  if (htmlLocks > 0 && --htmlLocks === 0) document.documentElement.style.overflow = htmlPrev
+  if (htmlLocks > 0 && --htmlLocks === 0) {
+    const html = document.documentElement
+    html.style.overflow = htmlPrev.overflow
+    html.style.scrollbarGutter = htmlPrev.gutter
+  }
 }
 
 export function createSheetController(els: SheetElements, options: SheetControllerOptions): SheetController {
@@ -122,9 +127,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
   const modal = options.modal ?? true
   let requested = [...options.detents]
   let dismissible = options.dismissible ?? true
-  // A programmatic close() of a non-dismissible sheet still needs `closed` as a stop.
-  let closingOnPurpose = false
-  const closable = () => dismissible || closingOnPurpose
+  // close() was called and the sheet is on its way out. Input doesn't stop it (a wheel or drag would otherwise leave
+  // a sheet the app already considers closed on screen), and a non-dismissible sheet gets `closed` back as a stop.
+  let closing = false
+  const closable = () => dismissible || closing
 
   // layout
   let H = 0
@@ -175,10 +181,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
   const resolve = (d: Detent) => resolveStop(d, rawTop(d), stops)
   const pos = (d: Detent) => resolve(d).top
-  /** The lowest resting detent that isn't closed. */
+  /** The lowest resting detent that isn't closed; also where open() goes by default. */
   const floor = () => stops.find((s) => s.detent !== 'closed')!.detent
-  /** Where open() goes by default: the smallest usable partial detent, else full. */
-  const defaultDetent = () => floor()
 
   function makeMarker() {
     const m = document.createElement('div')
@@ -388,7 +392,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     programmatic = false
     target = null
     current = now
-    if (now != null && now !== emitted && isOpen) {
+    if (now != null && now !== 'closed' && now !== emitted && isOpen) {
       emitted = now
       options.onDetentChange?.(now)
     }
@@ -433,7 +437,11 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let dropClickUntil = 0
   const isOutside = (el: EventTarget | null) => el instanceof Element && !el.closest('[data-ybs-sheet]')
   function onPressStart(e: PointerEvent) {
+    // A new press: the click of an earlier dropped press (a drag with touch-action: none sends none) isn't coming.
+    dropClickUntil = 0
+    endDrag?.() // a drag whose release we never saw
     const touch = e.pointerType !== 'mouse'
+    if (!touch && e.button !== 0) return void (press = null) // right/middle click: not a tap
     const now = performance.now()
     press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastScrollAt < MOVING_MS, outside: isOutside(e.target), dragged: false }
   }
@@ -472,7 +480,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     anchor = null
     // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
     // still takes touches). The finger-lift check below completes the close. Any other glide stops where it is.
-    if (gliding && target === 'closed') return
+    if (closing) return
     stopGlide()
     programmatic = false
     unlock()
@@ -499,6 +507,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let wheelStepped = false
   function onWheel(e: WheelEvent) {
     if (e.ctrlKey) return // pinch-zoom
+    if (closing) return void e.preventDefault() // closing on purpose: the wheel doesn't bring it back
     const t = performance.now()
     const newGesture = t - lastWheel > WHEEL_GESTURE_GAP_MS
     lastWheel = t
@@ -534,6 +543,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // transform, and on release the sheet either springs back to full or goes to the projected detent.
   let detached = false
   let dropAnim = 0
+  /** Ends a running header drag without a release (a new press arrived first, or destroy). */
+  let endDrag: (() => void) | null = null
   function detachedDrag(e: PointerEvent, handle: HTMLElement) {
     // No preventDefault/capture yet: a tap (a button or field in the header) must still work.
     stopGlide()
@@ -554,25 +565,34 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.style.transform = d > 0 ? `translate3d(0, ${d}px, 0)` : ''
       paint(st0, d)
     }
+    const id = e.pointerId
     const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
       const dy = ev.clientY - y0
       if (!started && Math.abs(dy) < 4) return
       started = true
       detached = true
       markDragged()
-      handle.setPointerCapture(ev.pointerId)
+      if (handle.isConnected) handle.setPointerCapture(ev.pointerId)
       root.setAttribute('data-ybs-drag', 'active')
       if (scroller.scrollTop !== st0) scroller.scrollTop = st0 // keep the content where it is
       setDrop(Math.max(dy, 0))
       samples.push({ t: ev.timeStamp, y: ev.clientY })
       while (samples.length > 2 && ev.timeStamp - samples[0]!.t > VELOCITY_WINDOW_MS) samples.shift()
     }
-    const up = (ev: PointerEvent) => {
-      handle.removeEventListener('pointermove', move as EventListener)
-      handle.removeEventListener('pointerup', up as EventListener)
-      handle.removeEventListener('pointercancel', up as EventListener)
+    // On the window, not the handle: until the drag captures the pointer (after 4px), a mouse that leaves the
+    // header before its first move would release elsewhere, and a missed release leaves `touching` set for good.
+    const stop = () => {
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', up, true)
+      window.removeEventListener('pointercancel', up, true)
+      endDrag = null
       touching = false
       root.removeAttribute('data-ybs-drag')
+    }
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      stop()
       if (!started) return
       const a = samples[0]!
       const b = samples[samples.length - 1]!
@@ -598,9 +618,16 @@ export function createSheetController(els: SheetElements, options: SheetControll
         else requestAnimationFrame(onScrollEnd)
       })
     }
-    handle.addEventListener('pointermove', move as EventListener)
-    handle.addEventListener('pointerup', up as EventListener)
-    handle.addEventListener('pointercancel', up as EventListener)
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', up, true)
+    window.addEventListener('pointercancel', up, true)
+    endDrag = () => {
+      stop()
+      if (!started) return
+      scroller.style.transform = ''
+      detached = false
+      paint(scroller.scrollTop)
+    }
   }
   function animateDrop(from: number, to: number, set: (d: number) => void, done: () => void) {
     const ms = reducedMotion() ? 0 : Math.min(380, 180 + Math.abs(to - from) * 0.4)
@@ -618,7 +645,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   // Mouse drag on [data-ybs-drag]. Touch uses native scroll, except for the detached drag above.
   function onPointerDown(e: PointerEvent) {
-    if (e.button !== 0 || !isOpen || detached) return
+    if (e.button !== 0 || !isOpen || detached || closing) return
     const el = e.target as Element | null
     const handle = el?.closest<HTMLElement>('[data-ybs-drag]')
     if (!handle) return
@@ -675,12 +702,13 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // iOS scrolls the document to reveal a focused input even with
     // html{overflow:hidden}. Undo it so the page behind doesn't jump.
     if (modal && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
-    const kb = window.innerHeight - vv.height > KEYBOARD_THRESHOLD
+    // vv.height * scale: pinch-zoom shrinks vv.height too, but not what it covers in layout pixels.
+    const kb = window.innerHeight - vv.height * vv.scale > KEYBOARD_THRESHOLD
     if (kb !== keyboard) {
       keyboard = kb
       root.toggleAttribute('data-ybs-keyboard', kb)
       // Native: the sheet goes to its largest detent while the keyboard is up.
-      if (kb && (options.isActive?.() ?? true) && current !== 'full' && target !== 'full') {
+      if (kb && !closing && (options.isActive?.() ?? true) && current !== 'full' && target !== 'full') {
         requestAnimationFrame(() => {
           layout()
           scrollToDetent('full')
@@ -714,7 +742,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     isOpen = false
     current = null
     emitted = null
-    closingOnPurpose = false
+    closing = false
     releaseHtml()
     root.removeAttribute('data-ybs-open')
     options.onClosed?.()
@@ -746,17 +774,18 @@ export function createSheetController(els: SheetElements, options: SheetControll
       return current
     },
     open(detent) {
+      if (detent === 'closed') detent = undefined
       if (isOpen) {
         // already open (e.g. re-opened during the close animation)
-        if (closingOnPurpose) {
-          closingOnPurpose = false
+        if (closing) {
+          closing = false
           layout()
         }
-        scrollToDetent(detent ?? defaultDetent())
+        scrollToDetent(detent ?? floor())
         return
       }
       isOpen = true
-      closingOnPurpose = false
+      closing = false
       pageY = window.scrollY
       keyboard = false
       if (modal && !htmlLocked) {
@@ -769,30 +798,33 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.scrollTop = 0
       // Set the target synchronously: a stray scrollend at 0 before the open
       // animation starts (seen under React StrictMode) must not read as "closed".
-      target = resolve(detent ?? defaultDetent()).detent
+      target = resolve(detent ?? floor()).detent
       programmatic = true
       // Start right away (the glide's first frame paints the sheet at closed, then it moves). The old two-frame
       // wait was for Chrome dropping a smooth scrollTo on a new scroller; the glide sets scrollTop directly.
       scrollToDetent(target)
     },
     snapTo(detent) {
-      if (isOpen) scrollToDetent(detent)
+      if (isOpen && !closing) scrollToDetent(detent)
     },
     close() {
       if (!isOpen) return
-      if (!closingOnPurpose && !dismissible) {
-        closingOnPurpose = true
-        layout()
+      if (!closing) {
+        closing = true
+        if (!dismissible) layout()
       }
       if (scroller.scrollTop <= CLOSED_TOLERANCE) finishClose()
       else scrollToDetent('closed')
     },
     collapse() {
-      if (isOpen) scrollToDetent(floor())
+      if (isOpen && !closing) scrollToDetent(floor())
     },
     setDetents(next) {
       requested = [...next]
-      if (isOpen) layout()
+      if (!isOpen) return
+      layout()
+      // The detent it rests at is gone: move to the nearest one that's left.
+      if (!closing && current != null && !stops.some((s) => s.detent === current)) scrollToDetent(current)
     },
     setDismissible(next) {
       dismissible = next
@@ -800,9 +832,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     },
     destroy() {
       destroyed = true
-      if (isOpen) {
-        isOpen = false
-      }
+      isOpen = false
+      endDrag?.()
       releaseHtml()
       clearTimeout(unlockTimer)
       clearTimeout(scrollEndTimer)

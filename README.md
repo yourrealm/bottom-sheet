@@ -75,15 +75,23 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 
 - `detents`: partial resting heights, as fractions of the screen (`0.5`) or CSS lengths of visible sheet (`'76px'`,
   `'40dvh'`). Full height is always included, and is the content's own height when the content is short. Default `[]`:
-  the sheet opens straight to full, like iOS. It opens at the smallest partial detent when you give some.
-- `open` / `onOpenChange(open, { reason })`, `detent` / `onDetentChange`: controlled or uncontrolled. The reason is
+  the sheet opens straight to full, like iOS. It opens at the smallest partial detent when you give some, or at
+  `initialDetent`.
+- `open` / `defaultOpen` / `onOpenChange(open, { reason })`: controlled or uncontrolled. The reason is
   `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`. Use `open` when a sheet has several
   openers, or opening runs your own logic.
+- `detent` / `onDetentChange`: the detent the sheet rests at. Pass `detent` to control it (changing it moves the
+  sheet); `onDetentChange` reports where it came to rest, never `'closed'` (closing is `onOpenChange(false)`), so
+  `detent={d} onDetentChange={setD}` round-trips.
 - `trigger` (`/styled`): text or elements go inside our trigger button; a function renders your own button (a
   design-system `<Button>`), receiving `type`, `onClick` and the ARIA state:
   `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Headless: `<Sheet.Trigger render={…} />`.
 - `modal` (default `true`): `false` gives a sheet without a backdrop that leaves the page usable around it (no inert,
-  no scroll lock). It doesn't move focus unless you pass `initialFocus`.
+  no scroll lock). It doesn't move focus unless you pass `initialFocus`, and Escape only acts on it while focus is
+  inside it. `modal` is read when the sheet opens; a change while it's open applies from the next open.
+  On iOS, each direct child of a non-modal sheet becomes a 1px horizontal scroller (Safari needs a scroll container
+  under the finger to drag the sheet): keep sticky elements at the top level, like `Sheet.Header`, and render popovers
+  in a portal rather than inside the sheet's children.
 - `initialFocus` (on `BottomSheet` / `Sheet.Content`, like Base UI's): where focus goes when the sheet opens. A ref,
   `false`, `true` (the sheet), or a function of how it was opened: `initialFocus={(type) => type !== 'touch' &&
   newBoardRef.current}` focuses a button for mouse and keyboard users only. Default: the sheet for a modal sheet,
@@ -96,13 +104,18 @@ import { Sheet } from '@yourrealm/bottom-sheet'
   elsewhere it does nothing.
 - `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with short
   content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
+- `Sheet.Portal container`: render into an element other than `<body>`. A modal sheet still makes everything else on
+  the page inert.
+- `debug`: a function that receives the sheet's internal decision log, for testing gestures on a device.
 - `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
   `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
   positioned against it. Page sheets (`variant="page"`) recede by default.
 - `/styled` only:
-  - `title`, `description`, and `leading` / `trailing` header slots (Cancel / title / Save, title centred), plus
+  - `title`, `description` (headless: `Sheet.Title`, `Sheet.Description`, which name and describe the dialog; without
+    a `Sheet.Title`, give `Sheet.Content` an `aria-label`), and `leading` / `trailing` header slots (Cancel / title / Save, title centred), plus
     `headerExtra` for things under the title (a search field).
-  - `variant="page"`: an iOS page sheet for a task: opens straight to full, full width.
+  - `variant="page"`: an iOS page sheet for a task: full width, the page behind recedes, and the sheet fills the
+    screen at full. Leave `detents` out and it opens straight to full.
   - `width`: `'card'` (at most 640px, centred) or `'full'` (spans the window, content in a centred 960px column).
   - `floating`: iOS 26 style, inset from the screen edges with large corners at lower detents, attaching as it reaches
     full (tokens `--ybs-float-gap`, `--ybs-float-radius`).
@@ -148,8 +161,7 @@ A persistent "result" sheet that peeks at 76px and never closes by gesture:
 ## Status
 
 Early (0.x). Tested on Android in Chrome and Firefox (a gesture suite on a real phone) and in iOS Safari in the
-simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard. See `CLAUDE.md` for
-the design notes, what's been tested where, and what's still open.
+simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard.
 
 ## Develop
 

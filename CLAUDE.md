@@ -123,8 +123,8 @@ separate mechanisms (window click swallow, View pointer handlers, a click-drop f
   root with `scroller.closest('[data-ybs-root]')`, not from a ref.
 - **StrictMode** mounts, destroys and remounts the controller, which produces a stray `scrollend` at 0. `open()` sets
   `target`/`programmatic` synchronously, so that stray event is retargeted instead of being read as "closed".
-- **Chrome Android drops a smooth `scrollTo`** on a scroller created the frame before. Opening waits two rAFs, and a 150ms
-  **watchdog** re-issues any programmatic move that never started (skipped in hidden tabs).
+- **Chrome Android dropped a smooth `scrollTo`** on a scroller created the frame before. That's moot since the glide sets
+  `scrollTop` per frame itself (no two-rAF wait, no watchdog any more).
 - **The momentum lock needs a minimum hold of 800ms** (plus 150ms of quiet), still released at once by touch/wheel/drag. Otherwise
   a fling outlives the quiet window and resumes when overflow is restored (seen on Chrome too: full → drifted to medium).
 - **iOS fires no `scrollend`** for the pinned `scrollTop` under `overflow:hidden`. `unlock()` runs the settle check itself
@@ -164,7 +164,7 @@ separate mechanisms (window click swallow, View pointer handlers, a click-drop f
 ### Desktop mouse drag (spike 01)
 - Touch never uses JS. For `pointerType === 'mouse'` on the header: set `scroll-snap-type: none` (`[data-drag]`),
   move `scrollTop` directly, and on release pick a detent from the projection formula (`d = 0.998`, velocity from the last
-  80ms of samples), then `scrollTo` smooth. Re-enable snap on `scrollend`.
+  80ms of samples), then glide there. Re-enable snap on `scrollend`.
 - If the release lands inside the content (`top > full`), don't snap.
 - ✅ Chrome desktop (driven with fast synthetic drags: a flick up goes to full, a flick down closes). Slow-drag feel and Firefox desktop
   are untested.
@@ -185,13 +185,19 @@ on the Comments demo: "trying to close via the handle just scrolls up"). Native 
 A modal sheet's siblings are inert only while it is open (`blocking` in Portal), not while it animates closed: as soon as
 closing starts, inert is lifted and focus returns to the trigger. The closing sheet itself is NOT inert: a touch tap
 closes on pointerup, before the click, and that click must land on the closing overlay (which ignores it), not fall
-through to a row of the sheet below (tried and reverted 2026-11-01). A touch on a sheet gliding to closed doesn't stop
-the glide (the finger-lift check finishes the close). Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
+through to a row of the sheet below (tried and reverted 2026-11-01). Once `close()` runs, no input stops it (the
+controller's `closing` flag): a touch doesn't stop the glide (the finger-lift check finishes the close), and a wheel or
+header drag is ignored. A wheel used to step a closing sheet back up, leaving it on screen with `open=false`.
+A header drag listens for its release on the window: a mouse that left the header before its first move released
+elsewhere, `touching` stayed set, and every later close waited for a finger forever (an invisible layer over the page).
+Any new press also ends a drag whose release was missed, and clears the arbiter's "drop the next click" window. Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
 reopened on Space). Test: "the page takes focus and input back as soon as the sheet starts closing".
 
 ### Stacked sheets (`src/react/stack.ts`)
-- A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes all
-  siblings inert, including the sheet below. The below sheet's `inert` is removed and focus returns when the top one closes.
+- A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes
+  everything else inert (siblings of its root and of each ancestor up to `<body>`, so `Portal container` works too),
+  including the sheet below. `inert` is **counted per element** (`holdInert`/`releaseInert` in `stack.ts`): the page
+  stays inert until the last modal sheet lets go, whichever closes first; elements the app made inert are left alone.
 - A module-level stack of open sheets handles: **Escape closes only the top sheet** (one document listener, not one per
   sheet); the sheet directly below gets `data-ybs-covered` and `--ybs-covered` (0..1, following the upper sheet's progress)
   so `/styled` can scale it back like iOS; **only the top sheet reacts to the keyboard** (`isActive` option).
@@ -244,9 +250,11 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   layout. Detent math works on resolved `Stop {detent, top}` lists (`buildStops`, `nearestStop`, `stopAt`, `resolveStop`).
 - **`dismissible={false}`**: `closed` is left out of the stops and its snap marker hidden, so a swipe down settles on
   the lowest detent natively; settling at 0 anyway scrolls back to it. Escape / outside press call `collapse()`.
-  A programmatic close (`open={false}`) temporarily re-adds `closed` (`closingOnPurpose`).
-- `onDetentChange` still reports `'closed'` while closing; apps mapping detents to state must ignore it (the demo
-  first reopened itself by mapping it to "peek").
+  A programmatic close (`open={false}`) temporarily re-adds `closed` (the controller's `closing` flag).
+- `onDetentChange` never reports `'closed'` (closing is `onOpenChange`), so `detent={d} onDetentChange={setD}`
+  round-trips; it used to, and a controlled sheet then reopened at closed and closed again at once.
+- **Escape only acts on a non-modal sheet while focus is inside it** (`takesEscape` in `stack.ts`, also for a
+  CloseWatcher's Escape). Otherwise typing in an unrelated field and pressing Escape collapsed the solved sheet.
 - **Firefox Android leaves a swipe below the floor** (rested at 46px and 39px under a 76px peek, no snap up). The
   controller now treats "resting below the lowest detent" like "resting at closed" for a sheet that can't be dismissed
   (`belowFloor`, on scrollend and on finger lift) and scrolls back up to the floor. Chrome snaps natively.
@@ -258,7 +266,8 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
 - `fullscreen` (core): `--ybs-inset: 0` and the sheet gets `min-height: calc(var(--ybs-vv-h) - var(--ybs-inset))`, so full
   covers the screen even with short content (no fit-content). `min-height: 100%` does NOT work there (doesn't resolve).
   `/styled`: corner radius follows `--ybs-at-top` (0 below 90% progress, 1 at full), header padded by the top safe area.
-- `/styled`: `variant="page"` = `detents=[]` + `width="full"` + the min-height. `width="full"` keeps header/body
+- `/styled`: `variant="page"` = `recede` + `width="full"` + the min-height (it opens at full because the default
+  detents are `[]`; detents passed explicitly still apply). `width="full"` keeps header/body
   full width (a narrower header showed corner seams) and centres their content with `padding-inline: max(16px, (100% - --ybs-content-width) / 2)`.
   `leading`/`trailing` render a 3-column `.ybs-bar` grid with the title centred.
 - Device (2026-11-01): Chrome + Firefox Android, page and fullscreen open at full and a header swipe closes.
@@ -303,15 +312,15 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
 Packed tarball unpacked into `../dapuzzler/node_modules/@yourrealm/bottom-sheet` (no package.json/lock change; `deno install`
 removes it). All three sheets ported: `ui/sheet.tsx` (wrapper with dapuzzler's look, `header` prop), the solved sheet, What's new, and the toss setup picker (was a Dialog styled as a
 sheet). Its e2e suite passes 22/22; Chrome Android: solved sheet peek/fling/chevron/tap-through, picker scroll + header-drag close.
-Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial focus (Enter = New board) focuses itself
-after the content mounts (two rAFs); and don't put `touch-action` utilities on Header (Tailwind's utilities layer beats
+Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial focus (Enter = New board) needs
+`initialFocus` (added for this; dapuzzler still has its two-rAF effect until it installs from npm); and don't put `touch-action` utilities on Header (Tailwind's utilities layer beats
 `ybs`, which would disable the detached drag).
 
 ## Product decisions
 - **`initialFocus`** (2026-11-01), mirroring Base UI's (`boolean | ref | (openType) => …`), on `Sheet.Content` and
   `BottomSheet`. The open type is the page's last input (pointerdown's pointerType, or keyboard). dapuzzler's solved
   sheet needs it (Enter = New board on desktop). Known flaky under full-suite load: "header drag … a flick down closes
-  the sheet" on firefox-desktop (mouse-flick velocity); passes alone. Also "a tap on the overlay of a stacked sheet…" on webkit-mobile.
+  the sheet" on firefox-desktop and once on webkit-mobile (mouse-flick velocity); passes alone. Also "a tap on the overlay of a stacked sheet…" on webkit-mobile.
 - **`/styled` theme follows `color-scheme`** (2026-11-01): tokens use `light-dark()`, so an app's own theme switch (which
   sets `color-scheme`, like dapuzzler or next-themes) drives the sheet; `prefers-color-scheme` alone gave a dark sheet
   on a light-themed app. Apps with no `color-scheme` get light. Body side padding `--ybs-body-padding` (16px) matches
