@@ -757,8 +757,11 @@ test.describe('glide (programmatic moves)', () => {
     await waitForEvent(page, 'lab: onDetentChange 0.5')
     await page.waitForTimeout(1600)
     const f = await frames(page)
-    const moving = f.filter(([, st, glide]) => glide && st > 1)
-    expect(moving.length).toBeGreaterThan(3) // several in-between frames: an animation, not a jump
+    const { H } = await geometry(page)
+    const moving = f.filter(([, st, glide]) => glide && st > 1 && Math.abs(st - H * 0.5) > 2)
+    // In-between frames: an animation, not a jump (a jump has none). Two, not more: a slow CI runner drew only 2-3
+    // frames in the 400ms.
+    expect(moving.length).toBeGreaterThanOrEqual(2)
     expect(f.at(-1)![2]).toBe(false) // snapping restored at rest
   })
 
