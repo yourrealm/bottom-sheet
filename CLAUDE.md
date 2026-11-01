@@ -207,6 +207,14 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   `leading`/`trailing` render a 3-column `.ybs-bar` grid with the title centred.
 - Device (2026-11-01): Chrome + Firefox Android, page and fullscreen open at full and a header swipe closes.
 
+## Floating (iOS 26 style, `/styled` `floating`; on in the Places demo, `?floating=0` to compare)
+- Paint-only: a `clip-path: inset(... round ...)` on the sheet, never a width/margin change (that would reflow while
+  moving and shift snap positions). The controller sets `--ybs-visible` (on-screen sheet px = min(scrollTop, full));
+  `100% - visible` is the part below the screen, so the clip's bottom edge sits a gap above the screen edge.
+  `--ybs-float` is 1 below 75% progress and 0 at full; the gap and bottom corners scale with it (they slide off-screen).
+- The clip also stops hits in the gap (test: "floating: inset with a gap at the peek"). It clips the sheet's own box-shadow.
+- Device (2026-11-01): Chrome + Firefox Android render it and drag from the peek to full.
+
 ## Android back closes the top sheet (`closeOnBack`, default = `modal`)
 - One `CloseWatcher` per open sheet (Portal effect; `src/react/stack.ts` holds it on the stack entry). The browser
   routes back and Escape to the newest watcher = the top sheet. No history entries, so no router/URL interference

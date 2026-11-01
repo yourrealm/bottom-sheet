@@ -584,3 +584,21 @@ test.describe('page sheet and fullscreen', () => {
     await waitForEvent(page, 'notes: onOpenChange false (escape)')
   })
 })
+
+test('floating: inset with a gap at the peek, attached at full', async ({ page }) => {
+  await page.goto('/?open=1#/places')
+  await waitForEvent(page, 'places: onDetentChange 0.35')
+  // The bottom-left corner of the screen is in the floating gap (clipped, so it doesn't hit the sheet)…
+  const cornerHitsSheet = () =>
+    page.evaluate(() => !!document.elementFromPoint(3, innerHeight - 3)?.closest('[data-ybs-sheet]'))
+  const midHitsSheet = () => page.evaluate(() => !!document.elementFromPoint(innerWidth / 2, innerHeight - 40)?.closest('[data-ybs-sheet]'))
+  expect(await cornerHitsSheet()).toBe(false)
+  expect(await midHitsSheet()).toBe(true)
+  // …and part of the sheet once it attaches at full.
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTo({ top: s.clientHeight })
+  })
+  await waitForEvent(page, 'places: onDetentChange full')
+  await expect.poll(cornerHitsSheet).toBe(true)
+})

@@ -273,6 +273,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (!programmatic && lock == null) lastUserScroll = performance.now()
     const progress = full > 0 ? Math.min(Math.max(st / full, 0), 1) : 0
     root.style.setProperty('--ybs-progress', String(progress))
+    root.style.setProperty('--ybs-visible', `${Math.min(st, full)}px`)
     options.onProgress?.(progress)
     root.style.setProperty('--ybs-bleed', st > 4 ? '1' : '0')
 

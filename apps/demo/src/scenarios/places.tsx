@@ -38,6 +38,7 @@ export function Places(_: { autoOpen: boolean }) {
         open={open}
         onOpenChange={setOpen}
         detents={[0.35]}
+        floating={new URLSearchParams(location.search).get('floating') !== '0'}
         title="Hallonbacken Café"
         description="Café · Bakery · 350 m · Open until 18:00"
       >

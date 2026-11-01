@@ -7,6 +7,7 @@
  *   --ybs-vv-top    visualViewport.offsetTop (px)
  *   --ybs-vv-h      visualViewport.height (px)
  *   --ybs-progress  0..1, closed -> full
+ *   --ybs-visible   px of the sheet on screen (scrollTop, capped at full)
  *   --ybs-bleed     0|1, whether the bleed (sheet colour under the visual viewport) shows
  * Consumer-settable:
  *   --ybs-inset     gap above the sheet at the full detent (default: safe area + 10px; 0 with fullscreen)

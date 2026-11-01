@@ -11,6 +11,8 @@ export const styledCss = /* css */ `
   --ybs-backdrop-max: 0.4;
   --ybs-max-width: 640px;
   --ybs-content-width: 960px;
+  --ybs-float-gap: 8px;
+  --ybs-float-radius: 32px;
   /* 1 within the last 10% of travel to full, else 0..: corners square off as a fullscreen sheet reaches the top. */
   --ybs-at-top: clamp(0, (var(--ybs-progress, 0) - 0.9) * 10, 1);
 }
@@ -57,6 +59,18 @@ export const styledCss = /* css */ `
 .ybs-bar > .ybs-title { text-align: center; }
 .ybs-leading { justify-self: start; }
 .ybs-trailing { justify-self: end; }
+/* Floating (iOS 26): at lower detents the sheet floats, inset from the sides and the bottom with large corners;
+   over the last quarter of the travel to full it attaches (the gap closes, the bottom corners slide off-screen).
+   A clip-path, so nothing reflows while the sheet moves. --ybs-visible is the on-screen height of the sheet, so
+   100% - visible is the part below the screen edge. */
+.ybs-sheet.ybs-sheet-floating {
+  --ybs-float: calc(1 - clamp(0, (var(--ybs-progress, 0) - 0.75) * 4, 1));
+  --ybs-g: calc(var(--ybs-float-gap) * var(--ybs-float));
+  --ybs-rt: calc(var(--ybs-radius) + (var(--ybs-float-radius) - var(--ybs-radius)) * var(--ybs-float));
+  --ybs-rb: calc(var(--ybs-float-radius) * var(--ybs-float));
+  clip-path: inset(0 var(--ybs-g) calc((100% - var(--ybs-visible, 0px)) * var(--ybs-float) + var(--ybs-g)) var(--ybs-g)
+    round var(--ybs-rt) var(--ybs-rt) var(--ybs-rb) var(--ybs-rb));
+}
 /* Fullscreen: square corners at the top (they would show the page through), header clear of the notch. */
 [data-ybs-fullscreen] .ybs-sheet, [data-ybs-fullscreen] .ybs-header {
   --ybs-r: calc(var(--ybs-radius) * (1 - var(--ybs-at-top)));

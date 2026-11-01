@@ -52,6 +52,11 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
    *   (`--ybs-content-width`, default 960px).
    */
   width?: 'card' | 'full'
+  /**
+   * iOS 26 style: at lower detents the sheet floats (inset from the screen edges, large corners) and attaches as it
+   * reaches full. Tokens: --ybs-float-gap (8px), --ybs-float-radius (32px).
+   */
+  floating?: boolean
   /** Header bar slots, iOS navigation-bar style: e.g. `leading={<Sheet.Close>Cancel</Sheet.Close>}`. The title centres between them. */
   leading?: ReactNode
   trailing?: ReactNode
@@ -73,6 +78,7 @@ export function BottomSheet({
   title,
   description,
   variant = 'sheet',
+  floating = false,
   width = variant === 'page' ? 'full' : 'card',
   leading,
   trailing,
@@ -92,7 +98,7 @@ export function BottomSheet({
         <Sheet.View>
           <Sheet.Content
             {...contentProps}
-            className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', className, contentProps?.className)}
+            className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', floating && 'ybs-sheet-floating', className, contentProps?.className)}
           >
             <Sheet.Header>
               <Sheet.Handle />
