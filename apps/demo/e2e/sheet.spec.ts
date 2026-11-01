@@ -834,3 +834,17 @@ test('a tap on a still-moving list stops it without pressing the row; a tap at r
   await page.touchscreen.tap(row2.x + row2.width / 2, row2.y + row2.height / 2)
   await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
 })
+
+// BottomSheet's trigger can be a render function: your own button, with our onClick and ARIA state.
+test('a function trigger renders your own button with the open state', async ({ page }) => {
+  await page.goto('/#/share')
+  const trigger = page.locator('#share-trigger')
+  await expect(trigger).toHaveClass('primary') // ours, not wrapped in the preset's trigger button
+  await expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(await trigger.evaluate((el) => el.parentElement!.closest('button'))).toBeNull()
+  await trigger.click()
+  await waitForEvent(page, /share: onDetentChange/)
+  await expect(page.getByRole('dialog', { name: 'Share photo' })).toBeVisible()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+})

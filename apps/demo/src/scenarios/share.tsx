@@ -28,37 +28,49 @@ export function Share({ autoOpen }: { autoOpen: boolean }) {
       />
       <div className="viewer-bar">
         <span className="muted">Today 06:42</span>
-        <button className="primary" onClick={() => setOpen(true)}>Share</button>
+        <BottomSheet
+          {...logged('share')}
+          open={open}
+          onOpenChange={setOpen}
+          // Our own styled button as the trigger (the library adds onClick and the ARIA state).
+          trigger={(props) => (
+            <button className="primary" id="share-trigger" {...props}>
+              Share
+            </button>
+          )}
+          detents={[]}
+          title="Share photo"
+          className="edge"
+        >
+          <div className="share">
+            <div className="share-row" aria-label="People">
+              {people.slice(0, 10).map((p, i) => (
+                <button key={p} className="share-target" onClick={() => act(`Sent to ${p}`)}>
+                  <span className="avatar big" style={{ ['--h' as string]: hues[i % hues.length] }}>{initials(p)}</span>
+                  {p.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+            <div className="share-row" aria-label="Apps">
+              {APPS.map(([icon, label]) => (
+                <button key={label} className="share-target" onClick={() => act(`Shared to ${label}`)}>
+                  <span className="app-icon">{icon}</span>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <ul className="action-list">
+              {ACTIONS.map((a) => (
+                <li key={a}>
+                  <button onClick={() => act(a)}>{a}</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </BottomSheet>
       </div>
       {done && <div className="toast" role="status">{done}</div>}
 
-      <BottomSheet {...logged('share')} open={open} onOpenChange={setOpen} detents={[]} title="Share photo" className="edge">
-        <div className="share">
-          <div className="share-row" aria-label="People">
-            {people.slice(0, 10).map((p, i) => (
-              <button key={p} className="share-target" onClick={() => act(`Sent to ${p}`)}>
-                <span className="avatar big" style={{ ['--h' as string]: hues[i % hues.length] }}>{initials(p)}</span>
-                {p.split(' ')[0]}
-              </button>
-            ))}
-          </div>
-          <div className="share-row" aria-label="Apps">
-            {APPS.map(([icon, label]) => (
-              <button key={label} className="share-target" onClick={() => act(`Shared to ${label}`)}>
-                <span className="app-icon">{icon}</span>
-                {label}
-              </button>
-            ))}
-          </div>
-          <ul className="action-list">
-            {ACTIONS.map((a) => (
-              <li key={a}>
-                <button onClick={() => act(a)}>{a}</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </BottomSheet>
     </div>
   )
 }

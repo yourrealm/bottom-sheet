@@ -1,6 +1,8 @@
 import {
   type ComponentPropsWithRef,
   createContext,
+  type MouseEvent as ReactMouseEvent,
+  type ReactElement,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -237,20 +239,31 @@ export function Root(props: RootProps) {
 
 // ---------------------------------------------------------------------------
 
-export function Trigger(props: ComponentPropsWithRef<'button'>) {
+/** What `Trigger`'s `render` function receives: spread it onto your own button. */
+export interface TriggerRenderProps {
+  type: 'button'
+  'aria-haspopup': 'dialog'
+  'aria-expanded': boolean
+  onClick: (e: ReactMouseEvent<HTMLElement>) => void
+}
+
+export interface TriggerProps extends ComponentPropsWithRef<'button'> {
+  /**
+   * Render your own button (a design-system `<Button>`) instead of ours:
+   * `render={(props) => <Button variant="paper" {...props}>Open</Button>}`. It receives `type`, `onClick` and the
+   * ARIA state; anything else (className, disabled, aria-label) goes on your button directly.
+   */
+  render?: (props: TriggerRenderProps) => ReactElement
+}
+
+export function Trigger({ render, ...props }: TriggerProps) {
   const ctx = useSheet('Trigger')
-  return (
-    <button
-      type="button"
-      aria-haspopup="dialog"
-      aria-expanded={ctx.open}
-      {...props}
-      onClick={(e) => {
-        props.onClick?.(e)
-        if (!e.defaultPrevented) ctx.setOpen(true, 'trigger')
-      }}
-    />
-  )
+  const onClick = (e: ReactMouseEvent<HTMLElement>) => {
+    props.onClick?.(e as ReactMouseEvent<HTMLButtonElement>)
+    if (!e.defaultPrevented) ctx.setOpen(true, 'trigger')
+  }
+  if (render) return render({ type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': ctx.open, onClick })
+  return <button type="button" aria-haspopup="dialog" aria-expanded={ctx.open} {...props} onClick={onClick} />
 }
 
 export function Close(props: ComponentPropsWithRef<'button'>) {

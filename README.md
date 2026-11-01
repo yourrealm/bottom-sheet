@@ -77,6 +77,9 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 - `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
   `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
   positioned against it. Page sheets (`variant="page"`) recede by default.
+- `trigger` (`/styled`): text or elements go inside our trigger button; a function renders your own button (a
+  design-system `<Button>`), receiving `type`, `onClick` and the ARIA state:
+  `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Headless: `<Sheet.Trigger render={…} />`.
 - `/styled` only: `floating` (iOS 26 style: inset from the screen edges with large corners at lower detents, attaching
   as it reaches full; tokens `--ybs-float-gap`, `--ybs-float-radius`).
 - `/styled` only: `variant="page"` (an iOS page sheet for a task: opens straight to full, full width), `width`

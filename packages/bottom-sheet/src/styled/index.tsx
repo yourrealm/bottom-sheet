@@ -1,11 +1,11 @@
-import type { ComponentPropsWithRef, ReactNode } from 'react'
+import type { ComponentPropsWithRef, ReactElement, ReactNode } from 'react'
 import * as Base from '../react/sheet'
 import { useStyle } from '../react/use-style'
 import { styledCss } from './styles'
 
 import type { Detent } from '../core/math'
 export type { Detent }
-export type { OpenChangeDetails, OpenChangeReason } from '../react/sheet'
+export type { OpenChangeDetails, OpenChangeReason, TriggerRenderProps } from '../react/sheet'
 
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
 
@@ -36,8 +36,12 @@ export const Sheet = {
 }
 
 export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
-  /** Element that opens the sheet, e.g. <button>Open</button>. Rendered as-is inside a Trigger. */
-  trigger?: ReactNode
+  /**
+   * What opens the sheet. Content (text, elements) is placed inside our trigger button. A function renders your own
+   * button instead: `trigger={(props) => <Button variant="paper" {...props}>Open</Button>}` (it receives `type`,
+   * `onClick` and the ARIA state; put className, disabled, aria-label on your button).
+   */
+  trigger?: ReactNode | ((props: Base.TriggerRenderProps) => ReactElement)
   title: ReactNode
   description?: ReactNode
   /**
@@ -92,7 +96,11 @@ export function BottomSheet({
   const bar = leading != null || trailing != null
   return (
     <Sheet.Root {...root}>
-      {trigger != null && <Sheet.Trigger className="ybs-trigger">{trigger}</Sheet.Trigger>}
+      {typeof trigger === 'function' ? (
+        <Sheet.Trigger render={trigger} />
+      ) : (
+        trigger != null && <Sheet.Trigger className="ybs-trigger">{trigger}</Sheet.Trigger>
+      )}
       <Sheet.Portal>
         {root.modal !== false && <Sheet.Backdrop />}
         <Sheet.View>
