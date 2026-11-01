@@ -198,7 +198,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .action-list button { width: 100%; text-align: left; padding: 14px 16px; border: 0; background: none; }
 
 /* ---------- filters ---------- */
-.results-page { padding-bottom: 40px; }
+.results-page { padding-bottom: 40px; max-width: 720px; margin: 0 auto; }
 .results-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px 12px; }
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 0 16px; }
 .result-card { background: var(--card); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); padding-bottom: 10px; }
@@ -275,6 +275,8 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 /* Sheet bodies get the preset's side padding (--ybs-body-padding); edge-to-edge lists opt out with .edge. */
 .edge { --ybs-body-padding: 0px; }
 .pad { padding: 0 0 16px; }
+/* Page content (not in a sheet): its own side padding. */
+.page-pad { padding: 0 16px 16px; }
 .secondary { border: 1px solid var(--ybs-divider, var(--line)); background: none; border-radius: 12px; padding: 12px 18px; font-weight: 600; }
 .ybs-trigger:has(> .menu-row), .ybs-trigger:has(> .order) {
   display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: left; font: inherit;
@@ -324,7 +326,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .about p { line-height: 1.5; }
 
 /* Persistent (non-modal) demo */
-.puzzle { padding: 16px; display: grid; gap: 14px; padding-bottom: 120px; }
+.puzzle { padding: 16px; display: grid; gap: 14px; padding-bottom: 120px; max-width: 520px; margin: 0 auto; }
 .board { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .cell {
   aspect-ratio: 1; border: 0; border-radius: 8px;

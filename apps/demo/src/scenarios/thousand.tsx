@@ -25,7 +25,7 @@ const ROWS = Array.from({ length: N }, (_, i) => {
 export function Thousand({ autoOpen }: { autoOpen: boolean }) {
   const [open, setOpen] = useState(autoOpen)
   return (
-    <div className="pad">
+    <div className="page-pad">
       <p>
         A sheet with <strong>{N} rows</strong>, where each row has its <em>own</em> bottom sheet. Open the list, scroll,
         and tap any order.

@@ -26,7 +26,7 @@ export function Notes({ autoOpen }: { autoOpen: boolean }) {
   }
 
   return (
-    <div className="pad">
+    <div className="page-pad">
       <div className="notes-actions">
         <button className="primary" id="new-note" onClick={() => setOpen('page')}>
           New note
