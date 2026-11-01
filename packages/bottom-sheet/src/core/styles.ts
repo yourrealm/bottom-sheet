@@ -56,6 +56,9 @@ export const structuralCss = /* css */ `
 [data-ybs-sheet] { position: relative; scroll-snap-align: start; scroll-snap-stop: always; outline: none; }
 [data-ybs-root][data-ybs-fit] [data-ybs-sheet] { scroll-snap-align: end; }
 [data-ybs-header] { position: sticky; top: 0; z-index: 1; }
+/* Content scrolled: a drag on the header moves the whole sheet (JS, "detached drag"), like native, instead of
+   scrolling the content back first. */
+[data-ybs-root][data-ybs-scrolled] [data-ybs-drag] { touch-action: none; }
 /* Non-modal: the layer lets taps, clicks and wheel through to the page; only the sheet takes them. A drag on
    the sheet still scrolls the scroller (its scroll container), which is how the sheet moves. */
 [data-ybs-root][data-ybs-modeless] [data-ybs-scroller] { pointer-events: none; }

@@ -18,7 +18,7 @@ import { type Detent, type Stop, buildStops, nearestStop, project, resolveStop, 
  *   - stops momentum from crossing the `full` line (native does this),
  *   - re-targets detents when the layout changes,
  *   - follows the visual viewport (keyboard),
- *   - mouse-drags on [data-ybs-drag] elements,
+ *   - mouse-drags on [data-ybs-drag] elements, and any-pointer drags there while the content is scrolled,
  *   - performs programmatic moves.
  */
 
@@ -269,14 +269,31 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   // ---- scroll ----
+  /**
+   * Paint the position vars. `drop` is how far a header drag has pulled the whole sheet down while its content
+   * stays scrolled (see detachedDrag).
+   */
+  let scrolled = false
+  function paint(st: number, drop = 0) {
+    const shown = Math.max(Math.min(st, full) - drop, 0)
+    const progress = full > 0 ? Math.min(Math.max(shown / full, 0), 1) : 0
+    root.style.setProperty('--ybs-progress', String(progress))
+    // During a detached drag the clip math in /styled needs the screen bottom in sheet coordinates, which is st.
+    root.style.setProperty('--ybs-visible', `${drop > 0 ? st : Math.min(st, full)}px`)
+    options.onProgress?.(progress, H > 0 ? shown / H : 0)
+    root.style.setProperty('--ybs-bleed', st > 4 && drop === 0 ? '1' : '0')
+    // Content scrolled: a header drag moves the whole sheet (touch-action off on the header, see styles).
+    const s = st > full + 1
+    if (s !== scrolled) {
+      scrolled = s
+      root.toggleAttribute('data-ybs-scrolled', s)
+    }
+  }
+
   function onScroll() {
     const st = scroller.scrollTop
     if (!programmatic && lock == null) lastUserScroll = performance.now()
-    const progress = full > 0 ? Math.min(Math.max(st / full, 0), 1) : 0
-    root.style.setProperty('--ybs-progress', String(progress))
-    root.style.setProperty('--ybs-visible', `${Math.min(st, full)}px`)
-    options.onProgress?.(progress, H > 0 ? Math.min(st, full) / H : 0)
-    root.style.setProperty('--ybs-bleed', st > 4 ? '1' : '0')
+    if (!detached) paint(st)
 
     if (lock != null && !touching) {
       if (Math.abs(st - lock) > 0.5) scroller.scrollTop = lock
@@ -397,12 +414,112 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (next !== here.detent) scrollToDetent(next)
   }
 
-  // Mouse drag on [data-ybs-drag] (touch uses native scroll, never this).
+  // ---- detached drag: the header pulled down while the content is scrolled ----
+  // In the single scroller, dragging the sticky header down would scroll the content back to its top first.
+  // Native sheets move the whole sheet instead and keep the content where it is. So, only while the content is
+  // scrolled (the header then has touch-action: none), any pointer on [data-ybs-drag] moves the scroller with a
+  // transform, and on release the sheet either springs back to full or goes to the projected detent.
+  let detached = false
+  let dropAnim = 0
+  function detachedDrag(e: PointerEvent, handle: HTMLElement) {
+    // No preventDefault/capture yet: a tap (a button or field in the header) must still work.
+    unlock()
+    cancelAnimationFrame(dropAnim)
+    const st0 = scroller.scrollTop
+    const y0 = e.clientY
+    const samples = [{ t: e.timeStamp, y: e.clientY }]
+    let drop = 0
+    let started = false
+    touching = true
+    programmatic = false
+    anchor = null
+    dbg(`detached drag start @${Math.round(st0)}`)
+
+    const setDrop = (d: number) => {
+      drop = d
+      scroller.style.transform = d > 0 ? `translate3d(0, ${d}px, 0)` : ''
+      paint(st0, d)
+    }
+    const move = (ev: PointerEvent) => {
+      const dy = ev.clientY - y0
+      if (!started && Math.abs(dy) < 4) return
+      started = true
+      detached = true
+      handle.setPointerCapture(ev.pointerId)
+      root.setAttribute('data-ybs-drag', 'active')
+      if (scroller.scrollTop !== st0) scroller.scrollTop = st0 // keep the content where it is
+      setDrop(Math.max(dy, 0))
+      samples.push({ t: ev.timeStamp, y: ev.clientY })
+      while (samples.length > 2 && ev.timeStamp - samples[0]!.t > VELOCITY_WINDOW_MS) samples.shift()
+    }
+    const up = (ev: PointerEvent) => {
+      handle.removeEventListener('pointermove', move as EventListener)
+      handle.removeEventListener('pointerup', up as EventListener)
+      handle.removeEventListener('pointercancel', up as EventListener)
+      touching = false
+      root.removeAttribute('data-ybs-drag')
+      if (!started) return
+      swallowClick()
+      const a = samples[0]!
+      const b = samples[samples.length - 1]!
+      const dt = b.t - a.t
+      const down = dt > 0 && ev.timeStamp - b.t < 50 ? ((b.y - a.y) / dt) * 1000 : 0 // px/s, positive = down
+      const to = nearestStop(project(full - drop, -down), stops).detent
+      dbg(`detached drag release drop=${Math.round(drop)} v=${Math.round(down)} -> ${String(to)}`)
+      const end = to === 'full' ? 0 : full - pos(to)
+      animateDrop(drop, end, setDrop, () => {
+        scroller.style.transform = ''
+        detached = false
+        if (to === 'full') {
+          paint(scroller.scrollTop)
+          return
+        }
+        // Hand back to the scroller in the same frame: the transform goes, scrollTop lands on the detent. The
+        // content returns to its top (invisible when closing; a partial detent shows the top of the content).
+        target = to
+        programmatic = true
+        scroller.scrollTop = pos(to)
+        paint(scroller.scrollTop)
+        if (to === 'closed' || belowFloor(scroller.scrollTop)) settleAtClosed()
+        else requestAnimationFrame(onScrollEnd)
+      })
+    }
+    handle.addEventListener('pointermove', move as EventListener)
+    handle.addEventListener('pointerup', up as EventListener)
+    handle.addEventListener('pointercancel', up as EventListener)
+  }
+  /** A drag that started on a button must not also press it. */
+  function swallowClick() {
+    const stop = (ev: Event) => {
+      ev.stopPropagation()
+      ev.preventDefault()
+    }
+    window.addEventListener('click', stop, { capture: true, once: true })
+    setTimeout(() => window.removeEventListener('click', stop, { capture: true }), 400)
+  }
+  function animateDrop(from: number, to: number, set: (d: number) => void, done: () => void) {
+    const ms = reducedMotion() ? 0 : Math.min(380, 180 + Math.abs(to - from) * 0.4)
+    const t0 = performance.now()
+    const step = () => {
+      if (destroyed) return
+      const k = ms === 0 ? 1 : Math.min((performance.now() - t0) / ms, 1)
+      const eased = 1 - (1 - k) ** 3
+      set(from + (to - from) * eased)
+      if (k < 1) dropAnim = requestAnimationFrame(step)
+      else done()
+    }
+    dropAnim = requestAnimationFrame(step)
+  }
+
+  // Mouse drag on [data-ybs-drag]. Touch uses native scroll, except for the detached drag above.
   function onPointerDown(e: PointerEvent) {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return
+    if (e.button !== 0 || !isOpen || detached) return
     const el = e.target as Element | null
-    const handle = el?.closest('[data-ybs-drag]')
-    if (!handle || el?.closest('input, textarea, select, button, a, [contenteditable]')) return
+    const handle = el?.closest<HTMLElement>('[data-ybs-drag]')
+    if (!handle) return
+    if (scroller.scrollTop > full + 1) return detachedDrag(e, handle)
+    if (el?.closest('input, textarea, select, button, a, [contenteditable]')) return
+    if (e.pointerType !== 'mouse') return
     e.preventDefault()
     ;(handle as HTMLElement).setPointerCapture(e.pointerId)
     unlock()
@@ -584,6 +701,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
       clearTimeout(unlockTimer)
       clearTimeout(scrollEndTimer)
       clearTimeout(watchdog)
+      cancelAnimationFrame(dropAnim)
+      scroller.style.transform = ''
       ro.disconnect()
       scroller.removeEventListener('scroll', onScroll)
       scroller.removeEventListener('scrollend', onScrollEnd)

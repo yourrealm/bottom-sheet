@@ -87,8 +87,8 @@ import { Sheet } from '@yourrealm/bottom-sheet'
   ```
 - `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
   [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
-  never touches your URLs or router. Works in Chrome Android; Firefox Android has the API but doesn't route its back
-  button to it yet, and Safari has no back button. Elsewhere it does nothing.
+  never touches your URLs or router. Works in Chrome and Firefox on Android; Safari has no `CloseWatcher` yet, and
+  elsewhere it does nothing.
 
 A persistent "result" sheet that peeks at 76px and never closes by gesture:
 

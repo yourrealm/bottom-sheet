@@ -130,8 +130,19 @@ Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option
   80ms of samples), then `scrollTo` smooth. Re-enable snap on `scrollend`.
 - If the release lands inside the content (`top > full`), don't snap.
 - ✅ Chrome desktop (driven with fast synthetic drags: a flick up goes to full, a flick down closes). Slow-drag feel and Firefox desktop
-  are untested. Known limitation: dragging the header while content is scrolled un-scrolls the content first; native moves the
-  sheet with the content offset kept.
+  are untested.
+
+### Header drag while the content is scrolled ("detached drag", any pointer)
+In one scroller, dragging the sticky header down would scroll the content back to its top before the sheet moves (reported
+on the Comments demo: "trying to close via the handle just scrolls up"). Native moves the whole sheet and keeps the content offset.
+- While `scrollTop > full`, the controller sets `data-ybs-scrolled`; the header (`[data-ybs-drag]`) then gets `touch-action: none`.
+- A pointer drag there (touch or mouse) moves the scroller with `transform` (content scrollTop pinned), painting progress /
+  `--ybs-visible` itself (`paint(st, drop)`). Release: velocity projection → nearest stop. `full` springs back (content
+  offset kept); anything else animates the drop there, then in one frame removes the transform and sets `scrollTop` to that
+  detent (the content returns to its top; invisible when closing).
+- Header controls still work: no preventDefault/capture until 4px of movement, and the click after a real drag is swallowed.
+- Device (2026-11-01): Chrome + Firefox Android: a small drag springs back with the offset kept, a fling closes. Tests:
+  "header drag while the content is scrolled".
 
 ### Stacked sheets (`src/react/stack.ts`)
 - A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes all
@@ -168,7 +179,7 @@ the sheet behind the keyboard.
   (the on-screen keyboard is then hidden until Cmd+K). Only tap in keyboard tests.
 
 Still open: iOS on a real device (momentum feel, rubber-band at the top), Firefox desktop,
-slow mouse-drag feel, header drag while content is scrolled, page scale-back (the page behind a sheet),
+slow mouse-drag feel, page scale-back (the page behind a sheet),
 screen-reader pass (the modal currently uses inert siblings + focus on open/restore + Escape).
 
 ## Persistent (non-modal) sheets
@@ -236,8 +247,8 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   `closedByEscape()` tells the reasons apart); for a top sheet without one it cancels the keydown, which also stops
   the browser from closing a watcher further down.
 - Device results (2026-11-01): Chrome Android ✅ (Settings → Appearance, back, back: closes top then bottom, reason `back`).
-  Firefox Android 159 ❌: `CloseWatcher` exists but the system back button bypasses it and leaves the page. Possible
-  later: an opt-in history fallback for Firefox.
+  Firefox Android: an early test had the back button bypass `CloseWatcher` and leave the page; the maintainer later
+  confirmed back works well in Firefox Android too ✅.
 - Browsers apply an anti-trap rule: watchers created without a user activation since the last one are grouped, so
   a sheet opened on a timer may close together with the one below, or back may leave the page.
 - Tests: "back button (CloseWatcher)", "a non-modal sheet leaves back…", "without CloseWatcher (Safari today)…".

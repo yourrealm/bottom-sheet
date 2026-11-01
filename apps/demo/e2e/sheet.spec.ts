@@ -207,7 +207,10 @@ test.describe('touch gestures (Chromium)', () => {
     await page.waitForTimeout(300)
     await clearEvents(page)
     expect((await geometry(page)).st).toBeGreaterThan((await geometry(page)).full + 100)
-    await gesture(page, H * 0.15, H * 0.75, 600, false) // past the content top, sheet follows
+    // Start in the content, below the sticky header (a drag on the header moves the sheet by itself, see below).
+    const headerBottom = (await page.locator('[data-ybs-header]').boundingBox())!
+    const y = Math.max(H * 0.15, headerBottom.y + headerBottom.height + 30)
+    await gesture(page, y, H * 0.75, 600, false) // past the content top, sheet follows
     await page.waitForTimeout(1200)
     // The same gesture carried the sheet below full; it then settled at 0.5 (or closed).
     const ev = await events(page)
@@ -627,5 +630,60 @@ test.describe('page behind recedes', () => {
     await page.goto('/?open=1#/settings')
     await waitForEvent(page, 'settings: onDetentChange')
     expect((await state(page)).attr).toBe(false)
+  })
+})
+
+// Native: with the content scrolled, dragging the header moves the whole sheet and keeps the content where it is.
+test.describe('header drag while the content is scrolled', () => {
+  async function scrolledLab(page: Page) {
+    await openLab(page)
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.clientHeight + 300
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await page.waitForTimeout(200)
+    await clearEvents(page)
+    return (await geometry(page)).st
+  }
+  const drop = (page: Page) =>
+    page.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector('[data-ybs-scroller]')!).transform).m42)
+
+  test('a short drag moves the sheet, keeps the content offset, and springs back to full', async ({ page }) => {
+    const st = await scrolledLab(page)
+    const p = await headerPoint(page)
+    await page.mouse.move(p.x, p.y)
+    await page.mouse.down()
+    for (let i = 1; i <= 10; i++) await page.mouse.move(p.x, p.y + i * 8)
+    expect(await drop(page)).toBeGreaterThan(60)
+    expect(Math.abs((await geometry(page)).st - st)).toBeLessThan(2)
+    await page.waitForTimeout(150) // stop moving: no velocity
+    await page.mouse.up()
+    await expect.poll(() => drop(page)).toBe(0)
+    expect(Math.abs((await geometry(page)).st - st)).toBeLessThan(2)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  })
+
+  test('a flick down closes the sheet', async ({ page }) => {
+    await scrolledLab(page)
+    const p = await headerPoint(page)
+    await page.mouse.move(p.x, p.y)
+    await page.mouse.down()
+    for (let i = 1; i <= 8; i++) await page.mouse.move(p.x, p.y + i * 50)
+    await page.mouse.up()
+    await waitForEvent(page, 'lab: onOpenChange false')
+  })
+
+  test('touch (CDP): the header drag closes the sheet', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP only')
+    await scrolledLab(page)
+    const p = await headerPoint(page)
+    const cdp = await page.context().newCDPSession(page)
+    const touch = (type: string, y: number) =>
+      cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: p.x, y }] })
+    await touch('touchStart', p.y)
+    for (let i = 1; i <= 8; i++) await touch('touchMove', p.y + i * 50)
+    await touch('touchEnd', p.y + 400)
+    await waitForEvent(page, 'lab: onOpenChange false')
   })
 })
