@@ -894,3 +894,27 @@ test.describe('initialFocus', () => {
     expect(await page.evaluate(() => document.activeElement?.closest('[data-ybs-sheet]') ?? null)).toBeNull()
   })
 })
+
+// Apps with a strict CSP (no style-src 'unsafe-inline', as Holden's micro-app guide recommends) can't take our
+// injected <style>. They import the CSS file instead; its marker turns injection off. Needs `pnpm build` (dist/).
+test('works under a strict CSP with the CSS file instead of injection', async ({ page }) => {
+  const css = new URL('../../../packages/bottom-sheet/dist/styled.css', import.meta.url).pathname
+  await page.route((url) => url.pathname === '/', async (route) => {
+    const res = await route.fetch()
+    const html = (await res.text()).replace(
+      '<head>',
+      `<head><meta http-equiv="Content-Security-Policy" content="style-src 'self'"><link rel="stylesheet" href="/@fs${css}">`,
+    )
+    await route.fulfill({ response: res, body: html })
+  })
+  const blocked: string[] = []
+  page.on('console', (m) => m.type() === 'error' && /Content Security Policy|Content-Security-Policy/i.test(m.text()) && blocked.push(m.text()))
+  await page.goto('/?open=1#/lab')
+  await waitForEvent(page, 'lab: onDetentChange 0.5')
+  // The structural CSS is there (from the file), and the sheet rests at its detent.
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ybs-scroller]')!).scrollSnapType)).toContain('mandatory')
+  const g = await geometry(page)
+  expect(Math.abs(g.st - g.H * 0.5)).toBeLessThan(3)
+  // Nothing injected, so nothing for the CSP to block from us.
+  await expect(page.locator('style[data-ybs-style]')).toHaveCount(0)
+})

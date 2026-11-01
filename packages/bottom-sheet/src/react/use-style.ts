@@ -10,9 +10,27 @@ import { useInsertionEffect } from 'react'
 export const LAYER_ORDER = '@layer theme, base, ybs, components, utilities;'
 export const layered = (css: string) => `${LAYER_ORDER}\n@layer ybs {\n${css}\n}\n`
 
-/** Inject a stylesheet once per document. No CSS import needed. */
+/** A layered stylesheet as shipped in dist/*.css, with the marker that turns runtime injection off. */
+export const cssFile = (id: string, css: string) => layered(`:root { --ybs-css-${id}: 1; }\n${css}`)
+
+/** Whether the app loaded our CSS as a file (dist/styles.css or styled.css): then nothing is injected. */
+const fileLoaded = new Map<string, boolean>()
+function loadedAsFile(id: string) {
+  let v = fileLoaded.get(id)
+  if (v === undefined) {
+    v = getComputedStyle(document.documentElement).getPropertyValue(`--ybs-css-${id}`).trim() === '1'
+    fileLoaded.set(id, v)
+  }
+  return v
+}
+
+/**
+ * Inject a stylesheet once per document. No CSS import needed. Apps with a strict Content-Security-Policy import
+ * `@yourrealm/bottom-sheet/styles.css` (or `styled.css`) instead; its marker variable turns this off.
+ */
 export function useStyle(id: string, css: string) {
   useInsertionEffect(() => {
+    if (loadedAsFile(id)) return
     const text = layered(css)
     const existing = document.querySelector<HTMLStyleElement>(`style[data-ybs-style="${id}"]`)
     if (existing) {

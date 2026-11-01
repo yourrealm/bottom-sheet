@@ -28,6 +28,17 @@ Requires React 19. No CSS import needed: styles are injected into the `ybs` casc
 With Tailwind v4 the layer sits between `base` and `components`: utility classes on the parts win, and preflight
 doesn't reset the preset.
 
+**Strict Content-Security-Policy** (no `style-src 'unsafe-inline'`): injected `<style>` elements are blocked, so import
+the CSS as a file instead. Your bundler serves it from your own origin, and the library then injects nothing.
+
+```css
+/* in your main CSS, before Tailwind, so the layer order holds */
+@import "@yourrealm/bottom-sheet/styled.css"; /* or styles.css for the headless parts alone */
+@import "tailwindcss";
+```
+
+Or `import '@yourrealm/bottom-sheet/styled.css'` in your entry, before your own CSS.
+
 ## Use
 
 The simple path, with the polished preset:

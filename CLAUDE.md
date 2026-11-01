@@ -26,6 +26,11 @@ The peer dependency is React >= 19 (parts use ref-as-prop). Styles are injected 
 so consumers need no CSS import. They live in `@layer ybs`, ordered by `@layer theme, base, ybs, components, utilities;`
 (Tailwind v4's names): unlayered consumer CSS and Tailwind utilities win, and preflight (in `base`) can't wipe the preset.
 The style must stay first in the document for that order statement to count. Test: "Tailwind v4 layers".
+**CSS as files** (for a strict CSP without `style-src 'unsafe-inline'`, which blocks injected `<style>`): `pnpm build`
+also writes `dist/styles.css` (core) and `dist/styled.css` (core + preset) from the same strings
+(`scripts/build-css.mjs`, Node >= 23.6 type stripping). Each sets a marker (`--ybs-css-core` / `--ybs-css-styled`) that
+makes `useStyle` skip injection. `sideEffects: ["*.css"]` so bundlers keep the import. Import it before Tailwind so
+the layer order statement comes first. Test: "works under a strict CSP with the CSS file" (needs a build first).
 
 ## Core idea (validated by spike 01)
 
@@ -306,7 +311,7 @@ after the content mounts (two rAFs); and don't put `touch-action` utilities on H
 - **`initialFocus`** (2026-11-01), mirroring Base UI's (`boolean | ref | (openType) => …`), on `Sheet.Content` and
   `BottomSheet`. The open type is the page's last input (pointerdown's pointerType, or keyboard). dapuzzler's solved
   sheet needs it (Enter = New board on desktop). Known flaky under full-suite load: "header drag … a flick down closes
-  the sheet" on firefox-desktop (mouse-flick velocity); passes alone.
+  the sheet" on firefox-desktop (mouse-flick velocity); passes alone. Also "a tap on the overlay of a stacked sheet…" on webkit-mobile.
 - **`/styled` theme follows `color-scheme`** (2026-11-01): tokens use `light-dark()`, so an app's own theme switch (which
   sets `color-scheme`, like dapuzzler or next-themes) drives the sheet; `prefers-color-scheme` alone gave a dark sheet
   on a light-themed app. Apps with no `color-scheme` get light. Body side padding `--ybs-body-padding` (16px) matches

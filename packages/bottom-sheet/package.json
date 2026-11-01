@@ -20,7 +20,9 @@
     "headless"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "files": [
     "dist",
     "README.md",
@@ -29,10 +31,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./styled": "./src/styled/index.tsx",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./styles.css": "./dist/styles.css",
+    "./styled.css": "./dist/styled.css"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && node scripts/build-css.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p .",
     "prepack": "node scripts/prepack.mjs && pnpm build",
@@ -63,7 +67,9 @@
         "types": "./dist/styled.d.ts",
         "import": "./dist/styled.js"
       },
-      "./package.json": "./package.json"
+      "./package.json": "./package.json",
+      "./styles.css": "./dist/styles.css",
+      "./styled.css": "./dist/styled.css"
     }
   }
 }
