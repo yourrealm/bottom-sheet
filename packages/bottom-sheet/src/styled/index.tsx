@@ -5,7 +5,18 @@ import { checkCss } from '../react/css-check'
 
 import type { Detent } from '../core/math'
 export type { Detent }
-export type { InitialFocus, InteractionType, OpenChangeDetails, OpenChangeReason, TriggerRenderProps } from '../react/sheet'
+export type {
+  ContentProps,
+  InitialFocus,
+  InteractionType,
+  OpenChangeDetails,
+  OpenChangeReason,
+  PortalProps,
+  RootProps,
+  TriggerProps,
+  TriggerRenderProps,
+  ViewProps,
+} from '../react/sheet'
 
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
 

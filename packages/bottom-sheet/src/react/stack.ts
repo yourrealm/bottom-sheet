@@ -45,18 +45,23 @@ const stack: StackEntry[] = []
 let escapeListening = false
 
 function onKeyDown(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || e.defaultPrevented) return
-  const top = stack.findLast((s) => !s.closing)
-  if (!top || !takesEscape(top)) return
-  if (top.watcher) {
-    // The browser turns this Escape into a close request for the newest watcher (the top sheet's).
-    escapePressed = true
-    setTimeout(() => (escapePressed = false))
-    return
-  }
+  // isComposing / 229: Escape cancels an IME composition (Chinese, Japanese input), not the sheet.
+  if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || e.keyCode === 229) return
+  // Any Escape: if the browser turns it into a watcher's close request, that watcher must know it wasn't back.
+  escapePressed = true
+  setTimeout(() => (escapePressed = false))
+  const top = escapeTarget()
+  // The browser turns this Escape into a close request for the newest watcher; if that's a sheet that doesn't take
+  // Escape, its onclose hands it on to escapeTarget() (see Portal).
+  if (!top || top.watcher) return
   // Cancelling the keydown also stops the browser from closing a watcher further down the stack.
   e.preventDefault()
   top.close()
+}
+
+/** The sheet Escape is for: the topmost one that's open and takes it (a non-modal sheet only with focus inside). */
+export function escapeTarget() {
+  return stack.findLast((s) => !s.closing && takesEscape(s))
 }
 
 export function pushSheet(entry: StackEntry) {

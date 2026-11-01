@@ -1043,3 +1043,162 @@ test('a non-modal sheet ignores Escape while focus is elsewhere on the page', as
   await page.waitForTimeout(600)
   expect(await events(page)).not.toContain('solved: onDetentChange 76px')
 })
+
+// ---------- found by the second pre-release review (2026-11-01) ----------
+
+test('the keyboard opening with the content scrolled keeps the content where it is', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'one engine is enough (faked visualViewport resize)')
+  await openLab(page)
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTop = s.clientHeight + 600
+  })
+  await page.waitForTimeout(400)
+  // How far the content is scrolled (scrollTop past full); scrollTop itself shifts as the scroller gets shorter.
+  const offset = async () => {
+    const g = await geometry(page)
+    return g.st - g.full
+  }
+  const before = await offset()
+  expect(before).toBeGreaterThan(300)
+  await page.evaluate(() => {
+    const vv = window.visualViewport!
+    const h = vv.height
+    Object.defineProperty(vv, 'height', { configurable: true, get: () => h - 300 })
+    vv.dispatchEvent(new Event('resize'))
+  })
+  await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-keyboard', '')
+  await page.waitForTimeout(800)
+  expect(await offset()).toBeGreaterThan(before - 50)
+})
+
+test('the keyboard opening at a partial detent still takes the sheet to full', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'one engine is enough (faked visualViewport resize)')
+  await openLab(page)
+  await page.evaluate(() => {
+    const vv = window.visualViewport!
+    const h = vv.height
+    Object.defineProperty(vv, 'height', { configurable: true, get: () => h - 300 })
+    vv.dispatchEvent(new Event('resize'))
+  })
+  await waitForEvent(page, 'lab: onDetentChange full')
+})
+
+test('a touch drag up during the close animation still closes the sheet', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP touch')
+  await openLab(page)
+  await page.waitForTimeout(300)
+  const cdp = await page.context().newCDPSession(page)
+  const x = 200
+  const y = 700
+  const touch = (type: string, yy: number) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: yy }] })
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(40)
+  await touch('touchStart', y)
+  for (let i = 1; i <= 30; i++) {
+    await touch('touchMove', y - i * 15)
+    await page.waitForTimeout(16)
+  }
+  await page.waitForTimeout(300)
+  await touch('touchEnd', y - 450)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+})
+
+test('a second finger does not end a header drag', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP multi-touch')
+  await openLab(page)
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTop = s.clientHeight + 300
+  })
+  await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+  await page.waitForTimeout(300)
+  const b = (await page.locator('[data-ybs-header]').boundingBox())!
+  const x = b.x + b.width / 2
+  const y = b.y + 20
+  const cdp = await page.context().newCDPSession(page)
+  const send = (type: string, pts: Array<{ x: number; y: number; id: number }>) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts })
+  const transform = () => page.evaluate(() => document.querySelector<HTMLElement>('[data-ybs-scroller]')!.style.transform)
+  await send('touchStart', [{ x, y, id: 1 }])
+  for (let i = 1; i <= 10; i++) await send('touchMove', [{ x, y: y + i * 15, id: 1 }])
+  const before = await transform()
+  expect(before).toContain('translate3d')
+  await send('touchStart', [{ x, y: y + 150, id: 1 }, { x: x + 100, y: 600, id: 2 }])
+  await page.waitForTimeout(50)
+  expect(await transform()).toContain('translate3d') // still dragging: the first finger keeps the sheet
+  await send('touchEnd', [])
+})
+
+test('reopening during the close animation moves focus into the sheet, and closing gives it back', async ({ page }, info) => {
+  test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
+  await page.goto('/#/lab')
+  await page.locator('#open-lab').click()
+  await waitForEvent(page, 'lab: onDetentChange 0.5')
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(800)
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[data-ybs-sheet]'))).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  await expect(page.locator('#open-lab')).toBeFocused()
+})
+
+test('a non-modal sheet with closeOnBack ignores Escape while focus is elsewhere', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CloseWatcher path; one engine is enough')
+  await page.goto('/?open=1&modal=0&back=1#/lab')
+  await waitForEvent(page, /lab: onDetentChange/)
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(600)
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+  // With focus inside it, Escape closes it (and says so).
+  await page.locator('[data-ybs-sheet]').focus()
+  await page.keyboard.press('Escape')
+  await waitForEvent(page, 'lab: close watcher: escape')
+  await waitForEvent(page, 'lab: onOpenChange false')
+})
+
+test('a headless sheet whose content arrives after opening waits for it instead of closing', async ({ page }) => {
+  await page.goto('/?late=1#/lab')
+  await page.locator('#open-late').click()
+  await page.waitForTimeout(1200)
+  expect(await events(page)).not.toContain('late: onOpenChange false swipe')
+  await expect(page.getByText('Loaded')).toBeInViewport()
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+})
+
+test('arrow keys and Page Up never scroll the sheet closed', async ({ page }, info) => {
+  test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
+  await page.goto('/#/lab')
+  await page.locator('#open-lab').click()
+  await waitForEvent(page, 'lab: onDetentChange 0.5')
+  await page.locator('[data-ybs-sheet]').focus()
+  for (const key of ['ArrowUp', 'PageUp', 'Home', 'PageUp']) await page.keyboard.press(key)
+  await page.waitForTimeout(800)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+})
+
+test('Escape during IME composition does not close the sheet', async ({ page }, info) => {
+  test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
+  await openLab(page)
+  await page.evaluate(() => {
+    document.querySelector('[data-ybs-sheet] input')!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true }),
+    )
+  })
+  await page.waitForTimeout(500)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+})
+
+test('Portal container: a sheet portalled into an element still makes the rest of the page inert', async ({ page }) => {
+  await page.goto('/?late=1&container=1#/lab')
+  const trigger = page.locator('#open-late')
+  await trigger.click()
+  await expect(page.locator('#late-portal [data-ybs-root]')).toHaveCount(1)
+  // The trigger is a sibling of the container, not of the sheet's root.
+  expect(await trigger.evaluate((el) => !!el.closest('[inert]'))).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  expect(await trigger.evaluate((el) => !!el.closest('[inert]'))).toBe(false)
+})

@@ -4,6 +4,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
   type ReactNode,
+  type Ref,
   type RefObject,
   useCallback,
   useContext,
@@ -20,6 +21,7 @@ import type { Detent } from '../core/math'
 import {
   closedByEscape,
   closeWatcher,
+  escapeTarget,
   holdInert,
   isTopSheet,
   pushSheet,
@@ -80,13 +82,23 @@ function useSheet(part: string) {
   return ctx
 }
 
-function mergeRefs<T>(...refs: Array<React.Ref<T> | undefined>) {
-  return (node: T | null) => {
-    for (const ref of refs) {
-      if (typeof ref === 'function') ref(node)
-      else if (ref) (ref as React.RefObject<T | null>).current = node
-    }
-  }
+/**
+ * One stable callback ref for the user's ref and ours (a new callback each render would detach and re-attach
+ * them every render). Forwards a callback ref's React 19 cleanup.
+ */
+function useMergedRef<T>(user: Ref<T> | undefined, own: RefObject<T | null>) {
+  return useCallback(
+    (node: T | null) => {
+      own.current = node
+      const cleanup = typeof user === 'function' ? user(node) : user ? ((user as RefObject<T | null>).current = node, undefined) : undefined
+      return () => {
+        own.current = null
+        if (typeof user === 'function') typeof cleanup === 'function' ? cleanup() : user(null)
+        else if (user) (user as RefObject<T | null>).current = null
+      }
+    },
+    [user, own],
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -191,9 +203,8 @@ export function Root(props: RootProps) {
     initialDetent,
     detent,
     onDetentChange,
-    modal = true,
+    modal: modalProp = true,
     dismissible = true,
-    closeOnBack = modal,
     fullscreen = false,
     recede = false,
     debug,
@@ -201,6 +212,10 @@ export function Root(props: RootProps) {
   const [openState, setOpenState] = useState(defaultOpen)
   const open = openProp ?? openState
   const [mounted, setMounted] = useState(open)
+  // `modal` is read when the sheet opens (the page lock, inert and focus are set up for one or the other).
+  const [modalAtOpen, setModalAtOpen] = useState(modalProp)
+  const modal = mounted ? modalAtOpen : modalProp
+  const closeOnBack = props.closeOnBack ?? modal
   const controller = useRef<SheetController | null>(null)
   const rootEl = useRef<HTMLDivElement | null>(null)
   const sheetEl = useRef<HTMLElement | null>(null)
@@ -235,11 +250,16 @@ export function Root(props: RootProps) {
     if (open && !mounted) {
       // Non-modal sheets only use it if they took focus (initialFocus); see View.
       returnFocus.current = document.activeElement as HTMLElement | null
+      setModalAtOpen(modalProp)
       setMounted(true)
     }
     if (open && mounted && closing.current) {
       closing.current = false
       controller.current?.open(detent ?? initialDetent)
+      // Closing gave focus back to the page, which a modal sheet has made inert again (Portal runs first): move it
+      // into the sheet as on a first open.
+      const sheet = sheetEl.current
+      if (sheet && !sheet.contains(document.activeElement)) initialFocusTarget(initialFocus.current, modal, sheet)?.focus({ preventScroll: true })
     }
     if (!open && mounted) {
       closing.current = true
@@ -387,8 +407,8 @@ export function Portal({ children, container }: PortalProps) {
       releaseInert(held)
       dbg(`portal unmount: released ${held.length}`)
       // Restore focus only after lifting inert: while the page is inert, focus() is a no-op.
+      // Kept (not cleared): reopened during the close animation, the sheet gives focus back here again later.
       const back = ctx.returnFocus.current
-      ctx.returnFocus.current = null
       if (back?.isConnected) back.focus({ preventScroll: true })
     }
   }, [blocking, ctx.rootEl, ctx.returnFocus])
@@ -416,8 +436,11 @@ export function Portal({ children, container }: PortalProps) {
       entry.watcher = null
       const escape = closedByEscape()
       ctxRef.current.debug?.(`close watcher: ${escape ? 'escape' : 'back'}`)
-      // The browser routes Escape to the newest watcher wherever focus is; a non-modal sheet only takes it from inside.
-      if (!escape || takesEscape(entry)) dismissRef.current(escape ? 'escape' : 'back')
+      // The browser routes Escape to the newest watcher wherever focus is; a non-modal sheet only takes it from
+      // inside, and otherwise hands it to the sheet that does (focus in a modal sheet below), if any.
+      if (!escape) dismissRef.current('back')
+      else if (takesEscape(entry)) dismissRef.current('escape')
+      else escapeTarget()?.close()
       setRearm((n) => n + 1)
     }
     entry.watcher = watcher
@@ -460,17 +483,17 @@ export function Backdrop(props: ComponentPropsWithRef<'div'>) {
 
 // ---------------------------------------------------------------------------
 
-export interface ViewProps {
-  children?: ReactNode
-  className?: string
+/** Props go on the scroller (the one scroll container); `bleedClassName` on the bleed layer. */
+export interface ViewProps extends ComponentPropsWithRef<'div'> {
   /** className for the bleed layer (sheet colour under the visual viewport). */
   bleedClassName?: string
 }
 
 /** The single native scroller: spacer (closed area), detent markers, and the sheet (Sheet.Content). */
-export function View({ children, className, bleedClassName }: ViewProps) {
+export function View({ children, bleedClassName, ref, ...props }: ViewProps) {
   const ctx = useSheet('View')
   const scroller = useRef<HTMLDivElement>(null)
+  const scrollerRef = useMergedRef(ref, scroller)
   const markers = useRef<HTMLDivElement>(null)
   // Latest callbacks without recreating the controller.
   const ctxRef = useRef(ctx)
@@ -540,9 +563,9 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     <>
       <div data-ybs-bleed="" aria-hidden="true" className={bleedClassName} />
       <div
+        {...props}
         data-ybs-scroller=""
-        ref={scroller}
-        className={className}
+        ref={scrollerRef}
         // Taps outside the sheet, and which presses may click, are decided in the controller (one place).
       >
         <div data-ybs-track="">
@@ -564,6 +587,7 @@ export interface ContentProps extends ComponentPropsWithRef<'section'> {
 
 export function Content({ ref, initialFocus, ...props }: ContentProps) {
   const ctx = useSheet('Content')
+  const sheetRef = useMergedRef(ref, ctx.sheetEl)
   // Read by View's layout effect, which runs after this renders (the View is the Content's parent).
   ctx.initialFocus.current = initialFocus
   return (
@@ -575,7 +599,7 @@ export function Content({ ref, initialFocus, ...props }: ContentProps) {
       aria-describedby={ctx.hasDescription ? ctx.descriptionId : undefined}
       tabIndex={-1}
       {...props}
-      ref={mergeRefs(ref, ctx.sheetEl)}
+      ref={sheetRef}
     />
   )
 }

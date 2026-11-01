@@ -186,11 +186,16 @@ A modal sheet's siblings are inert only while it is open (`blocking` in Portal),
 closing starts, inert is lifted and focus returns to the trigger. The closing sheet itself is NOT inert: a touch tap
 closes on pointerup, before the click, and that click must land on the closing overlay (which ignores it), not fall
 through to a row of the sheet below (tried and reverted 2026-11-01). Once `close()` runs, no input stops it (the
-controller's `closing` flag): a touch doesn't stop the glide (the finger-lift check finishes the close), and a wheel or
-header drag is ignored. A wheel used to step a closing sheet back up, leaving it on screen with `open=false`.
+controller's `closing` flag): a touch doesn't stop the glide, and a wheel or header drag is ignored. Wherever it comes
+to rest short of closed while closing (a finger kept dragging after the glide reached 0, a header drag already running
+when `close()` came), it carries on to closed once the finger lifts. A wheel used to step a closing sheet back up, and a
+touch could leave it at a detent, both on screen with `open=false` and impossible to close normally.
+Reopening during the close moves focus into the sheet again (the page was released and re-made inert), and
+`returnFocus` is kept until unmount so the final close restores it.
 A header drag listens for its release on the window: a mouse that left the header before its first move released
 elsewhere, `touching` stayed set, and every later close waited for a finger forever (an invisible layer over the page).
-Any new press also ends a drag whose release was missed, and clears the arbiter's "drop the next click" window. Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
+A new mouse press ends a mouse drag whose release was missed (not a second finger: that aborted a touch drag), the
+mouse header drag also ends on `lostpointercapture`, and any new press clears the arbiter's "drop the next click" window. Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
 reopened on Space). Test: "the page takes focus and input back as soon as the sheet starts closing".
 
 ### Stacked sheets (`src/react/stack.ts`)
@@ -218,7 +223,9 @@ from the layout viewport. Without that, iOS pans fixed elements off-screen, and 
 the sheet behind the keyboard.
 - iOS also scrolls the **document** to reveal a focused input, even with `html{overflow:hidden}` (observed: 90 to 246pt).
   Record `scrollY` on open and restore it on vv/window scroll.
-- When the keyboard opens (`innerHeight - vv.height > 120`), go to the largest detent, as native does.
+- When the keyboard opens (`innerHeight - vv.height * vv.scale > 120`; the scale keeps pinch-zoom out of it), go to the
+  largest detent, as native does, but only while the sheet is below full: with the content scrolled, the focused field
+  is already in view, and going to `full` scrolled the content back to its top (a field low in a long form vanished).
 - A white `.bleed` layer under the visual viewport continues the sheet colour behind the keyboard and the iOS 26
   translucent toolbar. Otherwise the page shows through the gap.
 - Chrome Android resizes in two steps and **does** re-snap on that layout change, which hijacks our smooth scroll to
@@ -253,8 +260,11 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   A programmatic close (`open={false}`) temporarily re-adds `closed` (the controller's `closing` flag).
 - `onDetentChange` never reports `'closed'` (closing is `onOpenChange`), so `detent={d} onDetentChange={setD}`
   round-trips; it used to, and a controlled sheet then reopened at closed and closed again at once.
-- **Escape only acts on a non-modal sheet while focus is inside it** (`takesEscape` in `stack.ts`, also for a
-  CloseWatcher's Escape). Otherwise typing in an unrelated field and pressing Escape collapsed the solved sheet.
+- **Escape only acts on a non-modal sheet while focus is inside it** (`takesEscape` in `stack.ts`). Otherwise typing in
+  an unrelated field and pressing Escape collapsed the solved sheet. Escape goes to the topmost sheet that takes it
+  (`escapeTarget`). The browser still routes Escape to the newest CloseWatcher, so every Escape sets `escapePressed`
+  (else that watcher read it as back), and a watcher whose sheet doesn't take it hands it to `escapeTarget()`.
+  Escape during IME composition is ignored.
 - **Firefox Android leaves a swipe below the floor** (rested at 46px and 39px under a 76px peek, no snap up). The
   controller now treats "resting below the lowest detent" like "resting at closed" for a sheet that can't be dismissed
   (`belowFloor`, on scrollend and on finger lift) and scrolls back up to the floor. Chrome snaps natively.
@@ -317,6 +327,16 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
 `ybs`, which would disable the detached drag).
 
 ## Product decisions
+- **`modal` is read when the sheet opens** (2026-11-01): Root snapshots it on mount (the page lock, inert, focus and
+  Escape are set up for one or the other); a change applies from the next open. `closeOnBack` defaults from that value.
+- **Keys never close the sheet** (2026-11-01): ArrowUp/PageUp/Home/Shift+Space at or below full are cancelled (not in
+  fields, not Space on buttons); content above full still scrolls with keys. Escape is the keyboard close.
+- **Late content** (2026-11-01): a sheet that opens with no height (headless, no header, lazy content) waits in
+  `onScrollEnd` instead of settling at closed, and the ResizeObserver glides it open when the content arrives.
+  Demo: `#/lab?late=1` (also `&container=1` for `Portal container`).
+- **Packaging** (2026-11-01): the build adds `'use client'` to every chunk (Next.js App Router), a top-level `types`
+  for old `moduleResolution: node10`, `/styled` re-exports the prop types, and `Sheet.View` passes its props to the scroller.
+  The controller and the `guard` option are internal (not exported, no prop).
 - **`initialFocus`** (2026-11-01), mirroring Base UI's (`boolean | ref | (openType) => …`), on `Sheet.Content` and
   `BottomSheet`. The open type is the page's last input (pointerdown's pointerType, or keyboard). dapuzzler's solved
   sheet needs it (Enter = New board on desktop). Known flaky under full-suite load: "header drag … a flick down closes

@@ -73,7 +73,7 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 
 ### Options
 
-- `detents`: partial resting heights, as fractions of the screen (`0.5`) or CSS lengths of visible sheet (`'76px'`,
+- `detents`: partial resting heights, as fractions of the height available to the sheet (`0.5`) or CSS lengths of visible sheet (`'76px'`,
   `'40dvh'`). Full height is always included, and is the content's own height when the content is short. Default `[]`:
   the sheet opens straight to full, like iOS. It opens at the smallest partial detent when you give some, or at
   `initialDetent`.
@@ -140,6 +140,7 @@ A persistent "result" sheet that peeks at 76px and never closes by gesture:
 - One sheet in a fixed theme: set `color-scheme` on it, e.g. `className="[color-scheme:dark]"` or
   `contentProps={{ style: { colorScheme: 'dark' } }}` (headless: on `Sheet.Content`).
 - The `/styled` body gets 16px side padding like the header (`--ybs-body-padding`; set it to `0` for edge-to-edge lists).
+- Headless `Sheet.View` passes its props (`className`, `style`, `ref`, `data-*`) to the scroller, the one scroll container.
 - CSS variables on `[data-ybs-root]`: `--ybs-progress` (0 to 1, closed to full) for your own backdrop or effects,
   `--ybs-visible` (px of the sheet on screen), and `--ybs-sheet-bg` (the colour that continues behind the keyboard).
   While the content is scrolled the root has `data-ybs-scrolled`.
@@ -155,6 +156,9 @@ A persistent "result" sheet that peeks at 76px and never closes by gesture:
   browser's own scrolling.
 - With the content scrolled, dragging the header moves the whole sheet and keeps the content where it is, like native.
 - A tap on content that is still scrolling only stops it, and a drag never presses what it started on.
+- Keys scroll the content but never move the sheet down or close it; closing by keyboard is Escape. Escape that ends
+  an input method's composition (Chinese, Japanese) is left to the input.
+- Once a sheet starts closing, it finishes: a touch, wheel or drag during the animation doesn't bring it back.
 - A sheet closes from a swipe, Escape, back, an outside press, a close button or `open={false}`, never from a scroll
   nobody asked for: one that lands at closed (the browser revealing a focused field, say) is undone.
 

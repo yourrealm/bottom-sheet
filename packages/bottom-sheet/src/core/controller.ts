@@ -28,8 +28,6 @@ export interface SheetControllerOptions {
   dismissible?: boolean
   /** Modal sheets lock the page scroll (default true). Non-modal sheets leave the page alone. */
   modal?: boolean
-  /** Stop momentum at the `full` line (default true). */
-  guard?: boolean
   /** Called when the sheet comes to rest at a detent. Never 'closed': closing is reported by onClosed. */
   onDetentChange?: (detent: Detent) => void
   /** Called once the sheet has fully closed (scrolled to 0). */
@@ -122,7 +120,6 @@ function unlockHtml() {
 export function createSheetController(els: SheetElements, options: SheetControllerOptions): SheetController {
   const { root, scroller, sheet } = els
   const markerHost = els.markers
-  const guard = options.guard ?? true
   const dbg = (m: string) => options.debug?.(m)
   const modal = options.modal ?? true
   let requested = [...options.detents]
@@ -350,7 +347,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (lock != null && !touching) {
       if (Math.abs(st - lock) > 0.5) scroller.scrollTop = lock
       armUnlock()
-    } else if (guard && !touching && !programmatic && anchor != null) {
+    } else if (!touching && !programmatic && anchor != null) {
       // scroll-snap-stop normally stops momentum at full natively; this only catches a real overshoot
       // (2px tolerance: snap-stop lands on full with sub-pixel rounding).
       if ((anchor > full + 2 && st < full - 2) || (anchor < full - 2 && st > full + 2)) clamp(full)
@@ -364,6 +361,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   function onScrollEnd() {
     if (destroyed || gliding) return // a glide settles itself when it ends
+    // Opened with no height yet (lazy content, no header): `full` is 0, so it "arrived" at closed. Wait for the
+    // content; the ResizeObserver glides to the target once it has height.
+    if (isOpen && !closing && full < 1 && programmatic) return
     const st = scroller.scrollTop
     dbg(`scrollend @${Math.round(st)} prog=${programmatic} target=${String(target)} lock=${String(lock)}`)
 
@@ -379,9 +379,16 @@ export function createSheetController(els: SheetElements, options: SheetControll
     retries = 0
     if (root.getAttribute('data-ybs-drag') === 'settle') root.removeAttribute('data-ybs-drag')
 
+    // Closing on purpose, but a finger (or a drag) stopped short of closed: carry on closing once it lets go.
+    if (closing && isOpen && !belowFloor(st)) {
+      if (touching) dbg('closing: waiting for the finger to lift')
+      else scrollToDetent('closed')
+      return
+    }
+
     // Something other than the user or us scrolled the sheet down to closed (e.g. a scrollIntoView landing nearer the
     // closed snap point, seen in Playwright): go back to where it rested instead of closing.
-    if (isOpen && !programmatic && !touching && belowFloor(st) && performance.now() - lastInputAt > STRAY_MS) {
+    if (isOpen && !closing && !programmatic && !touching && belowFloor(st) && performance.now() - lastInputAt > STRAY_MS) {
       const back = current && current !== 'closed' ? current : floor()
       dbg(`scrolled to closed without user input: back to ${String(back)}`)
       scrollToDetent(back)
@@ -439,8 +446,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
   function onPressStart(e: PointerEvent) {
     // A new press: the click of an earlier dropped press (a drag with touch-action: none sends none) isn't coming.
     dropClickUntil = 0
-    endDrag?.() // a drag whose release we never saw
     const touch = e.pointerType !== 'mouse'
+    // A mouse drag whose release we never saw (touch pointers are captured implicitly; a second finger must not end one).
+    if (!touch) endDrag?.()
     if (!touch && e.button !== 0) return void (press = null) // right/middle click: not a tap
     const now = performance.now()
     press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastScrollAt < MOVING_MS, outside: isOutside(e.target), dragged: false }
@@ -494,7 +502,11 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // can't finish closing then. Re-check once the finger lifts; otherwise the sheet stays mounted,
     // invisible, over the page (observed on Firefox Android: the "wedged page" report).
     requestAnimationFrame(() => {
-      if (!touching && isOpen && !programmatic && belowFloor(scroller.scrollTop)) {
+      if (touching || !isOpen || destroyed) return
+      if (closing && !gliding && !belowFloor(scroller.scrollTop)) {
+        dbg('finger lifted while closing: carry on')
+        scrollToDetent('closed')
+      } else if (!programmatic && belowFloor(scroller.scrollTop)) {
         dbg('finger lifted at closed')
         settleAtClosed()
       }
@@ -604,6 +616,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       animateDrop(drop, end, setDrop, () => {
         scroller.style.transform = ''
         detached = false
+        if (closing) return scrollToDetent('closed') // close() ran during the drag
         if (to === 'full') {
           paint(scroller.scrollTop)
           return
@@ -666,17 +679,24 @@ export function createSheetController(els: SheetElements, options: SheetControll
     programmatic = false
     anchor = null
 
+    const stop = () => {
+      handle.removeEventListener('pointermove', move as EventListener)
+      handle.removeEventListener('pointerup', up as EventListener)
+      handle.removeEventListener('pointercancel', up as EventListener)
+      handle.removeEventListener('lostpointercapture', up as EventListener)
+      endDrag = null
+      touching = false
+    }
     const move = (ev: PointerEvent) => {
       scroller.scrollTop = Math.min(Math.max(startTop - (ev.clientY - y0), 0), maxTop)
       samples.push({ t: ev.timeStamp, y: ev.clientY })
       while (samples.length > 2 && ev.timeStamp - samples[0]!.t > VELOCITY_WINDOW_MS) samples.shift()
     }
+    // lostpointercapture: the header re-rendered away mid-drag (no pointerup reaches it then).
     const up = (ev: PointerEvent) => {
-      handle.removeEventListener('pointermove', move as EventListener)
-      handle.removeEventListener('pointerup', up as EventListener)
-      handle.removeEventListener('pointercancel', up as EventListener)
-      touching = false
+      stop()
       const top = scroller.scrollTop
+      if (closing) return scrollToDetent('closed')
       if (Math.abs(ev.clientY - y0) < 3 || top > full + 1) {
         root.removeAttribute('data-ybs-drag')
         return
@@ -691,6 +711,25 @@ export function createSheetController(els: SheetElements, options: SheetControll
     handle.addEventListener('pointermove', move as EventListener)
     handle.addEventListener('pointerup', up as EventListener)
     handle.addEventListener('pointercancel', up as EventListener)
+    handle.addEventListener('lostpointercapture', up as EventListener)
+    endDrag = () => {
+      stop()
+      root.removeAttribute('data-ybs-drag')
+    }
+  }
+
+  // ---- keys: scrolling by keyboard never closes the sheet ----
+  // With focus in the sheet, ArrowUp/PageUp/Home scroll the scroller up, which at or below full moves the sheet down
+  // and can snap it to closed. Native sheets don't close from keys (that's Escape), so stop them there; the content
+  // above full still scrolls with keys.
+  const KEYS_UP = new Set(['ArrowUp', 'PageUp', 'Home'])
+  function onKeyDown(e: KeyboardEvent) {
+    const up = KEYS_UP.has(e.key) || (e.key === ' ' && e.shiftKey)
+    if (!up || e.defaultPrevented || scroller.scrollTop > full + 1) return
+    const el = e.target as Element | null
+    if (el?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return
+    if (e.key === ' ' && el?.closest('button, a, [role="button"]')) return
+    e.preventDefault()
   }
 
   // ---- visual viewport / keyboard ----
@@ -708,10 +747,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
       keyboard = kb
       root.toggleAttribute('data-ybs-keyboard', kb)
       // Native: the sheet goes to its largest detent while the keyboard is up.
-      if (kb && !closing && (options.isActive?.() ?? true) && current !== 'full' && target !== 'full') {
+      // Only when the sheet is below full: with the content scrolled, the focused field is in the content already.
+      if (kb && !closing && (options.isActive?.() ?? true) && scroller.scrollTop < full - 1 && target !== 'full') {
         requestAnimationFrame(() => {
+          if (destroyed || !isOpen || closing) return
           layout()
-          scrollToDetent('full')
+          if (scroller.scrollTop < full - 1) scrollToDetent('full')
         })
       }
     }
@@ -723,7 +764,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // ---- resize ----
   const ro = new ResizeObserver(() => {
     if (!isOpen) return
+    const wasEmpty = full < 1
     layout()
+    // The content got its height after opening (see onScrollEnd): now open.
+    if (wasEmpty && full >= 1 && programmatic && target != null && !gliding) return glide()
     dbg(`resize H=${H} full=${full}`)
     // Browsers don't reliably re-snap when snap positions move (URL bar,
     // keyboard, content change). Re-target ourselves.
@@ -744,7 +788,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
     emitted = null
     closing = false
     releaseHtml()
-    root.removeAttribute('data-ybs-open')
     options.onClosed?.()
   }
 
@@ -762,6 +805,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('touchend', onTouchEnd, passive)
   scroller.addEventListener('touchcancel', onTouchEnd, passive)
   scroller.addEventListener('wheel', onWheel, { passive: false })
+  scroller.addEventListener('keydown', onKeyDown)
   sheet.addEventListener('pointerdown', onPointerDown)
   window.visualViewport?.addEventListener('resize', syncViewport)
   window.visualViewport?.addEventListener('scroll', syncViewport)
@@ -792,7 +836,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
         lockHtml()
         htmlLocked = true
       }
-      root.setAttribute('data-ybs-open', '')
       syncViewport()
       layout()
       scroller.scrollTop = 0
@@ -853,6 +896,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('touchend', onTouchEnd)
       scroller.removeEventListener('touchcancel', onTouchEnd)
       scroller.removeEventListener('wheel', onWheel)
+      scroller.removeEventListener('keydown', onKeyDown)
       sheet.removeEventListener('pointerdown', onPointerDown)
       window.visualViewport?.removeEventListener('resize', syncViewport)
       window.visualViewport?.removeEventListener('scroll', syncViewport)
