@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { log, logged } from '../debug'
 
@@ -17,6 +17,7 @@ export function Persistent({ autoOpen }: { autoOpen: boolean }) {
   const [board, setBoard] = useState(0)
   const [taps, setTaps] = useState(0)
   const [vote, setVote] = useState<1 | -1 | null>(null)
+  const newBoard = useRef<HTMLButtonElement>(null)
   const solved = state !== 'closed'
 
   // Solving slides the sheet up a moment after the last move, like the puzzle app.
@@ -65,6 +66,9 @@ export function Persistent({ autoOpen }: { autoOpen: boolean }) {
           if (d !== 'closed') setState(d === 'full' ? 'full' : 'peek')
         }}
         title="Solved"
+        // With a mouse or keyboard, New board gets focus so Enter goes on; not after a tap (no keyboard, and the
+        // focus ring would just sit there).
+        initialFocus={(type) => type !== 'touch' && newBoard.current}
         headerExtra={
           <button
             className="peek-toggle"
@@ -94,6 +98,7 @@ export function Persistent({ autoOpen }: { autoOpen: boolean }) {
               See the board
             </button>
             <button
+              ref={newBoard}
               className="primary"
               onClick={() => {
                 setState('closed')

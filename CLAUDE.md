@@ -303,6 +303,10 @@ after the content mounts (two rAFs); and don't put `touch-action` utilities on H
 `ybs`, which would disable the detached drag).
 
 ## Product decisions
+- **`initialFocus`** (2026-11-01), mirroring Base UI's (`boolean | ref | (openType) => …`), on `Sheet.Content` and
+  `BottomSheet`. The open type is the page's last input (pointerdown's pointerType, or keyboard). dapuzzler's solved
+  sheet needs it (Enter = New board on desktop). Known flaky under full-suite load: "header drag … a flick down closes
+  the sheet" on firefox-desktop (mouse-flick velocity); passes alone.
 - **`/styled` theme follows `color-scheme`** (2026-11-01): tokens use `light-dark()`, so an app's own theme switch (which
   sets `color-scheme`, like dapuzzler or next-themes) drives the sheet; `prefers-color-scheme` alone gave a dark sheet
   on a light-themed app. Apps with no `color-scheme` get light. Body side padding `--ybs-body-padding` (16px) matches

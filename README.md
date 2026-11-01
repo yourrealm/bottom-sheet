@@ -75,7 +75,11 @@ import { Sheet } from '@yourrealm/bottom-sheet'
   design-system `<Button>`), receiving `type`, `onClick` and the ARIA state:
   `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Headless: `<Sheet.Trigger render={…} />`.
 - `modal` (default `true`): `false` gives a sheet without a backdrop that leaves the page usable around it (no inert,
-  no scroll lock). It never moves focus: focus a button in it yourself if, say, Enter should press it.
+  no scroll lock). It doesn't move focus unless you pass `initialFocus`.
+- `initialFocus` (on `BottomSheet` / `Sheet.Content`, like Base UI's): where focus goes when the sheet opens. A ref,
+  `false`, `true` (the sheet), or a function of how it was opened: `initialFocus={(type) => type !== 'touch' &&
+  newBoardRef.current}` focuses a button for mouse and keyboard users only. Default: the sheet for a modal sheet,
+  nothing for a non-modal one. A non-modal sheet that took focus gives it back when it closes.
 - `dismissible` (default `true`): `false` means a swipe down, Escape or an outside press drop the sheet to its lowest
   detent instead of closing it. `open={false}` and `<Sheet.Close>` still close it.
 - `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on

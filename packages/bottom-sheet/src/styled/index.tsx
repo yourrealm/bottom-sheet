@@ -5,7 +5,7 @@ import { styledCss } from './styles'
 
 import type { Detent } from '../core/math'
 export type { Detent }
-export type { OpenChangeDetails, OpenChangeReason, TriggerRenderProps } from '../react/sheet'
+export type { InitialFocus, InteractionType, OpenChangeDetails, OpenChangeReason, TriggerRenderProps } from '../react/sheet'
 
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
 
@@ -67,6 +67,12 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   trailing?: ReactNode
   /** Extra content placed in the sticky header under the title (e.g. a search field). */
   headerExtra?: ReactNode
+  /**
+   * Where focus goes when the sheet opens, like Base UI's: an element ref, `false`, `true` (the sheet), or a function
+   * of how it was opened, e.g. `(type) => type !== 'touch' && saveRef.current`. Default: the sheet for a modal sheet,
+   * nothing for a non-modal one.
+   */
+  initialFocus?: Base.InitialFocus
   children?: ReactNode
   className?: string
   contentProps?: ComponentPropsWithRef<'section'>
@@ -87,6 +93,7 @@ export function BottomSheet({
   leading,
   trailing,
   headerExtra,
+  initialFocus,
   children,
   className,
   contentProps,
@@ -106,6 +113,7 @@ export function BottomSheet({
         <Sheet.View>
           <Sheet.Content
             {...contentProps}
+            initialFocus={initialFocus}
             className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', floating && 'ybs-sheet-floating', className, contentProps?.className)}
           >
             <Sheet.Header>

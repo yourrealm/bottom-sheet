@@ -51,6 +51,8 @@ interface SheetContextValue {
   returnFocus: RefObject<HTMLElement | null>
   rootEl: RefObject<HTMLDivElement | null>
   sheetEl: RefObject<HTMLElement | null>
+  /** Set by Content from its `initialFocus` prop; read by View when the sheet opens. */
+  initialFocus: RefObject<InitialFocus | undefined>
   titleId: string
   descriptionId: string
   /** A <Description> is mounted (aria-describedby must not point at a missing element). */
@@ -131,6 +133,40 @@ export interface RootProps {
 }
 
 /** Full only, like iOS (`[.large()]`), Base UI and Vaul. Partial detents are opt-in. */
+/** How the sheet was opened, as Base UI reports it to `initialFocus`. */
+export type InteractionType = 'mouse' | 'touch' | 'pen' | 'keyboard'
+/**
+ * Where focus goes when the sheet opens (Base UI's `initialFocus`). Omitted: the sheet itself for a modal sheet, no
+ * move for a non-modal one. `false`: don't move it. `true`: the sheet itself. A ref: that element. A function: called
+ * with how the sheet was opened; return an element, `true` for the sheet, `null` to fall back to the default, or
+ * `false`/`undefined` to do nothing.
+ */
+export type InitialFocus =
+  | boolean
+  | RefObject<HTMLElement | null>
+  | ((openType: InteractionType) => boolean | void | HTMLElement | null)
+
+// The last input kind anywhere on the page: a sheet opened by a tap or programmatically after one counts as 'touch'.
+let lastInteraction: InteractionType = 'mouse'
+let tracking = false
+function trackInteraction() {
+  if (tracking || typeof document === 'undefined') return
+  tracking = true
+  document.addEventListener('pointerdown', (e) => (lastInteraction = (e.pointerType || 'mouse') as InteractionType), true)
+  document.addEventListener('keydown', () => (lastInteraction = 'keyboard'), true)
+}
+
+/** Resolve `initialFocus` to the element to focus, or null to leave focus where it is. */
+function initialFocusTarget(pref: InitialFocus | undefined, modal: boolean, sheet: HTMLElement): HTMLElement | null {
+  const fallback = modal ? sheet : null
+  const v = typeof pref === 'function' ? pref(lastInteraction) : (pref ?? modal)
+  if (v === true) return typeof pref === 'function' || pref === true ? sheet : fallback
+  if (v === null) return fallback
+  if (v === false || v === undefined) return null
+  if (v instanceof HTMLElement) return v
+  return v.current ?? fallback
+}
+
 const DEFAULT_DETENTS: readonly Detent[] = []
 
 export function Root(props: RootProps) {
@@ -157,6 +193,8 @@ export function Root(props: RootProps) {
   const controller = useRef<SheetController | null>(null)
   const rootEl = useRef<HTMLDivElement | null>(null)
   const sheetEl = useRef<HTMLElement | null>(null)
+  const initialFocus = useRef<InitialFocus | undefined>(undefined)
+  useEffect(trackInteraction, [])
   const id = useId()
   const [hasDescription, setHasDescription] = useState(false)
 
@@ -183,7 +221,8 @@ export function Root(props: RootProps) {
   const returnFocus = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (open && !mounted) {
-      returnFocus.current = modal ? (document.activeElement as HTMLElement | null) : null
+      // Non-modal sheets only use it if they took focus (initialFocus); see View.
+      returnFocus.current = document.activeElement as HTMLElement | null
       setMounted(true)
     }
     if (open && mounted && closing.current) {
@@ -226,6 +265,7 @@ export function Root(props: RootProps) {
       returnFocus,
       rootEl,
       sheetEl,
+      initialFocus,
       titleId: `${id}-title`,
       descriptionId: `${id}-description`,
       hasDescription,
@@ -448,9 +488,15 @@ export function View({ children, className, bleedClassName }: ViewProps) {
     )
     ctx.controller.current = c
     c.open(ctx.detent ?? ctx.initialDetent)
-    // A non-modal sheet doesn't take focus from the page (move it yourself if it should).
-    if (ctx.modal) sheet.focus({ preventScroll: true })
+    // Modal: focus the sheet by default. Non-modal: leave focus on the page unless `initialFocus` says otherwise.
+    // preventScroll: the target may still be below the screen (the sheet is about to slide up).
+    initialFocusTarget(ctx.initialFocus.current, ctx.modal, sheet)?.focus({ preventScroll: true })
     return () => {
+      // A non-modal sheet that took focus gives it back (modal sheets restore it in Portal as soon as they close).
+      if (!ctx.modal && sheet.contains(document.activeElement)) {
+        const back = ctx.returnFocus.current
+        if (back?.isConnected) back.focus({ preventScroll: true })
+      }
       c.destroy()
       ctx.controller.current = null
     }
@@ -491,8 +537,15 @@ export function View({ children, className, bleedClassName }: ViewProps) {
 
 // ---------------------------------------------------------------------------
 
-export function Content({ ref, ...props }: ComponentPropsWithRef<'section'>) {
+export interface ContentProps extends ComponentPropsWithRef<'section'> {
+  /** Where focus goes when the sheet opens (like Base UI's `initialFocus`). See `InitialFocus`. */
+  initialFocus?: InitialFocus
+}
+
+export function Content({ ref, initialFocus, ...props }: ContentProps) {
   const ctx = useSheet('Content')
+  // Read by View's layout effect, which runs after this renders (the View is the Content's parent).
+  ctx.initialFocus.current = initialFocus
   return (
     <section
       data-ybs-sheet=""

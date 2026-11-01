@@ -875,3 +875,22 @@ test('a color-scheme forced on one sheet reaches its bleed too', async ({ page }
   expect(await bg('.ybs-sheet')).toBe('rgb(28, 28, 30)')
   expect(await bg('[data-ybs-bleed]')).toBe('rgb(28, 28, 30)')
 })
+
+// initialFocus, like Base UI: a function of how the sheet was opened. The persistent demo focuses New board unless
+// it was opened by touch.
+test.describe('initialFocus', () => {
+  test('opened with the mouse: the given element gets focus', async ({ page }) => {
+    await page.goto('/#/persistent')
+    await page.locator('#solve').click()
+    await waitForEvent(page, 'solved: onDetentChange full')
+    await expect(page.getByRole('button', { name: 'New board' })).toBeFocused()
+  })
+  test('opened by touch: the function says no, focus stays put', async ({ page, browserName }) => {
+    test.skip(browserName === 'firefox', 'touch emulation: mobile projects only')
+    await page.goto('/#/persistent')
+    await page.locator('#solve').tap()
+    await waitForEvent(page, 'solved: onDetentChange full')
+    await expect(page.getByRole('button', { name: 'New board' })).not.toBeFocused()
+    expect(await page.evaluate(() => document.activeElement?.closest('[data-ybs-sheet]') ?? null)).toBeNull()
+  })
+})
