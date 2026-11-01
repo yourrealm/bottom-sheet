@@ -32,8 +32,8 @@
     ".": "./src/index.ts",
     "./styled": "./src/styled/index.tsx",
     "./package.json": "./package.json",
-    "./styles.css": "./dist/styles.css",
-    "./styled.css": "./dist/styled.css"
+    "./styles.css": "./src/styles.css",
+    "./styled.css": "./src/styled.css"
   },
   "scripts": {
     "build": "tsdown && node scripts/build-css.mjs",

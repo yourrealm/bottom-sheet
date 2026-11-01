@@ -1,7 +1,7 @@
 import type { ComponentPropsWithRef, ReactElement, ReactNode } from 'react'
 import * as Base from '../react/sheet'
-import { useStyle } from '../react/use-style'
-import { styledCss } from './styles'
+import { useEffect } from 'react'
+import { checkCss } from '../react/css-check'
 
 import type { Detent } from '../core/math'
 export type { Detent }
@@ -10,11 +10,7 @@ export type { InitialFocus, InteractionType, OpenChangeDetails, OpenChangeReason
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
 
 function withClass<P extends { className?: string }>(Comp: (p: P) => ReactNode, cls: string) {
-  const Styled = (p: P) => {
-    useStyle('styled', styledCss)
-    return <Comp {...p} className={cx(cls, p.className)} />
-  }
-  return Styled
+  return (p: P) => <Comp {...p} className={cx(cls, p.className)} />
 }
 
 /** Styled parts: same API as the headless `Sheet`, with the preset look. */
@@ -25,7 +21,8 @@ export const Sheet = {
   Portal: Base.Portal,
   Backdrop: withClass(Base.Backdrop, 'ybs-backdrop'),
   View: (p: Base.ViewProps) => {
-    useStyle('styled', styledCss)
+    // Rendered only while a sheet is open: the moment to check the preset's CSS is loaded.
+    useEffect(() => checkCss('styled', 'styled.css'), [])
     return <Base.View {...p} className={cx('ybs-view', p.className)} bleedClassName={cx('ybs-bleed', p.bleedClassName)} />
   },
   Content: withClass(Base.Content, 'ybs-sheet'),

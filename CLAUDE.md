@@ -9,9 +9,10 @@ Published as `@yourrealm/bottom-sheet` (headless) and `@yourrealm/bottom-sheet/s
 packages/bottom-sheet/          the library (tsdown → dist/, ESM only)
   src/core/math.ts              pure detent math + velocity projection (unit-tested: math.test.ts)
   src/core/controller.ts        framework-agnostic controller; ALL the behaviour lives here
-  src/core/styles.ts            structural CSS (mechanics only, [data-ybs-*] selectors), injected at runtime
+  src/styles.css                structural CSS (mechanics only, [data-ybs-*] selectors), a file the app imports
+  src/styled.css                imports styles.css and adds the preset look
   src/react/sheet.tsx           headless compound parts: Root/Trigger/Close/Portal/Backdrop/View/Content/Header/Handle/Title/Description
-  src/styled/                   preset look (classes .ybs-*, tokens --ybs-*) + all-in-one <BottomSheet>
+  src/styled/                   preset parts (classes .ybs-*, tokens --ybs-*) + all-in-one <BottomSheet>
 apps/demo/                Vite app for device testing (port 5180), POSTs debug lines to .logs/device.log
 spikes/01-single-scroller/      the original plain-HTML spike (reference)
 scripts/android-suite.sh        on-device gesture suite (adb), prints PASS/CHECK per run
@@ -22,15 +23,15 @@ In the workspace, package `exports` point at `src/` (no build needed for the pla
 README/LICENSE into the package, builds, and publishes. Only pnpm applies `publishConfig.exports`, so
 `scripts/prepack.mjs` refuses npm/yarn. The maintainer's pnpm has `ignore-scripts=true`, so lifecycle hooks
 (`prepack`) don't run; that's why the explicit scripts exist.
-The peer dependency is React >= 19 (parts use ref-as-prop). Styles are injected with `useInsertionEffect` (`<style data-ybs-style>`, prepended),
-so consumers need no CSS import. They live in `@layer ybs`, ordered by `@layer theme, base, ybs, components, utilities;`
-(Tailwind v4's names): unlayered consumer CSS and Tailwind utilities win, and preflight (in `base`) can't wipe the preset.
-The style must stay first in the document for that order statement to count. Test: "Tailwind v4 layers".
-**CSS as files** (for a strict CSP without `style-src 'unsafe-inline'`, which blocks injected `<style>`): `pnpm build`
-also writes `dist/styles.css` (core) and `dist/styled.css` (core + preset) from the same strings
-(`scripts/build-css.mjs`, Node >= 23.6 type stripping). Each sets a marker (`--ybs-css-core` / `--ybs-css-styled`) that
-makes `useStyle` skip injection. `sideEffects: ["*.css"]` so bundlers keep the import. Import it before Tailwind so
-the layer order statement comes first. Test: "works under a strict CSP with the CSS file" (needs a build first).
+The peer dependency is React >= 19 (parts use ref-as-prop).
+**CSS is a file the app imports**, `@yourrealm/bottom-sheet/styles.css` (headless) or `styled.css` (preset, imports
+styles.css), before Tailwind. It's a plain stylesheet, so a strict CSP (no `style-src 'unsafe-inline'`) works; the
+build copies `src/*.css` to `dist/` (`scripts/build-css.mjs`), and `sideEffects: ["*.css"]` keeps bundlers from dropping
+the import. Everything is in `@layer ybs`, ordered by `@layer theme, base, ybs, components, utilities;` (Tailwind v4's
+names): unlayered consumer CSS and Tailwind utilities win, and preflight (in `base`) can't wipe the preset. The order
+statement only counts if the file comes first. Each file sets a marker on :root (`--ybs-css-core` / `--ybs-css-styled`);
+opening a sheet without it logs a console error naming the import (`src/react/css-check.ts`). Tests: "Tailwind v4
+layers", "works under a strict CSP", "opening a sheet without its CSS logs an error".
 
 ## Core idea (validated by spike 01)
 
@@ -138,7 +139,6 @@ separate mechanisms (window click swallow, View pointer handlers, a click-drop f
 - Sticky headers can leave a 1px sliver of the content scrolling underneath visible above them (fractional positions,
   worse on a covered sheet's scale transform). `/styled` covers it with `box-shadow: 0 -2px 0 0 var(--ybs-sheet-bg)`;
   headless users should do the same.
-- `useStyle` updates an existing `<style data-ybs-style>` when the CSS changes (hot reload, or two library copies on a page).
 - Device results (2026-10-31): `scripts/android-suite.sh` 3/3 Chrome Android + 3/3 Firefox Android PASS; the same sequence in the
   iOS 26.4 sim via idb passes (T1–T5, guard both directions, close). The last two fixes (iOS settle, dedupe) are not yet re-run on Android.
 - iOS test artifacts to ignore: swiping down on the closed page triggers Safari pull-to-refresh (a new `load` in the log), and a quick
@@ -352,7 +352,7 @@ after the content mounts (two rAFs); and don't put `touch-action` utilities on H
   Chromium also gets real touch-scroll gestures via CDP `Input.synthesizeScrollGesture`. Tests read `window.__ybs.events`.
   One wheel event per "gesture" in tests: Playwright's wheel calls can land more than 250ms apart.
 - **Device suite:** `scripts/android-suite.sh [runs] [browsers]` → `scripts/summarize-device-log.py`. URLs carry a nonce,
-  because Firefox reuses an open tab for an identical URL (a stale page with old injected CSS). Log lines carry `?run=` as the tab id.
+  because Firefox reuses an open tab for an identical URL (a stale page with old code). Log lines carry `?run=` as the tab id.
 - Playground: `pnpm dev` (port 5180). The spike can be served with `python3 -m http.server 5173 --bind 0.0.0.0` from `spikes/`.
 - **Reading device behaviour as text:** pass `debug` to `Sheet.Root`/`BottomSheet`. The playground forwards those lines (plus
   onDetentChange/onOpenChange) to `apps/demo/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.

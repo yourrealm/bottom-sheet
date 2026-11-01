@@ -1,16 +1,8 @@
-// Writes the CSS the library otherwise injects at runtime as plain files, for apps whose Content-Security-Policy
-// blocks <style> elements (no style-src 'unsafe-inline'): `import '@yourrealm/bottom-sheet/styled.css'` and the
-// bundler serves it as a same-origin stylesheet. One source of truth: the same strings the runtime injects.
-// Each file sets a marker variable (--ybs-css-core / --ybs-css-styled) that tells useStyle not to inject.
-// Runs on Node >= 23.6 (imports .ts with type stripping).
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { structuralCss } from '../src/core/styles.ts'
-import { styledCss } from '../src/styled/styles.ts'
-import { cssFile } from '../src/react/use-style.ts'
+// The CSS ships as files the app imports: src/styles.css (structural) and src/styled.css (imports it, adds the
+// preset). Copy both to dist/.
+import { copyFileSync, mkdirSync } from 'node:fs'
 
 const out = new URL('../dist/', import.meta.url)
 mkdirSync(out, { recursive: true })
-const core = cssFile('core', structuralCss)
-writeFileSync(new URL('styles.css', out), core)
-writeFileSync(new URL('styled.css', out), core + cssFile('styled', styledCss))
-console.log('wrote dist/styles.css, dist/styled.css')
+for (const f of ['styles.css', 'styled.css']) copyFileSync(new URL(`../src/${f}`, import.meta.url), new URL(f, out))
+console.log('copied src/styles.css, src/styled.css to dist/')

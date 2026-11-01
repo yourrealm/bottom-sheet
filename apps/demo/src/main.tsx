@@ -1,3 +1,5 @@
+// The library's CSS, before our own.
+import '@yourrealm/bottom-sheet/styled.css'
 import { StrictMode, useEffect, useState, type ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { subscribe } from './debug'

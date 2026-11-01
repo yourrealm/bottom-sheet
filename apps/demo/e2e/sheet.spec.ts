@@ -895,10 +895,10 @@ test.describe('initialFocus', () => {
   })
 })
 
-// Apps with a strict CSP (no style-src 'unsafe-inline', as Holden's micro-app guide recommends) can't take our
-// injected <style>. They import the CSS file instead; its marker turns injection off. Needs `pnpm build` (dist/).
-test('works under a strict CSP with the CSS file instead of injection', async ({ page }) => {
-  const css = new URL('../../../packages/bottom-sheet/dist/styled.css', import.meta.url).pathname
+// The CSS is a plain stylesheet, so a strict CSP (no style-src 'unsafe-inline', as Holden's micro-app guide
+// recommends) works. The policy blocks the demo's own dev-mode styles here; the library's file loads as a stylesheet.
+test('works under a strict CSP', async ({ page }) => {
+  const css = new URL('../../../packages/bottom-sheet/src/styled.css', import.meta.url).pathname
   await page.route((url) => url.pathname === '/', async (route) => {
     const res = await route.fetch()
     const html = (await res.text()).replace(
@@ -915,6 +915,19 @@ test('works under a strict CSP with the CSS file instead of injection', async ({
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ybs-scroller]')!).scrollSnapType)).toContain('mandatory')
   const g = await geometry(page)
   expect(Math.abs(g.st - g.H * 0.5)).toBeLessThan(3)
-  // Nothing injected, so nothing for the CSP to block from us.
-  await expect(page.locator('style[data-ybs-style]')).toHaveCount(0)
+})
+
+// Forgetting the import must be loud, in dev too: a sheet can't work without its CSS.
+test('opening a sheet without its CSS logs an error naming the import', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
+  await page.goto('/#/lab')
+  // As if the file weren't loaded: the markers it sets are what the library checks.
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--ybs-css-core', '0')
+    document.documentElement.style.setProperty('--ybs-css-styled', '0')
+  })
+  await page.locator('#open-lab').click()
+  await expect.poll(() => errors.filter((e) => e.includes('@yourrealm/bottom-sheet')).length).toBeGreaterThan(0)
+  expect(errors.find((e) => e.includes('styles.css'))).toContain('@import "@yourrealm/bottom-sheet/styles.css"')
 })

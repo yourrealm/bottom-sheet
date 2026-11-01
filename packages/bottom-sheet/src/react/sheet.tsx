@@ -17,9 +17,8 @@ import {
 import { createPortal } from 'react-dom'
 import { createSheetController, type SheetController } from '../core/controller'
 import type { Detent } from '../core/math'
-import { structuralCss } from '../core/styles'
 import { closedByEscape, closeWatcher, isTopSheet, pushSheet, removeSheet, reportProgress, type StackEntry } from './stack'
-import { useStyle } from './use-style'
+import { checkCss } from './css-check'
 
 /** Why the sheet is asking to open or close. */
 export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'
@@ -331,7 +330,9 @@ export interface PortalProps {
 /** Fixed layer. Mounted while open or animating closed. A modal sheet makes the rest of the page inert. */
 export function Portal({ children, container }: PortalProps) {
   const ctx = useSheet('Portal')
-  useStyle('core', structuralCss)
+  useEffect(() => {
+    if (ctx.mounted) checkCss('core', 'styles.css')
+  }, [ctx.mounted])
 
   // Modal: everything outside the sheet is inert, so focus can't leave and screen readers see only the
   // dialog. Non-modal sheets skip that but still join the stack (Escape order, stacked sheets on top).

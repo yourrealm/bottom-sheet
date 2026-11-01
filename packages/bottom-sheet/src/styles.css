@@ -1,4 +1,10 @@
-/**
+/*
+ * @yourrealm/bottom-sheet: structural CSS (the mechanics: overlay, scroller, snapping). Import it once, before
+ * Tailwind:  @import "@yourrealm/bottom-sheet/styles.css";  (or styled.css, which includes it).
+ * Everything is in the `ybs` cascade layer, ordered between Tailwind v4's `base` and `components`, so preflight
+ * can't reset it and your utilities and unlayered CSS win. The order statement only counts if this comes first.
+ */
+/*
  * Structural CSS only: the mechanics that make the single-scroller sheet work.
  * No colours, radii or spacing; those belong to the consumer or `/styled`.
  *
@@ -13,7 +19,10 @@
  *   --ybs-inset     gap above the sheet at the full detent (default: safe area + 10px; 0 with fullscreen)
  *   --ybs-sheet-bg  colour of the bleed, should match the sheet
  */
-export const structuralCss = /* css */ `
+@layer theme, base, ybs, components, utilities;
+@layer ybs {
+/* Marker: tells the library this file is loaded (it logs an error when a sheet opens without it). */
+:root { --ybs-css-core: 1; }
 [data-ybs-root] {
   --ybs-inset: calc(env(safe-area-inset-top, 0px) + 10px);
   position: fixed; inset: 0; z-index: 50; pointer-events: none;
@@ -85,4 +94,4 @@ export const structuralCss = /* css */ `
   [data-ybs-drag] { cursor: grab; user-select: none; -webkit-user-select: none; }
   [data-ybs-root][data-ybs-drag="active"] [data-ybs-drag] { cursor: grabbing; }
 }
-`
+}

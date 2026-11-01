@@ -1,9 +1,15 @@
-/**
+/*
+ * @yourrealm/bottom-sheet/styled: the preset look, plus the structural CSS it builds on. Import it once, before
+ * Tailwind:  @import "@yourrealm/bottom-sheet/styled.css";
+ */
+@import "./styles.css";
+/*
  * The polished preset. Override with the --ybs-* tokens.
  * Light/dark follow the app's `color-scheme` (inherited from <html>), via light-dark(): an app with its own theme
  * switch that sets `color-scheme` gets a matching sheet; `html { color-scheme: light dark }` follows the OS.
  */
-export const styledCss = /* css */ `
+@layer ybs {
+:root { --ybs-css-styled: 1; }
 [data-ybs-root] {
   --ybs-sheet-bg: light-dark(#fff, #1c1c1e);
   --ybs-sheet-fg: light-dark(#111, #f2f2f7);
@@ -104,4 +110,4 @@ html[data-ybs-recede] [data-ybs-background] {
   transform: translateY(calc(var(--ybs-r) * (env(safe-area-inset-top, 0px) + 10px))) scale(calc(1 - var(--ybs-r) * 0.07));
   clip-path: inset(var(--ybs-scroll-y, 0px) 0 0 0 round calc(var(--ybs-r) * 12px) calc(var(--ybs-r) * 12px) 0 0);
 }
-`
+}
