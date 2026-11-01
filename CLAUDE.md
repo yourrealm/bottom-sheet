@@ -93,16 +93,17 @@ Tests: "glide (programmatic moves)". Not yet re-run: the Android suite with the 
   (touches arrived, programmatic scrollTop worked). That tab had gone lab sheet -> closed -> Comments sheet glide-open
   during an interrupted device-suite run. Watch for it.
 
-### A tap on moving content only stops it
-Native: a tap on a still-scrolling list stops it without pressing the row. Chrome and Firefox Android sent the click
-in our snap scroller (a fling-stopping tap on the 1000-rows list opened a row). The controller drops the click of a
-touch that starts within 100ms of a scroll event (`tapStopsScroll`, expires after 1s). Device-verified both browsers.
-
-### Outside taps use pointer events (touch)
-After a swipe on the spacer (touch-action: none) Chrome Android keeps an invisible fling alive for up to ~2s and spends
-the next tap stopping it: pointerdown/up arrive, no click, so closing took two taps (stacked "1000 rows" demo; same
-on a single sheet). The View now dismisses on a touch tap (pointerdown/up outside the sheet, <10px, <500ms) and
-ignores the click that follows. Mouse keeps `click`. Test: "a touch tap on the dimmed area closes once".
+### Presses: one arbiter in the controller
+Which presses count as taps and whether their click activates is decided in one place (`onPressStart/Move/End` +
+`onClickCapture`, native capture listeners on the scroller). The click is dropped when:
+- a touch started on content that was still moving (scroll event < 100ms before): native lists only stop. Chrome and
+  Firefox Android sent the click in our snap scroller (a fling-stopping tap on the 1000-rows list opened a row);
+- the press became a drag (> 10px, or the header drag, which starts at 4px);
+- it was a tap outside the sheet: that dismisses on pointerup (`onOutsideTap`), not on click, because after a swipe
+  on the spacer (touch-action: none) Chrome Android spends the next tap stopping an invisible fling and sends no click.
+The closing layer is not inert, so the click after a closing tap lands on it (dropped), not on a row below.
+Device-verified on Chrome Android (2026-11-01): fling+tap, row tap, overlay tap over a row, swipe+tap. Replaced three
+separate mechanisms (window click swallow, View pointer handlers, a click-drop flag) that had started to interact.
 
 ### Lessons from the React package (not in the spike)
 - **Ref order:** React attaches an ancestor's ref *after* its descendants' layout effects run. `View` therefore finds the portal

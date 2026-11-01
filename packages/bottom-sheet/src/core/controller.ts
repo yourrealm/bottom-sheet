@@ -38,6 +38,8 @@ export interface SheetControllerOptions {
   /** Progress 0 (closed) .. 1 (full), on every scroll. Used to drive stacked-sheet effects. */
   /** progress 0..1 closed -> full; cover 0..1 = share of the available height the sheet covers. */
   onProgress?: (progress: number, cover: number) => void
+  /** A tap (no drag) on the sheet layer outside the sheet: above it, or beside it when it is narrower than the screen. */
+  onOutsideTap?: () => void
   /** Whether this sheet is the active (top) one; inactive sheets ignore the keyboard. Default always. */
   isActive?: () => boolean
   /** Internal decision log, for testing on devices. */
@@ -77,6 +79,11 @@ const USER_SCROLL_QUIET = 100
 const VELOCITY_WINDOW_MS = 80
 /** A touch that starts this soon after a scroll event lands on moving content: it only stops the scroll. */
 const MOVING_MS = 100
+/** A press is a tap while it moves less than this (px) and, on touch, ends within TAP_MS. */
+const TAP_SLOP = 10
+const TAP_MS = 500
+/** The click a dropped press would produce follows within this. */
+const CLICK_AFTER_MS = 1000
 /**
  * Programmatic moves (open, close, snapTo, wheel steps, keyboard) are animated here, not by the browser's smooth
  * scroll: that took 660-770ms on a phone (Chrome/Firefox Android, measured 2026-11-01) and varies by browser.
@@ -389,24 +396,55 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   // ---- gestures ----
-  // Native (iOS, Android): a tap on content that is still scrolling only stops it; it doesn't press what's under the
-  // finger. Chrome Android sends the click anyway in our snap scroller (a fling-stopping tap on the 1000-rows list
-  // opened a row, 2026-11-01), so drop the click of a tap that started while the scroller was moving.
+  // ---- presses: the one place that decides whether a press is a tap, and whether its click activates ----
+  // - Touch on content that is still moving (a scroll event in the last MOVING_MS): it only stops the scroll, like
+  //   native lists. Chrome and Firefox Android sent the click in our snap scroller (a fling-stopping tap opened a row).
+  // - A press that became a drag (header drag, mouse drag, any move past TAP_SLOP): not a press of what's under it.
+  // - A tap outside the sheet: onOutsideTap, decided on pointerup rather than click. After a swipe on the spacer
+  //   (touch-action: none) Chrome Android spends the next tap stopping an invisible fling and sends no click.
+  // In each case the click that follows is dropped. The closing layer keeps taking pointer events, so that click
+  // lands here instead of on what's underneath (a row of the sheet below).
   let lastScrollAt = -Infinity
-  let tapStopsScroll = false
-  let tapAt = 0
+  type Press = { id: number; x: number; y: number; t: number; touch: boolean; moving: boolean; outside: boolean; dragged: boolean }
+  let press: Press | null = null
+  let dropClickUntil = 0
+  const isOutside = (el: EventTarget | null) => el instanceof Element && !el.closest('[data-ybs-sheet]')
+  function onPressStart(e: PointerEvent) {
+    const touch = e.pointerType !== 'mouse'
+    const now = performance.now()
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastScrollAt < MOVING_MS, outside: isOutside(e.target), dragged: false }
+  }
+  function onPressMove(e: PointerEvent) {
+    if (press?.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) press.dragged = true
+  }
+  /** For drags that start below TAP_SLOP (the header drag starts at 4px). */
+  const markDragged = () => {
+    if (press) press.dragged = true
+  }
+  function onPressEnd(e: PointerEvent) {
+    const p = press
+    press = null
+    if (!p || p.id !== e.pointerId) return
+    const now = performance.now()
+    if (p.moving || p.dragged) {
+      if (p.moving) dbg('tap stopped the scroll: click dropped')
+      dropClickUntil = now + CLICK_AFTER_MS
+      return
+    }
+    if (p.outside && (!p.touch || now - p.t < TAP_MS)) {
+      dropClickUntil = now + CLICK_AFTER_MS
+      options.onOutsideTap?.()
+    }
+  }
+  const onPressCancel = () => (press = null) // the browser took it as a scroll; no click follows
   function onClickCapture(e: MouseEvent) {
-    // Only the click of that touch: it follows within a moment (a drag sends none, and a later click is unrelated).
-    if (!tapStopsScroll || performance.now() - tapAt > 1000) return
-    tapStopsScroll = false
-    dbg('tap stopped the scroll: click dropped')
+    if (performance.now() > dropClickUntil) return
+    dropClickUntil = 0
     e.preventDefault()
     e.stopPropagation()
   }
 
   function onTouchStart() {
-    tapAt = performance.now()
-    tapStopsScroll = tapAt - lastScrollAt < MOVING_MS
     touching = true
     anchor = null
     // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
@@ -498,6 +536,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       if (!started && Math.abs(dy) < 4) return
       started = true
       detached = true
+      markDragged()
       handle.setPointerCapture(ev.pointerId)
       root.setAttribute('data-ybs-drag', 'active')
       if (scroller.scrollTop !== st0) scroller.scrollTop = st0 // keep the content where it is
@@ -512,7 +551,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
       touching = false
       root.removeAttribute('data-ybs-drag')
       if (!started) return
-      swallowClick()
       const a = samples[0]!
       const b = samples[samples.length - 1]!
       const dt = b.t - a.t
@@ -540,15 +578,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
     handle.addEventListener('pointermove', move as EventListener)
     handle.addEventListener('pointerup', up as EventListener)
     handle.addEventListener('pointercancel', up as EventListener)
-  }
-  /** A drag that started on a button must not also press it. */
-  function swallowClick() {
-    const stop = (ev: Event) => {
-      ev.stopPropagation()
-      ev.preventDefault()
-    }
-    window.addEventListener('click', stop, { capture: true, once: true })
-    setTimeout(() => window.removeEventListener('click', stop, { capture: true }), 400)
   }
   function animateDrop(from: number, to: number, set: (d: number) => void, done: () => void) {
     const ms = reducedMotion() ? 0 : Math.min(380, 180 + Math.abs(to - from) * 0.4)
@@ -673,6 +702,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('scroll', onScroll, passive)
   scroller.addEventListener('scrollend', onScrollEnd)
   scroller.addEventListener('touchstart', onTouchStart, passive)
+  scroller.addEventListener('pointerdown', onPressStart, true)
+  scroller.addEventListener('pointermove', onPressMove, true)
+  scroller.addEventListener('pointerup', onPressEnd, true)
+  scroller.addEventListener('pointercancel', onPressCancel, true)
   scroller.addEventListener('click', onClickCapture, true)
   scroller.addEventListener('touchend', onTouchEnd, passive)
   scroller.addEventListener('touchcancel', onTouchEnd, passive)
@@ -756,6 +789,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('scroll', onScroll)
       scroller.removeEventListener('scrollend', onScrollEnd)
       scroller.removeEventListener('touchstart', onTouchStart)
+      scroller.removeEventListener('pointerdown', onPressStart, true)
+      scroller.removeEventListener('pointermove', onPressMove, true)
+      scroller.removeEventListener('pointerup', onPressEnd, true)
+      scroller.removeEventListener('pointercancel', onPressCancel, true)
       scroller.removeEventListener('click', onClickCapture, true)
       scroller.removeEventListener('touchend', onTouchEnd)
       scroller.removeEventListener('touchcancel', onTouchEnd)
