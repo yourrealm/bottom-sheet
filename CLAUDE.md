@@ -165,8 +165,10 @@ on the Comments demo: "trying to close via the handle just scrolls up"). Native 
 
 ### Closing releases the page at once
 A modal sheet's siblings are inert only while it is open (`blocking` in Portal), not while it animates closed: as soon as
-closing starts, inert is lifted and focus returns to the trigger, and the closing root itself becomes `inert` (taps go
-through to the page). Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
+closing starts, inert is lifted and focus returns to the trigger. The closing sheet itself is NOT inert: a touch tap
+closes on pointerup, before the click, and that click must land on the closing overlay (which ignores it), not fall
+through to a row of the sheet below (tried and reverted 2026-11-01). A touch on a sheet gliding to closed doesn't stop
+the glide (the finger-lift check finishes the close). Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
 reopened on Space). Test: "the page takes focus and input back as soon as the sheet starts closing".
 
 ### Stacked sheets (`src/react/stack.ts`)

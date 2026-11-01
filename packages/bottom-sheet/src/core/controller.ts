@@ -387,9 +387,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   // ---- gestures ----
   function onTouchStart() {
-    stopGlide()
     touching = true
     anchor = null
+    // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
+    // still takes touches). The finger-lift check below completes the close. Any other glide stops where it is.
+    if (gliding && target === 'closed') return
+    stopGlide()
     programmatic = false
     unlock()
   }

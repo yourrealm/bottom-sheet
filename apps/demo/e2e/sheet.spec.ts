@@ -94,7 +94,8 @@ test('the page takes focus and input back as soon as the sheet starts closing', 
     pageInert: document.getElementById('root')!.hasAttribute('inert'),
     focused: document.activeElement?.id,
   }))
-  expect(now).toEqual({ mounted: true, closingInert: true, pageInert: false, focused: 'open-lab' })
+  // The closing sheet itself still catches taps (see the next test); only the page is released.
+  expect(now).toEqual({ mounted: true, closingInert: false, pageInert: false, focused: 'open-lab' })
   await waitForEvent(page, 'lab: onOpenChange false')
 })
 
@@ -783,4 +784,27 @@ test('a touch tap on the dimmed area closes once (pointer path, the following cl
   await waitForEvent(page, 'lab: onOpenChange false')
   await page.waitForTimeout(500)
   expect((await events(page)).filter((e) => e === 'lab: onOpenChange false')).toHaveLength(1)
+})
+
+// A touch tap closes on pointerup, before the browser's click. That click must land on the closing sheet's own
+// overlay, not fall through to a row of the sheet below (reported on the stacked "1000 rows" demo).
+test('a tap on the overlay of a stacked sheet closes it without pressing the row underneath', async ({ page, browserName }) => {
+  test.skip(browserName === 'firefox', 'touch emulation: mobile projects only')
+  await page.goto('/?open=1#/thousand')
+  await waitForEvent(page, /orders: onDetentChange/)
+  await page.locator('[data-order="3"]').tap()
+  await waitForEvent(page, /order-3: onDetentChange/)
+  // A point on the overlay above the order sheet with a row of the list sheet underneath.
+  const sheetTop = (await page.locator('[data-ybs-root]').last().locator('[data-ybs-sheet]').boundingBox())!.y
+  const rows = await page.locator('[data-ybs-root]').first().locator('[data-order]').evaluateAll((els) =>
+    els.map((e) => ({ id: e.getAttribute('data-order'), ...e.getBoundingClientRect().toJSON() })),
+  )
+  const row = rows.find((r) => r.y > 60 && r.y + r.height < sheetTop - 10)!
+  expect(row).toBeTruthy()
+  await clearEvents(page)
+  await page.touchscreen.tap(200, row.y + row.height / 2)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  await page.waitForTimeout(600)
+  expect((await events(page)).filter((e) => /^order-\d+: portal mount/.test(e))).toEqual([])
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
 })

@@ -328,12 +328,10 @@ export function Portal({ children, container }: PortalProps) {
     }
   }, [blocking, ctx.rootEl, ctx.returnFocus])
 
-  // A sheet animating closed takes no input: taps go through to the page, and focus can't land in it.
-  useEffect(() => {
-    const root = ctx.rootEl.current
-    if (!ctx.mounted || !root) return
-    root.toggleAttribute('inert', !ctx.open)
-  }, [ctx.open, ctx.mounted, ctx.rootEl])
+  // A sheet animating closed still catches taps on its own layer (it is not made inert): a touch tap closes it on
+  // pointerup, before the browser's click, and that click must land on this overlay (which ignores it), not fall
+  // through to whatever is underneath, e.g. a row in the sheet below (reported 2026-11-01). Keyboard focus is
+  // already back on the page (see `blocking` above), and the close takes ~280ms.
 
   // Android back: one CloseWatcher per open sheet. The browser sends back (and Escape) to the newest one,
   // which is the top sheet. It's dropped as soon as the sheet starts closing, so a back press during the
