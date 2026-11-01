@@ -73,6 +73,9 @@ import { Sheet } from '@yourrealm/bottom-sheet'
   detent instead of closing it. `open={false}` and `<Sheet.Close>` still close it.
 - `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with short
   content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
+- `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
+  `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
+  positioned against it. Page sheets (`variant="page"`) recede by default.
 - `/styled` only: `floating` (iOS 26 style: inset from the screen edges with large corners at lower detents, attaching
   as it reaches full; tokens `--ybs-float-gap`, `--ybs-float-radius`).
 - `/styled` only: `variant="page"` (an iOS page sheet for a task: opens straight to full, full width), `width`

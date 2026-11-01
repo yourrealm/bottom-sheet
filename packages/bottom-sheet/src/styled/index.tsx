@@ -43,7 +43,8 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   /**
    * - `'sheet'` (default): detents as given, a card-width sheet.
    * - `'page'`: an iOS-style page sheet for a task (compose, edit): opens straight to full (`detents` default `[]`),
-   *   spans the full width (`width` default `'full'`). Pair it with `leading` / `trailing` (Cancel / Save).
+   *   spans the full width (`width` default `'full'`), and the page behind recedes (`recede` default true; mark your
+   *   app wrapper with `data-ybs-background`). Pair it with `leading` / `trailing` (Cancel / Save).
    */
   variant?: 'sheet' | 'page'
   /**
@@ -88,7 +89,7 @@ export function BottomSheet({
   contentProps,
   ...rootProps
 }: BottomSheetProps) {
-  const root = variant === 'page' ? { detents: PAGE_DETENTS, ...rootProps } : rootProps
+  const root = variant === 'page' ? { detents: PAGE_DETENTS, recede: true, ...rootProps } : rootProps
   const bar = leading != null || trailing != null
   return (
     <Sheet.Root {...root}>

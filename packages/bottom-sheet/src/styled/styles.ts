@@ -52,6 +52,8 @@ export const styledCss = /* css */ `
 .ybs-sheet-full > .ybs-header, .ybs-sheet-full > .ybs-body {
   padding-inline: max(16px, (100% - var(--ybs-content-width)) / 2);
 }
+/* A page sheet sits lower than the receded page's top edge (+10px), so a strip of that page shows above it, like iOS. */
+[data-ybs-root]:has(.ybs-sheet-page):not([data-ybs-fullscreen]) { --ybs-inset: calc(env(safe-area-inset-top, 0px) + 22px); }
 /* A page sheet fills the screen at full even when its content is short (no fit-content). */
 .ybs-sheet.ybs-sheet-page { min-height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset)); }
 /* Header bar: leading | title | trailing, the title centred like an iOS navigation bar. */
@@ -94,4 +96,16 @@ export const styledCss = /* css */ `
 .ybs-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
 .ybs-description { margin: 4px 0 0; font-size: 14px; color: var(--ybs-muted); }
 .ybs-body { padding: 0 0 12px; }
+/* The page behind recedes (Sheet.Root recede + data-ybs-background on the app wrapper), like iOS: it scales back
+   from the top of the screen, drops below the status bar and rounds its top corners over black. The wrapper needs
+   its own background (html and body turn black). */
+/* !important: our layer loses to the app's own unlayered html/body background, and this must win while receding. */
+html[data-ybs-recede]:has([data-ybs-background]), html[data-ybs-recede]:has([data-ybs-background]) body { background: #000 !important; }
+html[data-ybs-recede] [data-ybs-background] {
+  /* Like iOS, a sheet covering half the screen only dims the page; it recedes as the sheet covers the screen. */
+  --ybs-r: clamp(0, (var(--ybs-recede, 0) - 0.6) * 2.5, 1);
+  transform-origin: 50% var(--ybs-scroll-y, 0px);
+  transform: translateY(calc(var(--ybs-r) * (env(safe-area-inset-top, 0px) + 10px))) scale(calc(1 - var(--ybs-r) * 0.07));
+  clip-path: inset(var(--ybs-scroll-y, 0px) 0 0 0 round calc(var(--ybs-r) * 12px) calc(var(--ybs-r) * 12px) 0 0);
+}
 `

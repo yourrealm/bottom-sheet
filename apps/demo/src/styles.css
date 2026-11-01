@@ -358,3 +358,6 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .note-editor { display: grid; gap: 8px; padding: 16px; }
 .note-title { border: 0; background: none; color: inherit; font: 700 26px/1.2 system-ui, sans-serif; outline: none; }
 .note-body { border: 0; background: none; color: inherit; font: 16px/1.6 system-ui, sans-serif; resize: none; outline: none; min-height: 50dvh; }
+
+/* The page wrapper that recedes behind a sheet (data-ybs-background) needs its own background. */
+.scenario { background: var(--bg); min-height: 100dvh; }

@@ -36,6 +36,7 @@ interface SheetContextValue {
   dismissible: boolean
   closeOnBack: boolean
   fullscreen: boolean
+  recede: boolean
   detents: readonly Detent[]
   initialDetent: Detent | undefined
   detent: Detent | undefined
@@ -109,6 +110,13 @@ export interface RootProps {
    * safe area. Headless: pad your header with `env(safe-area-inset-top)` yourself.
    */
   fullscreen?: boolean
+  /**
+   * The page behind recedes while this modal sheet is open, like iOS. Mark your app's wrapper with
+   * `data-ybs-background`; `/styled` scales it back and rounds its top corners. Headless: style
+   * `html[data-ybs-recede] [data-ybs-background]` with `--ybs-recede` (0..1) and `--ybs-scroll-y`.
+   * While receding, `position: fixed` elements inside the wrapper are positioned against it.
+   */
+  recede?: boolean
   /** Detent to open at. Default: the smallest usable partial detent, else `full`. */
   initialDetent?: Detent
   /** Controlled resting detent. Changing it moves the sheet. */
@@ -137,6 +145,7 @@ export function Root(props: RootProps) {
     dismissible = true,
     closeOnBack = modal,
     fullscreen = false,
+    recede = false,
     debug,
   } = props
   const [openState, setOpenState] = useState(defaultOpen)
@@ -202,6 +211,7 @@ export function Root(props: RootProps) {
       dismissible,
       closeOnBack,
       fullscreen,
+      recede,
       detents,
       initialDetent,
       detent,
@@ -218,7 +228,7 @@ export function Root(props: RootProps) {
       hasDescription,
       setHasDescription,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, fullscreen, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id, hasDescription],
+    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, guard, onDetentChange, debug, onClosed, id, hasDescription],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
@@ -282,7 +292,7 @@ export function Portal({ children, container }: PortalProps) {
     const parent = root.parentElement
     if (!parent) return
     // Stack: Escape goes to the top sheet only; the sheet below can recede.
-    const entry: StackEntry = { root, close: () => dismissRef.current('escape') }
+    const entry: StackEntry = { root, close: () => dismissRef.current('escape'), recede: ctx.recede && ctx.modal }
     entryRef.current = entry
     pushSheet(entry)
     const touched: Element[] = []
@@ -303,7 +313,7 @@ export function Portal({ children, container }: PortalProps) {
       ctx.returnFocus.current = null
       if (back?.isConnected) back.focus({ preventScroll: true })
     }
-  }, [ctx.mounted, ctx.rootEl, ctx.returnFocus, ctx.modal])
+  }, [ctx.mounted, ctx.rootEl, ctx.returnFocus, ctx.modal, ctx.recede])
 
   // Android back: one CloseWatcher per open sheet. The browser sends back (and Escape) to the newest one,
   // which is the top sheet. It's dropped as soon as the sheet starts closing, so a back press during the
@@ -398,7 +408,7 @@ export function View({ children, className, bleedClassName }: ViewProps) {
         dismissible: ctx.dismissible,
         onDetentChange: (d) => ctxRef.current.onDetentChange?.(d),
         onClosed: () => ctxRef.current.onClosed(),
-        onProgress: (p) => reportProgress(root, p),
+        onProgress: (p, cover) => reportProgress(root, p, cover),
         isActive: () => isTopSheet(root),
         debug: (m) => ctxRef.current.debug?.(m),
       },

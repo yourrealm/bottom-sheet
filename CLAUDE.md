@@ -215,6 +215,18 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
 - The clip also stops hits in the gap (test: "floating: inset with a gap at the peek"). It clips the sheet's own box-shadow.
 - Device (2026-11-01): Chrome + Firefox Android render it and drag from the peek to full.
 
+## Page behind recedes (`recede`, default on for `/styled` `variant="page"`; demo `#/notes`)
+- Opt-in wrapper (`data-ybs-background`), like Vaul. `src/react/stack.ts`: the lowest open modal sheet with `recede`
+  sets `data-ybs-recede`, `--ybs-recede` and `--ybs-scroll-y` on <html>. `--ybs-recede` is **coverage** (visible sheet / H,
+  from the controller's `onProgress(progress, cover)`), not progress: a short fit-content sheet at "full" covers half the
+  screen and must not recede the page. `/styled` maps it so nothing happens below 60% coverage.
+- The attribute is removed when the sheet closes: a transform on the wrapper re-bases its fixed elements, so it must not linger.
+- `/styled`: scale 0.93 from the top of the screen (`transform-origin` uses `--ybs-scroll-y`), down by safe area + 10px,
+  top corners rounded via `clip-path` (overflow/border-radius would sit at the document top when scrolled). html/body
+  go black with `!important`: our layer otherwise loses to the app's own unlayered body background.
+- Page sheets use a 22px top inset (receded page top is at +10px), so a strip of the receded page shows above, like iOS.
+- Device (2026-11-01): renders in Chrome + Firefox Android.
+
 ## Android back closes the top sheet (`closeOnBack`, default = `modal`)
 - One `CloseWatcher` per open sheet (Portal effect; `src/react/stack.ts` holds it on the stack entry). The browser
   routes back and Escape to the newest watcher = the top sheet. No history entries, so no router/URL interference

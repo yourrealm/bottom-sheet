@@ -14,6 +14,8 @@ export interface StackEntry {
   watcher?: CloseWatcherLike | null
   /** Animating out: Escape skips it and goes to the sheet below. */
   closing?: boolean
+  /** The page behind recedes while this (modal) sheet is open; the lowest such sheet drives it. */
+  recede?: boolean
 }
 
 /** The bits of CloseWatcher we use (not in TypeScript's DOM lib yet). */
@@ -62,6 +64,7 @@ export function removeSheet(entry: StackEntry) {
   const i = stack.indexOf(entry)
   if (i === -1) return
   stack.splice(i, 1)
+  if (entry.recede && !stack.some((e) => e.recede)) setRecede(0)
   const below = stack[i - 1]
   if (below && !stack[i]) setCovered(below.root, 0)
   if (!stack.length && escapeListening) {
@@ -75,10 +78,32 @@ export function isTopSheet(root: HTMLElement) {
 }
 
 /** Called with the sheet's own progress (0 closed .. 1 full); updates the sheet underneath it. */
-export function reportProgress(root: HTMLElement, progress: number) {
+export function reportProgress(root: HTMLElement, progress: number, cover = progress) {
   const i = stack.findIndex((e) => e.root === root)
   const below = i > 0 ? stack[i - 1] : undefined
   if (below) setCovered(below.root, progress)
+  if (i !== -1 && stack[i] === stack.find((e) => e.recede)) setRecede(cover)
+}
+
+/**
+ * The page behind recedes (`data-ybs-recede` + `--ybs-recede` on <html>) while a sheet with `recede` is open.
+ * `--ybs-recede` is the share of the screen the sheet covers (0..1), so a short sheet barely recedes the page.
+ * `--ybs-scroll-y` lets the page scale from the top of the screen rather than the top of the document.
+ * The attribute is only present while receding: a transform on the page wrapper changes what its fixed
+ * elements are positioned against, so it must not linger.
+ */
+function setRecede(progress: number) {
+  const html = document.documentElement
+  if (progress > 0 && !html.hasAttribute('data-ybs-recede')) {
+    html.style.setProperty('--ybs-scroll-y', `${window.scrollY}px`)
+    html.setAttribute('data-ybs-recede', '')
+  }
+  if (progress <= 0) {
+    html.removeAttribute('data-ybs-recede')
+    html.style.removeProperty('--ybs-recede')
+    return
+  }
+  html.style.setProperty('--ybs-recede', String(progress))
 }
 
 function setCovered(root: HTMLElement, progress: number) {

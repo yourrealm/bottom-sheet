@@ -602,3 +602,30 @@ test('floating: inset with a gap at the peek, attached at full', async ({ page }
   await waitForEvent(page, 'places: onDetentChange full')
   await expect.poll(cornerHitsSheet).toBe(true)
 })
+
+test.describe('page behind recedes', () => {
+  const state = (page: Page) =>
+    page.evaluate(() => ({
+      attr: document.documentElement.hasAttribute('data-ybs-recede'),
+      scale: new DOMMatrix(getComputedStyle(document.querySelector('[data-ybs-background]')!).transform).a,
+    }))
+
+  test('a page sheet recedes the page, and it comes back after closing', async ({ page }) => {
+    await page.goto('/#/notes')
+    await page.click('#new-note')
+    await waitForEvent(page, 'notes: onDetentChange full')
+    const open = await state(page)
+    expect(open.attr).toBe(true)
+    expect(open.scale).toBeLessThan(0.95)
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await waitForEvent(page, 'notes: onOpenChange false')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+    expect(await state(page)).toEqual({ attr: false, scale: 1 }) // no transform left behind (fixed elements)
+  })
+
+  test('sheets without recede leave the page alone', async ({ page }) => {
+    await page.goto('/?open=1#/settings')
+    await waitForEvent(page, 'settings: onDetentChange')
+    expect((await state(page)).attr).toBe(false)
+  })
+})

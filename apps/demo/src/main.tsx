@@ -120,7 +120,7 @@ function App() {
   return (
     <>
       {scenario ? (
-        <div className="scenario" data-scenario={scenario.id}>
+        <div className="scenario" data-scenario={scenario.id} data-ybs-background="">
           <nav className="topbar">
             <a href="#/" className="back">‹ Demos</a>
             <span>{scenario.title}</span>

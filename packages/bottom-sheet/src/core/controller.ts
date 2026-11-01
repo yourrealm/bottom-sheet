@@ -36,7 +36,8 @@ export interface SheetControllerOptions {
   /** Called once the sheet has fully closed (scrolled to 0). */
   onClosed?: () => void
   /** Progress 0 (closed) .. 1 (full), on every scroll. Used to drive stacked-sheet effects. */
-  onProgress?: (progress: number) => void
+  /** progress 0..1 closed -> full; cover 0..1 = share of the available height the sheet covers. */
+  onProgress?: (progress: number, cover: number) => void
   /** Whether this sheet is the active (top) one; inactive sheets ignore the keyboard. Default always. */
   isActive?: () => boolean
   /** Internal decision log, for testing on devices. */
@@ -274,7 +275,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const progress = full > 0 ? Math.min(Math.max(st / full, 0), 1) : 0
     root.style.setProperty('--ybs-progress', String(progress))
     root.style.setProperty('--ybs-visible', `${Math.min(st, full)}px`)
-    options.onProgress?.(progress)
+    options.onProgress?.(progress, H > 0 ? Math.min(st, full) / H : 0)
     root.style.setProperty('--ybs-bleed', st > 4 ? '1' : '0')
 
     if (lock != null && !touching) {
