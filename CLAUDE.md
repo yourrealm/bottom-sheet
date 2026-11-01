@@ -184,7 +184,12 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   A programmatic close (`open={false}`) temporarily re-adds `closed` (`closingOnPurpose`).
 - `onDetentChange` still reports `'closed'` while closing; apps mapping detents to state must ignore it (the demo
   first reopened itself by mapping it to "peek").
-- Not yet run on the Android device suite (phone was away) or a real iPhone.
+- **Firefox Android leaves a swipe below the floor** (rested at 46px and 39px under a 76px peek, no snap up). The
+  controller now treats "resting below the lowest detent" like "resting at closed" for a sheet that can't be dismissed
+  (`belowFloor`, on scrollend and on finger lift) and scrolls back up to the floor. Chrome snaps natively.
+- Device results (2026-11-01, gesture sequence: drag header to the peek, tap the board through it, fling up to full,
+  fling down to the peek, fling down at the peek): Chrome Android ✅, Firefox Android ✅ (after the fix above),
+  never an `onOpenChange`. A real iPhone is still untested.
 
 ## Android back closes the top sheet (`closeOnBack`, default = `modal`)
 - One `CloseWatcher` per open sheet (Portal effect; `src/react/stack.ts` holds it on the stack entry). The browser

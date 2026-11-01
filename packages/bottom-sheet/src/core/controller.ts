@@ -311,10 +311,18 @@ export function createSheetController(els: SheetElements, options: SheetControll
       emitted = now
       options.onDetentChange?.(now)
     }
-    if (isOpen && st <= CLOSED_TOLERANCE) {
+    if (isOpen && belowFloor(st)) {
       if (touching) dbg(`at closed, waiting for the finger to lift (st=${st.toFixed(2)})`)
       else settleAtClosed()
     }
+  }
+
+  /**
+   * Resting where only closing makes sense: at 0, or, for a sheet that can't be dismissed, anywhere below its
+   * lowest detent. Firefox Android leaves a swipe there (46px under a 76px floor) instead of snapping up to it.
+   */
+  function belowFloor(st: number) {
+    return st <= CLOSED_TOLERANCE || (!closable() && st < pos(floor()) - CLOSED_TOLERANCE)
   }
 
   /** Resting at 0: close, or for a sheet that can't be dismissed, go back up to its floor. */
@@ -342,7 +350,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // can't finish closing then. Re-check once the finger lifts; otherwise the sheet stays mounted,
     // invisible, over the page (observed on Firefox Android: the "wedged page" report).
     requestAnimationFrame(() => {
-      if (!touching && isOpen && !programmatic && scroller.scrollTop <= CLOSED_TOLERANCE) {
+      if (!touching && isOpen && !programmatic && belowFloor(scroller.scrollTop)) {
         dbg('finger lifted at closed')
         settleAtClosed()
       }
