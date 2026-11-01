@@ -85,6 +85,13 @@ const TAP_MS = 500
 /** The click a dropped press would produce follows within this. */
 const CLICK_AFTER_MS = 1000
 /**
+ * Arriving at closed closes the sheet only if we moved it there or the user touched, wheeled, dragged or pressed a
+ * key within this long. Any other scroll (the browser scrolling a focused element into view, an app's
+ * scrollIntoView, a test runner) that snaps to closed is undone. Long enough for a fling to finish.
+ */
+const STRAY_MS = 3000
+const INPUT_EVENTS = ['touchstart', 'touchend', 'wheel', 'pointerdown', 'pointerup', 'keydown'] as const
+/**
  * Programmatic moves (open, close, snapTo, wheel steps, keyboard) are animated here, not by the browser's smooth
  * scroll: that took 660-770ms on a phone (Chrome/Firefox Android, measured 2026-11-01) and varies by browser.
  * Platform guidance for a sheet: ~400ms decelerating in, ~30% faster accelerating out.
@@ -364,6 +371,15 @@ export function createSheetController(els: SheetElements, options: SheetControll
     retries = 0
     if (root.getAttribute('data-ybs-drag') === 'settle') root.removeAttribute('data-ybs-drag')
 
+    // Something other than the user or us scrolled the sheet down to closed (e.g. a scrollIntoView landing nearer the
+    // closed snap point, seen in Playwright): go back to where it rested instead of closing.
+    if (isOpen && !programmatic && !touching && belowFloor(st) && performance.now() - lastInputAt > STRAY_MS) {
+      const back = current && current !== 'closed' ? current : floor()
+      dbg(`scrolled to closed without user input: back to ${String(back)}`)
+      scrollToDetent(back)
+      return
+    }
+
     const now = stopAt(st, stops)?.detent ?? null
     programmatic = false
     target = null
@@ -405,6 +421,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // In each case the click that follows is dropped. The closing layer keeps taking pointer events, so that click
   // lands here instead of on what's underneath (a row of the sheet below).
   let lastScrollAt = -Infinity
+  /** Last touch, wheel, pointer or key input on the sheet: scrolls after it are the user's (see STRAY_MS). */
+  let lastInputAt = -Infinity
+  const onInput = () => (lastInputAt = performance.now())
   type Press = { id: number; x: number; y: number; t: number; touch: boolean; moving: boolean; outside: boolean; dragged: boolean }
   let press: Press | null = null
   let dropClickUntil = 0
@@ -703,6 +722,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('scrollend', onScrollEnd)
   scroller.addEventListener('touchstart', onTouchStart, passive)
   scroller.addEventListener('pointerdown', onPressStart, true)
+  for (const t of INPUT_EVENTS) scroller.addEventListener(t, onInput, { capture: true, passive: true })
   scroller.addEventListener('pointermove', onPressMove, true)
   scroller.addEventListener('pointerup', onPressEnd, true)
   scroller.addEventListener('pointercancel', onPressCancel, true)
@@ -790,6 +810,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('scrollend', onScrollEnd)
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('pointerdown', onPressStart, true)
+      for (const t of INPUT_EVENTS) scroller.removeEventListener(t, onInput, true)
       scroller.removeEventListener('pointermove', onPressMove, true)
       scroller.removeEventListener('pointerup', onPressEnd, true)
       scroller.removeEventListener('pointercancel', onPressCancel, true)

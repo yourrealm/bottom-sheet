@@ -848,3 +848,17 @@ test('a function trigger renders your own button with the open state', async ({ 
   await expect(page.getByRole('dialog', { name: 'Share photo' })).toBeVisible()
   await expect(trigger).toHaveAttribute('aria-expanded', 'true')
 })
+
+// Arriving at closed only closes the sheet after user input (or our own close). A stray scroll (the browser
+// revealing a focused element, an app's scrollIntoView, a test runner) that snaps to closed is undone. Found in
+// dapuzzler's tests: Playwright's scroll-into-view snapped the picker sheet closed before it could click.
+test('a scroll to closed without user input goes back instead of closing', async ({ page }) => {
+  await openLab(page)
+  await page.waitForTimeout(3200) // past the input window of the click that opened it
+  await clearEvents(page)
+  await page.evaluate(() => (document.querySelector<HTMLElement>('[data-ybs-scroller]')!.scrollTop = 0))
+  await waitForEvent(page, /lab: scrolled to closed without user input: back to 0\.5/)
+  await expect.poll(async () => (await geometry(page)).st, { timeout: 3000 }).toBeGreaterThan(100)
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+})

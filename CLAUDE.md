@@ -93,6 +93,13 @@ Tests: "glide (programmatic moves)". Device suite with the glide and the press a
   (touches arrived, programmatic scrollTop worked). That tab had gone lab sheet -> closed -> Comments sheet glide-open
   during an interrupted device-suite run. Watch for it.
 
+### Only the user (or we) can close by scrolling
+Arriving at closed closes the sheet only after our own move there or user input on the sheet (touch, wheel, pointer,
+key) within 3s (`STRAY_MS`). Any other scroll that snaps to closed (the browser revealing a focused element, an app's
+scrollIntoView, a test runner) goes back to the resting detent. Found via dapuzzler's toss test: Playwright's
+scroll-into-view landed nearer the closed snap point and the picker closed before the click (flaky under load).
+Test: "a scroll to closed without user input goes back instead of closing".
+
 ### Presses: one arbiter in the controller
 Which presses count as taps and whether their click activates is decided in one place (`onPressStart/Move/End` +
 `onClickCapture`, native capture listeners on the scroller). The click is dropped when:
