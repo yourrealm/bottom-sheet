@@ -75,6 +75,8 @@ const MAX_RETARGETS = 3
 /** A resize this soon after a user scroll event is mid-gesture or mid-momentum: don't re-target. */
 const USER_SCROLL_QUIET = 100
 const VELOCITY_WINDOW_MS = 80
+/** A touch that starts this soon after a scroll event lands on moving content: it only stops the scroll. */
+const MOVING_MS = 100
 /**
  * Programmatic moves (open, close, snapTo, wheel steps, keyboard) are animated here, not by the browser's smooth
  * scroll: that took 660-770ms on a phone (Chrome/Firefox Android, measured 2026-11-01) and varies by browser.
@@ -319,6 +321,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   function onScroll() {
     const st = scroller.scrollTop
+    lastScrollAt = performance.now()
     if (!programmatic && lock == null) lastUserScroll = performance.now()
     if (!detached) paint(st)
 
@@ -386,7 +389,24 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   // ---- gestures ----
+  // Native (iOS, Android): a tap on content that is still scrolling only stops it; it doesn't press what's under the
+  // finger. Chrome Android sends the click anyway in our snap scroller (a fling-stopping tap on the 1000-rows list
+  // opened a row, 2026-11-01), so drop the click of a tap that started while the scroller was moving.
+  let lastScrollAt = -Infinity
+  let tapStopsScroll = false
+  let tapAt = 0
+  function onClickCapture(e: MouseEvent) {
+    // Only the click of that touch: it follows within a moment (a drag sends none, and a later click is unrelated).
+    if (!tapStopsScroll || performance.now() - tapAt > 1000) return
+    tapStopsScroll = false
+    dbg('tap stopped the scroll: click dropped')
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
   function onTouchStart() {
+    tapAt = performance.now()
+    tapStopsScroll = tapAt - lastScrollAt < MOVING_MS
     touching = true
     anchor = null
     // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
@@ -653,6 +673,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('scroll', onScroll, passive)
   scroller.addEventListener('scrollend', onScrollEnd)
   scroller.addEventListener('touchstart', onTouchStart, passive)
+  scroller.addEventListener('click', onClickCapture, true)
   scroller.addEventListener('touchend', onTouchEnd, passive)
   scroller.addEventListener('touchcancel', onTouchEnd, passive)
   scroller.addEventListener('wheel', onWheel, { passive: false })
@@ -735,6 +756,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('scroll', onScroll)
       scroller.removeEventListener('scrollend', onScrollEnd)
       scroller.removeEventListener('touchstart', onTouchStart)
+      scroller.removeEventListener('click', onClickCapture, true)
       scroller.removeEventListener('touchend', onTouchEnd)
       scroller.removeEventListener('touchcancel', onTouchEnd)
       scroller.removeEventListener('wheel', onWheel)

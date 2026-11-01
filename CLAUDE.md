@@ -93,6 +93,11 @@ Tests: "glide (programmatic moves)". Not yet re-run: the Android suite with the 
   (touches arrived, programmatic scrollTop worked). That tab had gone lab sheet -> closed -> Comments sheet glide-open
   during an interrupted device-suite run. Watch for it.
 
+### A tap on moving content only stops it
+Native: a tap on a still-scrolling list stops it without pressing the row. Chrome and Firefox Android sent the click
+in our snap scroller (a fling-stopping tap on the 1000-rows list opened a row). The controller drops the click of a
+touch that starts within 100ms of a scroll event (`tapStopsScroll`, expires after 1s). Device-verified both browsers.
+
 ### Outside taps use pointer events (touch)
 After a swipe on the spacer (touch-action: none) Chrome Android keeps an invisible fling alive for up to ~2s and spends
 the next tap stopping it: pointerdown/up arrive, no click, so closing took two taps (stacked "1000 rows" demo; same

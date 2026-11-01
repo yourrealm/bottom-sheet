@@ -808,3 +808,29 @@ test('a tap on the overlay of a stacked sheet closes it without pressing the row
   expect((await events(page)).filter((e) => /^order-\d+: portal mount/.test(e))).toEqual([])
   await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
 })
+
+// Native: a tap on a list that is still scrolling only stops it. Chrome and Firefox Android sent the click in our
+// snap scroller, so a fling-stopping tap opened a row's sheet. The controller drops the click of a touch that starts
+// while the scroller is moving (a scroll event in the last 100ms).
+test('a tap on a still-moving list stops it without pressing the row; a tap at rest presses it', async ({ page, browserName }) => {
+  test.skip(browserName === 'firefox', 'touch emulation: mobile projects only')
+  await page.goto('/?open=1#/thousand')
+  await waitForEvent(page, /orders: onDetentChange/)
+  const row = (await page.locator('[data-order="2"]').boundingBox())!
+  const at = { x: row.x + row.width / 2, y: row.y + row.height / 2 }
+  // "Moving": scroll events right before the touch.
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTop += 1
+    s.dispatchEvent(new Event('scroll'))
+  })
+  await page.touchscreen.tap(at.x, at.y)
+  await page.waitForTimeout(500)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  await waitForEvent(page, 'orders: tap stopped the scroll: click dropped')
+  // At rest, the same tap opens the row's sheet.
+  await page.waitForTimeout(300)
+  const row2 = (await page.locator('[data-order="2"]').boundingBox())!
+  await page.touchscreen.tap(row2.x + row2.width / 2, row2.y + row2.height / 2)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
+})
