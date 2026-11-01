@@ -437,6 +437,7 @@ test.describe('persistent (non-modal) sheet', () => {
     await openSolved(page)
     const cdp = await page.context().newCDPSession(page)
     const H = await page.evaluate(() => document.querySelector('[data-ybs-scroller]')!.clientHeight)
+    const start = await st(page) // full: the sheet's own height (it's shorter than the screen)
     const header = (await page.locator('[data-ybs-header]').boundingBox())!
     await page.evaluate(() => {
       const s = document.querySelector('[data-ybs-scroller]')!
@@ -454,7 +455,8 @@ test.describe('persistent (non-modal) sheet', () => {
     })
     await page.waitForTimeout(1500)
     const moved = await page.evaluate(() => (window as unknown as { __min: number }).__min)
-    test.skip(moved > H - 50 && (await st(page)) > H - 50, 'synthesized touch scrolling is not supported in this environment')
+    // CI's headless Linux Chromium ignores synthesized touch scrolls: nothing moved at all.
+    test.skip(moved > start - 20 && Math.abs((await st(page)) - start) < 20, 'synthesized touch scrolling is not supported in this environment')
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
     expect(await st(page)).toBeCloseTo(76, -1)
     expect((await events(page)).some((e) => e.startsWith('solved: onOpenChange'))).toBe(false)
