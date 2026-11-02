@@ -58,6 +58,9 @@ Three ways in. **Use `BottomSheet`** unless you've been asked for something else
 | `StyledSheet` | `@yourrealm/bottom-sheet/styled` | The styled parts `BottomSheet` is built from, to arrange yourself. |
 | `Sheet` | `@yourrealm/bottom-sheet` | The parts with no look at all, only the behaviour. For a fully custom design. |
 
+On a wide screen with a mouse, `BottomSheet` opens as a centred dialog instead (see "Dialog on desktop"); turn that
+off with `dialog={false}`, or for the whole app with `<BottomSheet.Provider dialog={false}>`.
+
 `BottomSheet`'s options (`leading`, `trailing`, `eyebrow`, `headerExtra`, `footer`, `BottomSheet.Edge`) cover most
 layouts. Use the parts only when the person you're working for asks for them, or for a fully custom design (see
 "Building from parts" below).
@@ -167,7 +170,8 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 - `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
   `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
   positioned against it. Modal sheets only. On by default for `variant="page"`.
-- `dialog`: show it as a centred dialog on a wide screen used with a mouse. See "Dialog on desktop".
+- `dialog`: show it as a centred dialog on a wide screen used with a mouse. On by default for `BottomSheet`, off for
+  `Sheet.Root`. See "Dialog on desktop".
 - `debug`: a function that receives the sheet's internal decision log, for testing gestures on a device.
 
 ### Closing animates
@@ -231,7 +235,10 @@ never when you change `open` yourself, so `onOpenChange={(o) => !o && onClose()}
   | `--ybs-max-width` | `640px` | Width of a `card` sheet |
   | `--ybs-content-width` | `960px` | Content column of a `width="full"` sheet |
   | `--ybs-float-gap` / `--ybs-float-radius` | `8px` / `32px` | `floating`: gap to the screen edges, corner size |
-  | `--ybs-inset` | safe area + 10px | Gap above the sheet at full (+22px for page sheets, `0` with `fullscreen`). Works headless too |
+  | `--ybs-inset` | safe area + 10px | Gap above the sheet at full (safe area + 22px for page sheets, `0` with `fullscreen`). Works headless too |
+  | `--ybs-dialog-width` | `32rem` (`48rem` for `variant="page"`) | Width of the dialog on desktop. Works headless too |
+  | `--ybs-dialog-gap` | `24px` | Space kept around the dialog. Works headless too |
+  | `--ybs-dialog-radius` | `16px` (none headless) | Dialog corners; the dialog is clipped to them |
 
 - `--ybs-body-inset` (read it, don't set it) is the side space actually in use, larger on a wide `width="full"` sheet;
   `BottomSheet.Edge` uses it.
@@ -266,38 +273,48 @@ The page stays inert until the last modal sheet closes. No setup: render the sec
 ### Dialog on desktop
 
 A bottom sheet suits a phone; on a laptop, a sheet rising from the bottom edge of a wide window looks out of place.
-Pass `dialog` and the same sheet opens as a centred dialog there:
+So on a wide screen with a mouse, `BottomSheet` opens as a centred dialog instead, like a SwiftUI `.sheet` becomes a
+form sheet on iPad. Nothing to set up:
 
 ```tsx
-<BottomSheet dialog trigger="Filters" title="Filters" detents={[0.6]}>…</BottomSheet>
-<BottomSheet dialog="(min-width: 1024px)" …>   {/* your own media query */}
+<BottomSheet trigger="Filters" title="Filters" detents={[0.6]}>…</BottomSheet>      {/* a dialog on desktop */}
+<BottomSheet dialog={false} …>                                                       {/* a sheet everywhere */}
+<BottomSheet dialog="(min-width: 1024px) and (hover: hover) and (pointer: fine)" …>  {/* your own query */}
 ```
 
-For every sheet in the app, set it once around your app: `<BottomSheet.Provider dialog>` (headless:
-`<Sheet.Provider dialog>`). A sheet's own `dialog` wins, so `dialog={false}` keeps one as a sheet; providers nest.
+For the whole app, wrap it once: `<BottomSheet.Provider dialog={false}>` keeps every sheet a sheet (headless:
+`<Sheet.Provider dialog>` turns it on for the parts, which are off by default). A sheet's own `dialog` wins over the
+Provider. Providers nest: an inner one overrides what it sets and keeps the rest from the outer one.
 
-- `dialog` (`true`) uses `DIALOG_QUERY`: `(min-width: 768px) and (hover: hover) and (pointer: fine)`. A phone in
-  landscape or a touch tablet keeps the sheet.
+- `dialog={true}` (the default for `BottomSheet`) uses `DIALOG_QUERY`:
+  `(min-width: 768px) and (hover: hover) and (pointer: fine)`, so a phone in landscape or a touch tablet keeps the
+  sheet. A string replaces the whole query, so keep the hover and pointer checks if you still want that. Import
+  `DIALOG_QUERY` from `@yourrealm/bottom-sheet/styled`, or use `Sheet.DIALOG_QUERY` headless.
 - Same tree, props and state, unlike swapping a `Drawer` for a `Dialog` yourself: the title, footer, focus, Escape,
   back, outside press, stacking and `onExitComplete` all work the same.
 - It fades and scales in (about 220ms) and out (160ms), instant with reduced motion. The content scrolls inside the
   dialog under a sticky header and above a sticky footer.
-- There are no detents and nothing to drag, so `detent`, `onDetentChange`, `floating`, `fullscreen` and `recede` do
-  nothing there. A dismissible `BottomSheet` gets a visible ✕ (it has nothing to swipe), and `variant="page"` becomes a
-  larger dialog (48rem).
-- `dismissible={false}` makes it an alert: Escape, back and an outside press do nothing and there's no ✕, so give
-  it a button that closes it.
-- Popovers rendered inside the dialog are clipped by its edges (it scrolls its own content). Popover libraries that
-  detect clipping (Floating UI, used by Base UI and Radix) flip or shift them to fit.
+- There are no detents and nothing to drag: `detents`, `initialDetent`, `detent` and `onDetentChange` (it doesn't
+  fire), `floating`, `fullscreen` and `recede` don't apply, nor do `width="card"` / `--ybs-max-width` and
+  `--ybs-radius` (the dialog has its own tokens, in the table above). The grabber is hidden. An app that drives other
+  UI from the current detent on desktop should pass `dialog={false}` there.
+- A dismissible `BottomSheet` gets a visible ✕ (it has nothing to swipe) unless it has `leading`/`trailing`, which
+  carry its own way out (Cancel / Done). `variant="page"` becomes a larger dialog (48rem); to change that width, set
+  `--ybs-dialog-width` on the sheet itself (`className`), not on `[data-ybs-root]`.
+- `dismissible={false}` makes it behave like an alert dialog (the role stays `dialog`): Escape, back and an outside
+  press do nothing and there's no ✕, so give it a button that closes it.
+- Popovers rendered inside the dialog are clipped by its edges, also `position: fixed` ones (the dialog scrolls its
+  own content, and the `/styled` sheet is a size container). Popover libraries that detect clipping (Floating UI, used
+  by Base UI and Radix) flip or shift them to fit.
 - Read when it opens, like `modal`: resizing the window while it's open keeps the presentation; the next open
   follows the window. Modal only: a non-modal sheet stays a sheet.
-- Tokens: `--ybs-dialog-width` (`32rem`), `--ybs-dialog-gap` (space kept around it, `24px`) and
-  `--ybs-dialog-radius` (`16px` in `/styled`, none headless).
+- `BottomSheet.usePresentation()` (headless: `Sheet.usePresentation()`) returns `'sheet'` or `'dialog'`, for content
+  that adapts. Call it inside the sheet's content; it throws outside a sheet.
 - Headless: the root gets `data-ybs-dialog`. Set `--ybs-dialog-radius` on `[data-ybs-root]` for the corners rather
   than a `border-radius` of your own: the dialog is clipped to it, which also rounds a classic scrollbar (Chrome and
-  Safari leave a scroller's own scrollbar square). The clip cuts off a `box-shadow`, so put a shadow on the scroller
-  (`Sheet.View`) as `filter: drop-shadow(…)`. Give it its own close button. `Sheet.usePresentation()` (or `BottomSheet.usePresentation()`), called inside the sheet, returns `'sheet'`
-  or `'dialog'` so the content can adapt.
+  Safari leave a scroller's own scrollbar square). The clip cuts off a `box-shadow`, so draw the shadow on the
+  scroller, in dialog mode only: `[data-ybs-dialog] [data-ybs-scroller] { filter: drop-shadow(…) }`. Give it its own
+  close button.
 
 ### Building from parts
 
@@ -351,7 +368,8 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 - Don't put `touch-action` classes on the header (Tailwind's utilities layer beats ours): the library turns it off
   there while the content is scrolled, so that dragging the header moves the whole sheet.
 - **Types** for wrappers: `Detent`, `OpenChangeReason`, `OpenChangeDetails`, `RootProps`, `ContentProps`,
-  `InitialFocus` and the other part props from both entry points, and `BottomSheetProps` from `/styled`.
+  `ProviderProps`, `InitialFocus` and the other part props from both entry points, and `BottomSheetProps` and
+  `DIALOG_QUERY` from `/styled` (headless: `Sheet.DIALOG_QUERY`).
 
 ### Replacing a `<dialog>`
 
@@ -371,11 +389,15 @@ import { Sheet } from '@yourrealm/bottom-sheet'
   the browser ignores a dispatched `keydown`. A real key press works everywhere.
 - To know a sheet has fully closed, use `onExitComplete`, or wait for its dialog to leave the page
   (`getByRole('dialog', { name: 'Share photo' })`), which also works with several sheets open.
+- Playwright's desktop profiles (a wide viewport, a mouse) get the dialog presentation, so tests that swipe, check
+  detents or tap above the sheet need a mobile profile (`devices['Pixel 7']`, `devices['iPhone 15']`), or
+  `<BottomSheet.Provider dialog={false}>` in the test build.
 
 ## Status
 
 Early (0.x); see the [changelog](CHANGELOG.md) for what changed between versions. Tested on Android in Chrome and Firefox (a gesture suite on a real phone) and in iOS Safari in the
-simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard.
+simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard, and shows
+`BottomSheet` as a dialog.
 
 ## Found a problem?
 

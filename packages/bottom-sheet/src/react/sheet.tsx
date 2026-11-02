@@ -34,6 +34,7 @@ import {
   updateSheet,
 } from './stack'
 import { checkCss } from './css-check'
+import { DefaultsContext } from './defaults'
 
 /** Why the sheet is asking to open or close. */
 export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'
@@ -113,14 +114,14 @@ export interface ProviderProps {
   dialog?: boolean | string
 }
 
-const DefaultsContext = createContext<Omit<ProviderProps, 'children'>>({})
-
 /**
- * App-wide defaults, e.g. every sheet a dialog on desktop: wrap your app in `<Sheet.Provider dialog>`. Optional;
- * providers nest (the nearest one wins).
+ * App-wide defaults, e.g. every sheet a dialog on desktop: wrap your app in `<Sheet.Provider dialog>`. Optional.
+ * Providers nest: an inner one overrides what it sets and keeps the rest from the outer one.
  */
 export function Provider({ children, dialog }: ProviderProps) {
-  const value = useMemo(() => ({ dialog }), [dialog])
+  const outer = useContext(DefaultsContext)
+  const merged = dialog ?? outer.dialog
+  const value = useMemo(() => ({ dialog: merged }), [merged])
   return <DefaultsContext.Provider value={value}>{children}</DefaultsContext.Provider>
 }
 
@@ -189,6 +190,7 @@ export interface RootProps {
    * (`detent`/`onDetentChange` are unused) and nothing to drag. Sets `data-ybs-dialog` on the root.
    * Read when the sheet opens, like `modal`: resizing while it is open keeps the current presentation.
    * Modal sheets only: a non-modal sheet stays a sheet. Set it for every sheet with `<Sheet.Provider dialog>`.
+   * Default: off for `Sheet.Root`; on for `BottomSheet` (`/styled`).
    */
   dialog?: boolean | string
   /** Receives the controller's internal decision log (for device testing). */

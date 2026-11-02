@@ -1505,6 +1505,15 @@ test.describe('dialog on desktop (dialog prop)', () => {
     expect(await events(page)).not.toContain('lab: onOpenChange false')
   })
 
+  test('with no Provider: BottomSheet is a dialog on desktop by default, the headless parts are not', async ({ page }) => {
+    await page.goto('/?open=1&provider=0#/lab')
+    await waitForEvent(page, 'lab: dialog shown')
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+    await page.goto('/?open=1&provider=0#/playlist')
+    await waitForEvent(page, 'playlist: onDetentChange')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
+  })
+
   test('app-wide via the provider; one sheet opts out with dialog={false}', async ({ page }) => {
     // The demo sets it for the whole app with <BottomSheet.Provider dialog>; the lab sheet passes nothing itself.
     await openLabDialog(page)

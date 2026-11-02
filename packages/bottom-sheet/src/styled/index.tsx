@@ -1,6 +1,7 @@
 import type { ComponentPropsWithRef, ReactElement, ReactNode } from 'react'
 import * as Base from '../react/sheet'
-import { useEffect } from 'react'
+import { useContext, useEffect } from 'react'
+import { DefaultsContext } from '../react/defaults'
 import { checkCss } from '../react/css-check'
 
 import type { Detent } from '../core/math'
@@ -113,6 +114,12 @@ interface BottomSheetBaseProps extends Omit<Base.RootProps, 'children'> {
    * nothing for a non-modal one.
    */
   initialFocus?: Base.InitialFocus
+  /**
+   * On a wide screen with a mouse (`DIALOG_QUERY`), show the sheet as a centred dialog. **Default `true` for
+   * `BottomSheet`** (unlike the parts). `false` keeps this sheet a sheet everywhere; a string is your own media query.
+   * App-wide: `<BottomSheet.Provider dialog={false}>`. A sheet's own value wins over the Provider's.
+   */
+  dialog?: boolean | string
   children?: ReactNode
   className?: string
   contentProps?: ComponentPropsWithRef<'section'>
@@ -154,7 +161,10 @@ export function BottomSheet({
   'aria-label': ariaLabel,
   ...rootProps
 }: BottomSheetProps) {
-  const root = variant === 'page' ? { recede: true, ...rootProps } : rootProps
+  // Dialog on desktop by default: the sheet's own prop, else the Provider's, else on.
+  const defaults = useContext(DefaultsContext)
+  const withDialog = { ...rootProps, dialog: rootProps.dialog ?? defaults.dialog ?? true }
+  const root = variant === 'page' ? { recede: true, ...withDialog } : withDialog
   const bar = leading != null || trailing != null
   // The eyebrow sits inside the title element so it lines up in every header layout and is read with the title
   // (the hidden comma keeps a screen reader from running the two together).

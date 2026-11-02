@@ -1,6 +1,6 @@
 // The library's CSS, before our own.
 import '@yourrealm/bottom-sheet/styled.css'
-import { StrictMode, useEffect, useState, type ComponentType } from 'react'
+import { Fragment, StrictMode, useEffect, useState, type ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { dialogSetting, subscribe } from './debug'
@@ -160,9 +160,11 @@ function App() {
   const scenario = SCENARIOS.find((s) => s.id === route)
   const autoOpen = new URLSearchParams(location.search).get('open') === '1'
 
+  // `BottomSheet` is a dialog on desktop by default; the Provider carries the home page switch (`?dialog=0`).
+  // `?provider=0` leaves it out, to see the plain defaults (BottomSheet dialog on, headless Sheet off).
+  const Wrap = new URLSearchParams(location.search).get('provider') === '0' ? Fragment : BottomSheet.Provider
   return (
-    // Every sheet in the app: a centred dialog on desktop (wide window + mouse), a sheet everywhere else.
-    <BottomSheet.Provider dialog={dialog}>
+    <Wrap {...(Wrap === Fragment ? {} : { dialog })}>
       {scenario ? (
         <div className="scenario" data-scenario={scenario.id} data-ybs-background="">
           <nav className="topbar">
@@ -175,7 +177,7 @@ function App() {
         <Home debug={debug} setDebug={setDebug} dialog={dialog} setDialog={setDialog} />
       )}
       {debug && <DebugOverlay />}
-    </BottomSheet.Provider>
+    </Wrap>
   )
 }
 

@@ -392,7 +392,9 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
 - **README for agents** (2026-11-02, from shopping's feedback): three-way table under "Use" (BottomSheet first),
   token table, "Closing animates", "Stacked sheets", "Replacing a `<dialog>`", "Testing" (real Escape key presses).
 - **Dialog on desktop** (2026-11-03, `dialog` on Root: `true` = `DIALOG_QUERY` `(min-width: 768px) and (hover: hover)
-  and (pointer: fine)`, or a media query string). A separate controller (`src/core/dialog.ts`, same `SheetController`
+  and (pointer: fine)`, or a media query string). **Default on for `BottomSheet`** (maintainer's call before 0.3.0,
+  like SwiftUI's `.sheet` on iPad), off for the headless parts (their look isn't ready for it); the default lives in
+  `/styled` (`DefaultsContext` in `react/defaults.ts`, internal). Test: "with no Provider: …" (`?provider=0`). A separate controller (`src/core/dialog.ts`, same `SheetController`
   interface) because the sheet's scroll machinery has nothing to do there: no snap, detents, guard, wheel steps or
   drags. The scroller becomes a non-scrolling flex overlay, spacer/markers/bleed/handle are hidden, and the sheet
   scrolls its own content (a second scroller is fine: one scroller exists for touch handoff). Open/close animate
