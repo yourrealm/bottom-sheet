@@ -2,7 +2,8 @@
 import '@yourrealm/bottom-sheet/styled.css'
 import { StrictMode, useEffect, useState, type ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
-import { subscribe } from './debug'
+import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { dialogSetting, subscribe } from './debug'
 import { Places } from './scenarios/places'
 import { Comments } from './scenarios/comments'
 import { Product } from './scenarios/product'
@@ -68,7 +69,36 @@ function readDebug() {
   }
 }
 
-function Home({ debug, setDebug }: { debug: boolean; setDebug: (d: boolean) => void }) {
+function DialogSetting({ on, setOn }: { on: boolean; setOn: (on: boolean) => void }) {
+  return (
+    <label className="switch-row home-setting">
+      <span>
+        Dialog on desktop
+        <span className="muted small" style={{ display: 'block' }}>Wide screen with a mouse: sheets open as centred dialogs.</span>
+      </span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={on}
+        onChange={(e) => {
+          setOn(e.target.checked)
+          try {
+            localStorage.setItem('ybs-dialog', e.target.checked ? '1' : '0')
+          } catch {}
+        }}
+      />
+    </label>
+  )
+}
+
+interface HomeProps {
+  debug: boolean
+  setDebug: (d: boolean) => void
+  dialog: boolean
+  setDialog: (d: boolean) => void
+}
+
+function Home({ debug, setDebug, dialog, setDialog }: HomeProps) {
   return (
     <main className="home">
       <header className="home-head">
@@ -95,6 +125,7 @@ function Home({ debug, setDebug }: { debug: boolean; setDebug: (d: boolean) => v
           </li>
         ))}
       </ul>
+      <DialogSetting on={dialog} setOn={setDialog} />
       <label className="switch-row home-setting">
         Show debug log
         <input
@@ -116,11 +147,13 @@ function Home({ debug, setDebug }: { debug: boolean; setDebug: (d: boolean) => v
 function App() {
   const route = useRoute()
   const [debug, setDebug] = useState(readDebug)
+  const [dialog, setDialog] = useState(dialogSetting)
   const scenario = SCENARIOS.find((s) => s.id === route)
   const autoOpen = new URLSearchParams(location.search).get('open') === '1'
 
   return (
-    <>
+    // Every sheet in the app: a centred dialog on desktop (wide window + mouse), a sheet everywhere else.
+    <BottomSheet.Provider dialog={dialog}>
       {scenario ? (
         <div className="scenario" data-scenario={scenario.id} data-ybs-background="">
           <nav className="topbar">
@@ -130,10 +163,10 @@ function App() {
           <scenario.Component key={scenario.id} autoOpen={autoOpen} />
         </div>
       ) : (
-        <Home debug={debug} setDebug={setDebug} />
+        <Home debug={debug} setDebug={setDebug} dialog={dialog} setDialog={setDialog} />
       )}
       {debug && <DebugOverlay />}
-    </>
+    </BottomSheet.Provider>
   )
 }
 

@@ -160,6 +160,37 @@
    following the float: padding that changed while dragging would reflow every frame). */
 .ybs-sheet.ybs-sheet-floating:not(.ybs-sheet-full) { --ybs-body-inset: calc(var(--ybs-body-padding) + var(--ybs-float-gap)); }
 .ybs-sheet-floating:not(.ybs-sheet-full) > .ybs-header { padding-inline: calc(16px + var(--ybs-float-gap)); }
+/* Dialog presentation (Root `dialog`): rounded on all sides, no safe areas (it doesn't touch the screen edges), no
+   float or fullscreen corners. A page sheet becomes a larger dialog. */
+[data-ybs-root][data-ybs-dialog] {
+  --ybs-dialog-radius: 16px;
+  --ybs-at-top: 0;
+}
+/* The structural CSS clips the dialog to --ybs-dialog-radius (so a classic scrollbar is rounded too). A clip cuts off
+   a box-shadow, so the shadow is a drop-shadow on the overlay, drawn around the clipped dialog. */
+[data-ybs-dialog] .ybs-sheet.ybs-sheet {
+  border-radius: var(--ybs-dialog-radius); margin: 0; max-width: none; padding-bottom: 0; clip-path: inset(0 round var(--ybs-dialog-radius)); box-shadow: none;
+  /* A classic scrollbar on the sheet's own colour (transparent track), not a grey strip down its side. */
+  scrollbar-color: color-mix(in srgb, var(--ybs-muted) 45%, transparent) transparent;
+  --ybs-body-inset: var(--ybs-body-padding);
+}
+[data-ybs-dialog] .ybs-view:has(> [data-ybs-track] > .ybs-sheet) {
+  filter: drop-shadow(0 0 0.5px var(--ybs-divider)) drop-shadow(0 16px 40px rgba(0, 0, 0, 0.22));
+}
+[data-ybs-dialog] .ybs-sheet.ybs-sheet-full { --ybs-body-inset: max(var(--ybs-body-padding), (100cqw - var(--ybs-content-width)) / 2); }
+[data-ybs-dialog] .ybs-sheet.ybs-sheet-page { --ybs-dialog-width: 48rem; min-height: min(100%, 36rem); }
+[data-ybs-dialog] .ybs-sheet > .ybs-header.ybs-header {
+  border-radius: var(--ybs-dialog-radius) var(--ybs-dialog-radius) 0 0; padding: 16px 16px 12px;
+}
+/* No title and no ✕ (an untitled dialog that can't be dismissed): the header holds only the hidden handle. */
+[data-ybs-dialog] .ybs-sheet > .ybs-header.ybs-header:has(> .ybs-handle:last-child) { padding: 0; }
+/* A covered dialog recedes in place (the sheet's version scales from the top of the screen). */
+[data-ybs-root][data-ybs-dialog] .ybs-view { transform-origin: 50% 50%; }
+[data-ybs-dialog] .ybs-sheet-full > .ybs-header.ybs-header { padding-inline: max(16px, (100% - var(--ybs-content-width)) / 2); }
+[data-ybs-dialog] .ybs-sheet > .ybs-footer { padding-bottom: 12px; bottom: 0; }
+[data-ybs-dialog] .ybs-sheet:has(> .ybs-footer) .ybs-body { padding-bottom: 12px; }
+[data-ybs-dialog] .ybs-sheet:not(:has(> .ybs-footer)) .ybs-body { padding-bottom: 20px; }
+[data-ybs-dialog] .ybs-close:hover { background-color: color-mix(in srgb, var(--ybs-muted) 26%, transparent); }
 /* The page behind recedes (Sheet.Root recede + data-ybs-background on the app wrapper), like iOS: it scales back
    from the top of the screen, drops below the status bar and rounds its top corners over black. The wrapper needs
    its own background (html and body turn black). */

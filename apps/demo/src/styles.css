@@ -61,7 +61,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: linear-gradient(135deg, hsl(var(--h) 75% 62%), hsl(calc(var(--h) + 35) 70% 48%));
 }
 .chev { margin-left: auto; color: var(--muted); font-size: 22px; }
-.home-setting { background: var(--card); border-radius: 14px; padding: 12px 14px; border: 1px solid var(--line); }
+.home-setting.home-setting { background: var(--card); border-radius: 14px; padding: 12px 14px; border: 1px solid var(--line); }
+.home-setting + .home-setting { margin-top: 8px; }
 .topbar {
   position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
   padding: max(10px, env(safe-area-inset-top)) 14px 10px;
@@ -238,6 +239,10 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .pl-sheet { background: #15131c; color: #f4f4f8; border-radius: 26px 26px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.08); max-width: 640px; margin: 0 auto; }
 .pl-header { background: #15131c; border-radius: 26px 26px 0 0; padding: 8px 20px 12px; box-shadow: 0 -2px 0 0 #15131c; }
 .pl-handle { width: 44px; height: 4px; border-radius: 2px; margin: 0 auto 12px; background: linear-gradient(90deg, #ff5fa2, #7b61ff); }
+/* Headless + `dialog`: the app styles the dialog presentation itself (data-ybs-dialog on the root). */
+[data-ybs-root][data-ybs-dialog]:has(.pl-sheet) { --ybs-dialog-radius: 26px; }
+[data-ybs-dialog] .pl-sheet { border-radius: var(--ybs-dialog-radius); border: 1px solid rgba(255, 255, 255, 0.08); scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
+[data-ybs-dialog] .pl-header { padding-top: 20px; }
 .pl-title-row { display: flex; justify-content: space-between; align-items: center; }
 .pl-title { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
 .pl-close { border: 0; background: rgba(255, 255, 255, 0.1); color: #f4f4f8; border-radius: 999px; padding: 6px 14px; font-weight: 600; }

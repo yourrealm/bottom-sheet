@@ -101,7 +101,7 @@ const GLIDE_DOWN_MS = 280
 // A page with a classic (space-taking) scrollbar keeps its gutter, so the layout doesn't shift sideways.
 let htmlLocks = 0
 let htmlPrev = { overflow: '', gutter: '' }
-function lockHtml() {
+export function lockHtml() {
   if (htmlLocks++ === 0) {
     const html = document.documentElement
     htmlPrev = { overflow: html.style.overflow, gutter: html.style.scrollbarGutter }
@@ -109,7 +109,7 @@ function lockHtml() {
     html.style.overflow = 'hidden'
   }
 }
-function unlockHtml() {
+export function unlockHtml() {
   if (htmlLocks > 0 && --htmlLocks === 0) {
     const html = document.documentElement
     html.style.overflow = htmlPrev.overflow

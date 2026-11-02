@@ -391,6 +391,22 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   pages dimmed 40% came out at the old sheet colour; no font-family (the app's font); eyebrow all caps 12px.
 - **README for agents** (2026-11-02, from shopping's feedback): three-way table under "Use" (BottomSheet first),
   token table, "Closing animates", "Stacked sheets", "Replacing a `<dialog>`", "Testing" (real Escape key presses).
+- **Dialog on desktop** (2026-11-03, `dialog` on Root: `true` = `DIALOG_QUERY` `(min-width: 768px) and (hover: hover)
+  and (pointer: fine)`, or a media query string). A separate controller (`src/core/dialog.ts`, same `SheetController`
+  interface) because the sheet's scroll machinery has nothing to do there: no snap, detents, guard, wheel steps or
+  drags. The scroller becomes a non-scrolling flex overlay, spacer/markers/bleed/handle are hidden, and the sheet
+  scrolls its own content (a second scroller is fine: one scroller exists for touch handoff). Open/close animate
+  `--ybs-progress` per frame (220ms in, 160ms out, scaled by distance left so a reversal is quick); structural CSS
+  maps it to opacity + scale(0.96..1), so headless dialogs animate too. `onProgress(p, 0)`: a dialog never recedes the
+  page. No `onDetentChange` (reporting 'full' would leak into an app's `detent` state for the sheet). Decided when it
+  opens, like `modal`; modal only. Outside press = pointerdown AND pointerup outside the sheet (a text selection
+  dragged out doesn't close). `/styled`: ✕ by default when dismissible and no leading/trailing; `variant="page"` is
+  a 48rem dialog. `usePresentation()` exposes it. App-wide: `<Sheet.Provider dialog>` / `<BottomSheet.Provider dialog>`
+  (a context of defaults; the sheet's own prop wins). The demo wraps the app in it (`?dialog=0` or the home switch
+  turns it off; `#/lab?nodialog=1` opts one sheet out). Classic scrollbars: the dialog is clipped with
+  `clip-path: inset(0 round var(--ybs-dialog-radius))` (Chrome/Safari don't round a scroller's own scrollbar), so its
+  shadow is a `drop-shadow` filter on the overlay. Tests: "dialog on desktop (dialog prop)", firefox-desktop at 1280x800.
+  Playwright's Firefox stops a wheel that overshoots the top a few px short under any sticky header (plain page too).
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
   Parts must stay className/Tailwind friendly. A shadcn-registry variant may come later for dapuzzler.
 - **License:** MIT.

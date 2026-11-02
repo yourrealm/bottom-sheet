@@ -9,7 +9,8 @@ import { logged, log } from '../debug'
  * Test switches: `?short=1` (short content), `?modal=0` (non-modal), `?back=1` (closeOnBack on),
  * `?late=1` (a headless sheet with no header whose content arrives after opening; with `&container=1` it is
  * portalled into an element of the page), `?untitled=1` (a sheet named by aria-label, no visible title),
- * `?float=1` (floating, a header peek and a footer), `?confirm=1` (a confirm sheet: title, description, footer, no body).
+ * `?float=1` (floating, a header peek and a footer), `?nodialog=1` (opts out of the app-wide dialog),
+ * `?dismissible=0`, `?confirm=1` (a confirm sheet: title, description, footer, no body).
  */
 export function Lab({ autoOpen }: { autoOpen: boolean }) {
   const params = new URLSearchParams(location.search)
@@ -32,7 +33,10 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
       <BottomSheet
         detents={[0.5]}
         modal={params.get('modal') !== '0'}
+        dismissible={params.get('dismissible') !== '0'}
         closeOnBack={params.get('back') === '1' ? true : undefined}
+        // `?nodialog=1`: this sheet opts out of the app-wide dialog (BottomSheet.Provider in main.tsx).
+        dialog={params.get('nodialog') === '1' ? false : undefined}
         {...logged('lab')}
         open={open}
         onOpenChange={(o) => {

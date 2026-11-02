@@ -48,6 +48,20 @@ export function subscribe(l: Listener) {
   return () => void listeners.delete(l)
 }
 
+/**
+ * The demo's "Dialog on desktop" setting (`<BottomSheet.Provider dialog>` around the app): `?dialog=1|0`, else the
+ * home page switch (localStorage), on by default. It only takes effect on a wide screen with a mouse.
+ */
+export function dialogSetting(): boolean {
+  const q = new URLSearchParams(location.search).get('dialog')
+  if (q != null) return q !== '0'
+  try {
+    return localStorage.getItem('ybs-dialog') !== '0'
+  } catch {
+    return true
+  }
+}
+
 /** Props that wire a sheet into the log. */
 export function logged(name: string) {
   return {

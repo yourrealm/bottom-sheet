@@ -12,11 +12,15 @@ export type {
   OpenChangeDetails,
   OpenChangeReason,
   PortalProps,
+  ProviderProps,
   RootProps,
   TriggerProps,
   TriggerRenderProps,
   ViewProps,
 } from '../react/sheet'
+
+/** The media query `dialog` (true) uses: at least 768px wide, with a mouse or trackpad. */
+export { DIALOG_QUERY } from '../react/sheet'
 
 const cx = (...c: Array<string | undefined | false>) => c.filter(Boolean).join(' ')
 
@@ -29,6 +33,7 @@ function withClass<P extends { className?: string }>(Comp: (p: P) => ReactNode, 
  * Prefer `BottomSheet`; use these only to arrange a sheet yourself.
  */
 export const StyledSheet = {
+  Provider: Base.Provider,
   Root: Base.Root,
   Trigger: Base.Trigger,
   Close: Base.Close,
@@ -94,9 +99,10 @@ interface BottomSheetBaseProps extends Omit<Base.RootProps, 'children'> {
    */
   footer?: ReactNode
   /**
-   * A visible ✕ button in the header's top right that closes the sheet. Off by default. Without it, a dismissible
-   * sheet still has a close button that only screen readers announce (it shows when focused by keyboard), because
-   * swipes and the dimmed area aren't usable with VoiceOver.
+   * A visible ✕ button in the header's top right that closes the sheet. Default: off for a sheet, on for a dismissible
+   * sheet shown as a dialog (`dialog`), which has nothing to swipe, unless it has `leading`/`trailing` (Cancel/Done).
+   * Without it, a dismissible sheet still has a close button that only screen readers announce (it shows when focused
+   * by keyboard), because swipes and the dimmed area aren't usable with VoiceOver.
    */
   closeButton?: boolean
   /** Accessible name of the close button (visible ✕ or screen-reader only). Default `'Close'`. */
@@ -139,7 +145,7 @@ export function BottomSheet({
   trailing,
   headerExtra,
   footer,
-  closeButton = false,
+  closeButton,
   closeLabel = 'Close',
   initialFocus,
   children,
@@ -163,16 +169,6 @@ export function BottomSheet({
       {title}
     </StyledSheet.Title>
   )
-  const close = closeButton ? (
-    <StyledSheet.Close className="ybs-close" aria-label={closeLabel}>
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
-    </StyledSheet.Close>
-  ) : null
-  // Screen readers (VoiceOver especially) can't swipe the sheet away or tap the dimmed area, so a dismissible sheet
-  // always has a way out. Hidden until focused.
-  const srClose = !closeButton && rootProps.dismissible !== false && (
-    <StyledSheet.Close className="ybs-sr-close">{closeLabel}</StyledSheet.Close>
-  )
   return (
     <StyledSheet.Root {...root}>
       {typeof trigger === 'function' ? (
@@ -189,26 +185,17 @@ export function BottomSheet({
             initialFocus={initialFocus}
             className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', floating && 'ybs-sheet-floating', className, contentProps?.className)}
           >
-            <StyledSheet.Header>
-              <StyledSheet.Handle />
-              {bar ? (
-                <div className="ybs-bar">
-                  <div className="ybs-leading">{leading}</div>
-                  {heading ?? <span />}
-                  <div className="ybs-trailing">{trailing}{close}</div>
-                </div>
-              ) : close ? (
-                <div className="ybs-title-row">
-                  {heading ?? <span />}
-                  {close}
-                </div>
-              ) : (
-                heading
-              )}
-              {description != null && <StyledSheet.Description>{description}</StyledSheet.Description>}
-              {headerExtra}
-              {srClose}
-            </StyledSheet.Header>
+            <SheetHeader
+              heading={heading}
+              leading={leading}
+              trailing={trailing}
+              bar={bar}
+              description={description}
+              headerExtra={headerExtra}
+              closeButton={closeButton}
+              closeLabel={closeLabel}
+              dismissible={rootProps.dismissible !== false}
+            />
             {/* No body without content: its padding would stack with the header's and footer's (a confirm sheet). */}
             {children != null && children !== false && children !== '' && <StyledSheet.Body>{children}</StyledSheet.Body>}
             {footer != null && <StyledSheet.Footer>{footer}</StyledSheet.Footer>}
@@ -219,7 +206,58 @@ export function BottomSheet({
   )
 }
 
+/** Inside the portal, so it knows whether the sheet is shown as a dialog (the ✕ defaults on there). */
+function SheetHeader(p: {
+  heading: ReactNode
+  leading: ReactNode
+  trailing: ReactNode
+  bar: boolean
+  description: ReactNode
+  headerExtra: ReactNode
+  closeButton: boolean | undefined
+  closeLabel: string
+  dismissible: boolean
+}) {
+  const dialog = Base.usePresentation() === 'dialog'
+  // Not beside leading/trailing: those carry the sheet's own way out (Cancel / Done).
+  const visible = p.closeButton ?? (dialog && p.dismissible && !p.bar)
+  const close = visible ? (
+    <StyledSheet.Close className="ybs-close" aria-label={p.closeLabel}>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
+    </StyledSheet.Close>
+  ) : null
+  // Screen readers (VoiceOver especially) can't swipe the sheet away or tap the dimmed area, so a dismissible sheet
+  // always has a way out. Hidden until focused.
+  const srClose = !visible && p.dismissible && <StyledSheet.Close className="ybs-sr-close">{p.closeLabel}</StyledSheet.Close>
+  return (
+    <StyledSheet.Header>
+      <StyledSheet.Handle />
+      {p.bar ? (
+        <div className="ybs-bar">
+          <div className="ybs-leading">{p.leading}</div>
+          {p.heading ?? <span />}
+          <div className="ybs-trailing">{p.trailing}{close}</div>
+        </div>
+      ) : close ? (
+        <div className="ybs-title-row">
+          {p.heading ?? <span />}
+          {close}
+        </div>
+      ) : (
+        p.heading
+      )}
+      {p.description != null && <StyledSheet.Description>{p.description}</StyledSheet.Description>}
+      {p.headerExtra}
+      {srClose}
+    </StyledSheet.Header>
+  )
+}
+
 /** Content that reaches the sheet's edges (see `StyledSheet.Edge`), for use inside `<BottomSheet>`. */
 BottomSheet.Edge = StyledSheet.Edge
 /** Closes the sheet it's in, e.g. a Cancel button in `leading` or `footer`. */
 BottomSheet.Close = StyledSheet.Close
+/** App-wide defaults for every sheet inside, e.g. `<BottomSheet.Provider dialog>` around your app: dialogs on desktop. */
+BottomSheet.Provider = Base.Provider
+/** `'sheet'` or `'dialog'`: how the sheet around the calling component is shown (see `dialog`). */
+BottomSheet.usePresentation = Base.usePresentation

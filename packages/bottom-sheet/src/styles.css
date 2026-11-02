@@ -102,4 +102,36 @@
   [data-ybs-drag] { cursor: grab; user-select: none; -webkit-user-select: none; }
   [data-ybs-root][data-ybs-drag="active"] [data-ybs-drag] { cursor: grabbing; }
 }
+/* Dialog presentation (Root `dialog`): the same parts as a centred dialog. No travel, so no snapping, spacer or
+   markers; the overlay doesn't scroll, the sheet scrolls its own content (header and footer stick inside it).
+   --ybs-progress (0..1, animated by the controller on open and close) fades and scales the dialog in; only while
+   [data-ybs-fade] (not fully shown), so a dialog at rest has no transform (fixed-position popups inside it stay
+   positioned against the screen; the dialog's own overflow still clips them).
+   Consumer-settable: --ybs-dialog-width (default 32rem), --ybs-dialog-gap (space kept around it, default 24px),
+   --ybs-dialog-radius (corners; no default). */
+[data-ybs-root][data-ybs-dialog] :is([data-ybs-bleed], [data-ybs-spacer], [data-ybs-markers], [data-ybs-handle]) { display: none; }
+[data-ybs-root][data-ybs-dialog] [data-ybs-scroller] {
+  top: var(--ybs-vv-top, 0px); height: var(--ybs-vv-h, 100dvh);
+  overflow: hidden; scroll-snap-type: none;
+  display: flex; align-items: center; justify-content: center;
+  box-sizing: border-box; padding: var(--ybs-dialog-gap, 24px);
+}
+[data-ybs-root][data-ybs-dialog] [data-ybs-track] { display: contents; }
+[data-ybs-root][data-ybs-dialog] [data-ybs-sheet] {
+  box-sizing: border-box; width: min(100%, var(--ybs-dialog-width, 32rem)); min-height: 0; max-height: 100%;
+  overflow-y: auto; overscroll-behavior: contain;
+  scroll-snap-align: none; scroll-snap-stop: normal;
+  /* Rounded by a clip, not border-radius alone: Chrome and Safari don't round a classic scrollbar (mouse attached,
+     "always show scroll bars") with its own scroller's radius, so the right corners came out square. Without
+     --ybs-dialog-radius the declaration is invalid and there is no clip (it would also cut off a box-shadow:
+     draw a shadow with filter: drop-shadow() on the scroller instead, as /styled does). */
+  border-radius: var(--ybs-dialog-radius);
+  clip-path: inset(0 round var(--ybs-dialog-radius));
+}
+[data-ybs-root][data-ybs-dialog][data-ybs-fade] [data-ybs-sheet] {
+  opacity: var(--ybs-progress, 0);
+  transform: scale(calc(0.96 + 0.04 * var(--ybs-progress, 0)));
+}
+[data-ybs-root][data-ybs-dialog] [data-ybs-footer] { translate: none; }
+[data-ybs-root][data-ybs-dialog] [data-ybs-drag] { touch-action: auto; cursor: auto; user-select: auto; -webkit-user-select: auto; }
 }

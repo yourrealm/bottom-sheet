@@ -17,6 +17,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { createSheetController, type SheetController } from '../core/controller'
+import { createDialogController } from '../core/dialog'
 import type { Detent } from '../core/math'
 import {
   closedByEscape,
@@ -48,6 +49,8 @@ interface SheetContextValue {
   /** Escape / outside press: closes a dismissible sheet, otherwise drops it to its lowest detent. */
   requestDismiss: (reason: OpenChangeReason) => void
   modal: boolean
+  /** Shown as a centred dialog instead of a bottom sheet (decided when it opens, see RootProps.dialog). */
+  dialog: boolean
   dismissible: boolean
   closeOnBack: boolean
   fullscreen: boolean
@@ -99,6 +102,26 @@ function useMergedRef<T>(user: Ref<T> | undefined, own: RefObject<T | null>) {
     },
     [user, own],
   )
+}
+
+// ---------------------------------------------------------------------------
+
+/** Defaults for every sheet below a `Provider`. A sheet's own prop wins. */
+export interface ProviderProps {
+  children?: ReactNode
+  /** Default `dialog` for every sheet inside (see `RootProps.dialog`). A sheet opts out with `dialog={false}`. */
+  dialog?: boolean | string
+}
+
+const DefaultsContext = createContext<Omit<ProviderProps, 'children'>>({})
+
+/**
+ * App-wide defaults, e.g. every sheet a dialog on desktop: wrap your app in `<Sheet.Provider dialog>`. Optional;
+ * providers nest (the nearest one wins).
+ */
+export function Provider({ children, dialog }: ProviderProps) {
+  const value = useMemo(() => ({ dialog }), [dialog])
+  return <DefaultsContext.Provider value={value}>{children}</DefaultsContext.Provider>
 }
 
 // ---------------------------------------------------------------------------
@@ -159,8 +182,28 @@ export interface RootProps {
   detent?: Detent
   /** The sheet came to rest at a detent. Never `'closed'`: closing is `onOpenChange(false)`. */
   onDetentChange?: (detent: Detent) => void
+  /**
+   * Show the sheet as a centred dialog where a bottom sheet doesn't fit: wide screens used with a mouse or trackpad.
+   * `true` uses `DIALOG_QUERY` (at least 768px wide, hover, fine pointer); a string is your own media query.
+   * Same parts, props and behaviour (focus, Escape, back, stacking, outside press); there are no detents
+   * (`detent`/`onDetentChange` are unused) and nothing to drag. Sets `data-ybs-dialog` on the root.
+   * Read when the sheet opens, like `modal`: resizing while it is open keeps the current presentation.
+   * Modal sheets only: a non-modal sheet stays a sheet. Set it for every sheet with `<Sheet.Provider dialog>`.
+   */
+  dialog?: boolean | string
   /** Receives the controller's internal decision log (for device testing). */
   debug?: (message: string) => void
+}
+
+/**
+ * Where `dialog` (true) shows a dialog: wide enough, and used with a mouse or trackpad. A touch tablet or a phone in
+ * landscape keeps the sheet.
+ */
+export const DIALOG_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)'
+
+function wantsDialog(dialog: boolean | string | undefined, modal: boolean) {
+  if (!dialog || !modal || typeof window === 'undefined' || typeof matchMedia === 'undefined') return false
+  return matchMedia(dialog === true ? DIALOG_QUERY : dialog).matches
 }
 
 /** How the sheet was opened, as Base UI reports it to `initialFocus`. */
@@ -217,12 +260,17 @@ export function Root(props: RootProps) {
     debug,
     onExitComplete,
   } = props
+  const defaults = useContext(DefaultsContext)
+  const dialogProp = props.dialog ?? defaults.dialog
   const [openState, setOpenState] = useState(defaultOpen)
   const open = openProp ?? openState
   const [mounted, setMounted] = useState(open)
   // `modal` is read when the sheet opens (the page lock, inert and focus are set up for one or the other).
   const [modalAtOpen, setModalAtOpen] = useState(modalProp)
   const modal = mounted ? modalAtOpen : modalProp
+  // Dialog or sheet, decided when it opens (like `modal`): a resize while open doesn't switch presentation mid-way.
+  const [dialogAtOpen, setDialogAtOpen] = useState(() => open && wantsDialog(dialogProp, modalProp))
+  const dialog = mounted && dialogAtOpen
   const closeOnBack = props.closeOnBack ?? modal
   const controller = useRef<SheetController | null>(null)
   const rootEl = useRef<HTMLDivElement | null>(null)
@@ -259,6 +307,7 @@ export function Root(props: RootProps) {
       // Non-modal sheets only use it if they took focus (initialFocus); see View.
       returnFocus.current = document.activeElement as HTMLElement | null
       setModalAtOpen(modalProp)
+      setDialogAtOpen(wantsDialog(dialogProp, modalProp))
       setMounted(true)
     }
     if (open && mounted && closing.current) {
@@ -300,6 +349,7 @@ export function Root(props: RootProps) {
       setOpen,
       requestDismiss,
       modal,
+      dialog,
       dismissible,
       closeOnBack,
       fullscreen,
@@ -322,10 +372,18 @@ export function Root(props: RootProps) {
       hasDescription,
       setHasDescription,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
+    [open, mounted, setOpen, requestDismiss, modal, dialog, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
   )
 
   return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
+}
+
+/**
+ * How the sheet around this component is shown right now: `'sheet'` or `'dialog'` (see `RootProps.dialog`). Use it to
+ * adapt the content, e.g. a visible close button in a dialog.
+ */
+export function usePresentation(): 'sheet' | 'dialog' {
+  return useSheet('usePresentation').dialog ? 'dialog' : 'sheet'
 }
 
 // ---------------------------------------------------------------------------
@@ -472,6 +530,7 @@ export function Portal({ children, container }: PortalProps) {
     <div
       data-ybs-root=""
       data-ybs-modeless={ctx.modal ? undefined : ''}
+      data-ybs-dialog={ctx.dialog ? '' : undefined}
       data-ybs-fullscreen={ctx.fullscreen ? '' : undefined}
       ref={ctx.rootEl}
     >
@@ -524,7 +583,7 @@ export function View({ children, bleedClassName, ref, ...props }: ViewProps) {
     if (!root || !scroller.current || !markers.current || !sheet) {
       throw new Error('<Sheet.View> needs <Sheet.Content> inside it, inside <Sheet.Portal>')
     }
-    const c = createSheetController(
+    const c = (ctx.dialog ? createDialogController : createSheetController)(
       { root, scroller: scroller.current, markers: markers.current, sheet },
       {
         detents: ctx.detents,

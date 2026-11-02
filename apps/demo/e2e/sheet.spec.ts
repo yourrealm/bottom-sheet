@@ -417,7 +417,7 @@ test('1000 rows, each with its own sheet: renders fast and any row opens its she
 test('wide screen: clicking beside the sheet closes it, clicking inside does not', async ({ page }, info) => {
   test.skip(info.project.name !== 'firefox-desktop', 'desktop layout (sheet narrower than the screen)')
   await page.setViewportSize({ width: 1200, height: 860 })
-  await openLab(page)
+  await openLab(page, '&dialog=0') // the sheet itself, not the dialog the demo shows on desktop
   const box = (await page.locator('[data-ybs-sheet]').boundingBox())!
   expect(box.width).toBeLessThan(1200)
 
@@ -682,7 +682,7 @@ test.describe('page sheet and fullscreen', () => {
   test('full width: the sheet spans the window, the content stays in a column', async ({ page }, info) => {
     test.skip(info.project.name !== 'firefox-desktop', 'desktop layout')
     await page.setViewportSize({ width: 1400, height: 880 })
-    await page.goto('/?open=1#/notes')
+    await page.goto('/?open=1&dialog=0#/notes')
     await waitForEvent(page, 'notes: onDetentChange full')
     expect((await page.locator('[data-ybs-sheet]').boundingBox())!.width).toBe(1400)
     const cancel = (await page.getByRole('button', { name: 'Cancel' }).boundingBox())!
@@ -1296,4 +1296,219 @@ test('Portal container: a sheet portalled into an element still makes the rest o
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
   expect(await trigger.evaluate((el) => !!el.closest('[inert]'))).toBe(false)
+})
+
+test.describe('dialog on desktop (dialog prop)', () => {
+  // A wide window with a mouse: the demo passes `dialog` to every sheet. The mobile projects have no hover/fine
+  // pointer, so they keep the sheet (checked in the last test).
+  test.beforeEach(async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'needs a desktop pointer')
+    await page.setViewportSize({ width: 1280, height: 800 })
+  })
+
+  const sheetScroll = (page: Page) => page.evaluate(() => document.querySelector('[data-ybs-sheet]')!.scrollTop)
+
+  async function openLabDialog(page: Page, query = '') {
+    await page.goto(`/?open=1${query}#/lab`)
+    await waitForEvent(page, 'lab: dialog shown')
+  }
+
+  test('opens centred as a modal dialog: focus inside, page inert, a visible close button, no detents', async ({ page }) => {
+    await openLabDialog(page)
+    const root = page.locator('[data-ybs-root]')
+    await expect(root).toHaveAttribute('data-ybs-dialog', '')
+    const dialog = page.getByRole('dialog', { name: 'Sheet' })
+    await expect(dialog).toBeFocused()
+    await expect(dialog).toHaveAttribute('aria-modal', 'true')
+    await expect(page.locator('#root')).toHaveAttribute('inert', '')
+    const box = (await dialog.boundingBox())!
+    expect(Math.abs(box.x + box.width / 2 - 640)).toBeLessThan(2)
+    expect(Math.abs(box.y + box.height / 2 - 400)).toBeLessThan(2)
+    expect(box.y).toBeGreaterThanOrEqual(23) // the gap around it (24px)
+    await expect(page.getByRole('button', { name: 'Close' })).toBeVisible()
+    await expect(page.locator('[data-ybs-handle]')).toBeHidden()
+    expect((await events(page)).some((e) => e.includes('onDetentChange'))).toBe(false)
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden')
+  })
+
+  test('Escape closes it and gives focus back; onExitComplete after the fade', async ({ page }) => {
+    await page.goto('/#/lab')
+    await page.locator('#open-lab').focus()
+    await page.keyboard.press('Enter')
+    await waitForEvent(page, 'lab: dialog shown')
+    await page.keyboard.press('Escape')
+    await waitForEvent(page, 'lab: onOpenChange false')
+    await waitForEvent(page, 'lab: onExitComplete roots=0')
+    await expect(page.locator('#open-lab')).toBeFocused()
+    await expect(page.locator('#root')).not.toHaveAttribute('inert')
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+  })
+
+  test('a click outside closes it; a click inside, or a selection dragged out of it, does not', async ({ page }) => {
+    await openLabDialog(page)
+    const box = (await page.locator('[data-ybs-sheet]').boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + 200)
+    // Drag from inside to outside (selecting text) and release there.
+    await page.mouse.move(box.x + 40, box.y + 300)
+    await page.mouse.down()
+    await page.mouse.move(box.x - 100, box.y + 300, { steps: 5 })
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    expect(await events(page)).not.toContain('lab: onOpenChange false')
+
+    await page.mouse.click(100, 400)
+    await waitForEvent(page, 'lab: onOpenChange false')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+
+  test('the close button closes it', async ({ page }) => {
+    await openLabDialog(page)
+    await page.getByRole('button', { name: 'Close' }).click()
+    await waitForEvent(page, 'lab: onOpenChange false')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+
+  test('the wheel scrolls its content under a sticky header, and the page stays put', async ({ page }) => {
+    await openLabDialog(page)
+    const root = page.locator('[data-ybs-root]')
+    await expect(root).toHaveAttribute('data-ybs-more', '')
+    await expect(root).not.toHaveAttribute('data-ybs-scrolled')
+    const header0 = (await page.locator('[data-ybs-header]').boundingBox())!
+    const box = (await page.locator('[data-ybs-sheet]').boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, 600)
+    await expect.poll(() => sheetScroll(page)).toBe(600)
+    await expect(root).toHaveAttribute('data-ybs-scrolled', '')
+    expect((await page.locator('[data-ybs-header]').boundingBox())!.y).toBeCloseTo(header0.y, 0)
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    // Still open: the wheel never steps or closes a dialog.
+    // Playwright's Firefox stops a wheel that overshoots the top a few px short under any sticky header (a plain
+    // scroller does it too), so a second, smaller one finishes.
+    await page.mouse.wheel(0, -700)
+    await page.waitForTimeout(400)
+    await page.mouse.wheel(0, -100)
+    await expect.poll(() => sheetScroll(page)).toBe(0)
+    await page.waitForTimeout(300)
+    await expect(root).toHaveCount(1)
+  })
+
+  test('stacked dialogs: Escape closes only the top one', async ({ page }) => {
+    await page.goto('/?open=1#/settings')
+    await waitForEvent(page, 'settings: dialog shown')
+    await page.getByRole('button', { name: /Appearance/ }).click()
+    await waitForEvent(page, 'appearance: dialog shown')
+    const roots = page.locator('[data-ybs-root]')
+    await expect(roots).toHaveCount(2)
+    await expect(roots.nth(1)).toHaveAttribute('data-ybs-dialog', '')
+    await expect(roots.nth(0)).toHaveAttribute('inert', '')
+    await page.keyboard.press('Escape')
+    await expect(roots).toHaveCount(1)
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+    await expect(roots).not.toHaveAttribute('inert')
+  })
+
+  test('reopened while fading out, it comes back', async ({ page }) => {
+    await page.goto('/#/lab')
+    await page.locator('#open-lab').focus()
+    await page.keyboard.press('Enter')
+    await waitForEvent(page, 'lab: dialog shown')
+    // Escape gives focus straight back to the trigger (the closing layer still catches clicks), so Enter reopens it.
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(400)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    expect(Number(await page.locator('[data-ybs-root]').evaluate((r) => getComputedStyle(r).getPropertyValue('--ybs-progress')))).toBe(1)
+  })
+
+  test('decided when it opens: a resize while open keeps the dialog, the next open follows the window', async ({ page }) => {
+    await openLabDialog(page)
+    await page.setViewportSize({ width: 420, height: 800 })
+    await page.waitForTimeout(200)
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+    await page.locator('#open-lab').click()
+    await waitForEvent(page, 'lab: onDetentChange 0.5')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
+  })
+
+  test('stays a sheet when not asked (dialog off) and for a non-modal sheet', async ({ page }) => {
+    await page.goto('/?open=1&dialog=0#/lab')
+    await waitForEvent(page, 'lab: onDetentChange 0.5')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
+
+    await page.goto('/#/persistent')
+    await page.locator('#solve').click()
+    await waitForEvent(page, 'solved: onDetentChange full')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
+  })
+
+  test('the footer line follows content that grows or shrinks after opening', async ({ page }) => {
+    await openLabDialog(page)
+    const root = page.locator('[data-ybs-root]')
+    await page.evaluate(() => {
+      const s = document.querySelector('[data-ybs-sheet]')!
+      s.scrollTop = s.scrollHeight
+    })
+    await expect(root).not.toHaveAttribute('data-ybs-more')
+    await page.evaluate(() => {
+      const extra = document.createElement('div')
+      extra.id = 'extra'
+      extra.style.height = '500px'
+      document.querySelector('.ybs-body')!.append(extra)
+    })
+    await expect(root).toHaveAttribute('data-ybs-more', '')
+    await page.evaluate(() => document.getElementById('extra')!.remove())
+    await expect(root).not.toHaveAttribute('data-ybs-more')
+  })
+
+  test('at rest the dialog has no transform (fixed popups inside stay on the screen)', async ({ page }) => {
+    await openLabDialog(page)
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-fade')
+    expect(await page.locator('[data-ybs-sheet]').evaluate((s) => getComputedStyle(s).transform)).toBe('none')
+  })
+
+  test('reduced motion: opens and closes at once, onExitComplete still fires', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await openLabDialog(page)
+    expect(await page.locator('[data-ybs-root]').evaluate((r) => r.style.getPropertyValue('--ybs-progress'))).toBe('1')
+    await page.keyboard.press('Escape')
+    await waitForEvent(page, 'lab: onExitComplete roots=0')
+  })
+
+  test('not dismissible: Escape and an outside press leave it open, and there is no ✕', async ({ page }) => {
+    await openLabDialog(page, '&dismissible=0')
+    await expect(page.locator('.ybs-close')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await page.mouse.click(100, 400)
+    await page.waitForTimeout(400)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    expect(await events(page)).not.toContain('lab: onOpenChange false')
+  })
+
+  test('app-wide via the provider; one sheet opts out with dialog={false}', async ({ page }) => {
+    // The demo sets it for the whole app with <BottomSheet.Provider dialog>; the lab sheet passes nothing itself.
+    await openLabDialog(page)
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+    await page.goto('/?open=1&nodialog=1#/lab')
+    await waitForEvent(page, 'lab: onDetentChange 0.5')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
+  })
+
+  test('a page sheet becomes a larger dialog without the ✕ (it has Cancel)', async ({ page }) => {
+    await page.goto('/?open=1#/notes')
+    await waitForEvent(page, 'notes: dialog shown')
+    const box = (await page.locator('[data-ybs-sheet]').boundingBox())!
+    expect(box.width).toBeGreaterThan(700)
+    await expect(page.locator('.ybs-close')).toHaveCount(0) // the screen-reader one stays
+    await expect(page.locator('html')).not.toHaveAttribute('data-ybs-recede')
+  })
+})
+
+test('touch devices keep the sheet even with dialog on and a wide screen', async ({ page }, info) => {
+  test.skip(info.project.name === 'firefox-desktop', 'touch projects only')
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await openLab(page)
+  await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
 })
