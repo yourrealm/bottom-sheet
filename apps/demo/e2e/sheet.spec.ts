@@ -227,6 +227,24 @@ test('wheel steps detents, then scrolls content, and stops at the content top', 
   await waitForEvent(page, 'lab: onOpenChange false')
 })
 
+test('Shift+wheel over a sideways strip is left to the browser (scrolls the strip), not taken as a detent step', async ({ page }) => {
+  // Chrome on Windows/Linux reports Shift+wheel as deltaY with shiftKey and scrolls sideways itself. Playwright's
+  // engines don't reproduce that default action, so this checks our part: the event isn't cancelled or stepped.
+  await openLab(page)
+  const wheel = (shiftKey: boolean) =>
+    page.evaluate((shiftKey) => {
+      const e = new WheelEvent('wheel', { deltaY: 100, shiftKey, bubbles: true, cancelable: true })
+      document.querySelector('.hscroll')!.dispatchEvent(e)
+      return e.defaultPrevented
+    }, shiftKey)
+  await clearEvents(page)
+  expect(await wheel(true)).toBe(false)
+  await page.waitForTimeout(300)
+  expect((await events(page)).some((e) => e.includes('wheel step'))).toBe(false)
+  // Without Shift, the same wheel at a partial detent is ours: it steps the sheet.
+  expect(await wheel(false)).toBe(true)
+})
+
 test('mouse drag on the header picks a detent from velocity', async ({ page }, info) => {
   test.skip(info.project.name !== 'firefox-desktop', 'mouse drag is the desktop path')
   await openLab(page)

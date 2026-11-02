@@ -551,6 +551,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let wheelStepped = false
   function onWheel(e: WheelEvent) {
     if (e.ctrlKey) return // pinch-zoom
+    // Shift+wheel scrolls sideways (a photo strip). Chrome on Windows/Linux reports it as deltaY with shiftKey and
+    // scrolls horizontally itself; stepping a detent here would cancel that and move the sheet instead.
+    if (e.shiftKey) return
     if (closing) return void e.preventDefault() // closing on purpose: the wheel doesn't bring it back
     const t = performance.now()
     const newGesture = t - lastWheel > WHEEL_GESTURE_GAP_MS

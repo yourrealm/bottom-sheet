@@ -249,6 +249,10 @@ never when you change `open` yourself, so `onOpenChange={(o) => !o && onClose()}
 - A tap on content that is still scrolling only stops it, and a drag never presses what it started on.
 - Keys scroll the content but never move the sheet down or close it; closing by keyboard is Escape. Escape that ends
   an input method's composition (Chinese, Japanese) is left to the input.
+- Sideways scrollers inside the sheet (a photo strip) scroll with touch, a trackpad and Shift+wheel; the sheet never
+  takes those. A vertical mouse wheel can't scroll a strip sideways (nowhere on the web), so with a mouse a strip that
+  hides its scrollbar can't be scrolled at all: keep a thin one there, e.g.
+  `@media (pointer: fine) { .strip { scrollbar-width: thin } }`.
 - Once a sheet starts closing, it finishes: a touch, wheel or drag during the animation doesn't bring it back.
 - A sheet closes from a swipe, Escape, back, an outside press, a close button or `open={false}`, never from a scroll
   nobody asked for: one that lands at closed (the browser revealing a focused field, say) is undone.
