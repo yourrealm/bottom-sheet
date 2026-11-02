@@ -1,6 +1,6 @@
 {
   "name": "@yourrealm/bottom-sheet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Native-feeling bottom sheet for the web. One native scroller for sheet travel and content.",
   "license": "MIT",
   "repository": {
@@ -27,7 +27,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": "./src/index.ts",
@@ -41,9 +42,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p .",
     "prepack": "node scripts/prepack.mjs && pnpm build",
-    "postpack": "rm -f README.md LICENSE",
-    "pack:check": "node scripts/prepack.mjs && pnpm build && pnpm pack; rm -f README.md LICENSE",
-    "release": "node scripts/prepack.mjs && pnpm build && pnpm publish --access public; rm -f README.md LICENSE"
+    "postpack": "rm -f README.md LICENSE CHANGELOG.md",
+    "pack:check": "node scripts/prepack.mjs && pnpm build && pnpm pack; rm -f README.md LICENSE CHANGELOG.md",
+    "release": "node scripts/prepack.mjs && pnpm build && pnpm publish --access public; rm -f README.md LICENSE CHANGELOG.md"
   },
   "peerDependencies": {
     "react": ">=19",
