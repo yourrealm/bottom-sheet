@@ -301,6 +301,42 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
   .map-panel .guide-img { aspect-ratio: 16 / 10; }
 }
 
+/* ---------- lightbox ---------- */
+.lb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 3px; }
+.lb-thumb { aspect-ratio: 1; padding: 0; border: 0; background: var(--fill); overflow: hidden; cursor: pointer; }
+.lb-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Black, white text, a darker dim, and a large dialog on desktop. */
+[data-ybs-root]:has(.lightbox) {
+  color-scheme: dark; --ybs-sheet-bg: #000; --ybs-sheet-fg: #fff; --ybs-backdrop: #000; --ybs-backdrop-max: 0.85;
+  --ybs-dialog-width: min(1100px, 100%); --ybs-body-padding: 0px;
+}
+.lightbox .ybs-body { padding-bottom: 0; }
+.ybs-edge.lb-strip {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain;
+  padding-inline: 0;
+}
+.lb-strip::-webkit-scrollbar { display: none; }
+/* Sheet: exactly one screen tall (fullscreen), the photos filling what the header and footer leave, so nothing scrolls
+   and a drag down moves the sheet at once. Dialog: its own height, the photos a fixed share of the screen. */
+.ybs-sheet.lightbox { display: flex; flex-direction: column; height: var(--ybs-vv-h, 100dvh); }
+.lightbox > .ybs-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ybs-edge.lb-strip { flex: 1; min-height: 0; }
+.lb-slide { flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; display: grid; place-items: center; min-height: 0; }
+[data-ybs-dialog] .ybs-sheet.lightbox { height: auto; }
+[data-ybs-dialog] .lb-slide { height: min(72dvh, 760px); }
+.lb-slide img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-select: none; }
+.lb-text-button { border: 0; background: none; color: inherit; font: inherit; font-weight: 600; padding: 6px 0; cursor: pointer; }
+.lb-count { color: var(--ybs-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.lb-footer { flex: 1; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; }
+.lb-caption { text-align: center; color: var(--ybs-muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-nav {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; font-size: 26px; line-height: 1; cursor: pointer;
+  background: rgba(255, 255, 255, 0.12); color: #fff;
+}
+.lb-nav:disabled { opacity: 0.3; cursor: default; }
+/* Touch swipes between photos; the arrows are for a mouse. */
+@media not ((hover: hover) and (pointer: fine)) { .lb-nav { visibility: hidden; } }
+
 /* ---------- shared: rows that are sheet triggers ---------- */
 /* Sheet bodies get the preset's side padding (--ybs-body-padding); edge-to-edge lists opt out with .edge. */
 .edge { --ybs-body-padding: 0px; }

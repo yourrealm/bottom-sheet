@@ -1541,3 +1541,34 @@ test('touch devices keep the sheet even with dialog on and a wide screen', async
   await openLab(page)
   await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
 })
+
+test.describe('photo lightbox', () => {
+  test('opens at the tapped photo, one screen tall (nothing to scroll before the sheet moves)', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'phone layout')
+    await page.goto('/#/lightbox')
+    await page.locator('.lb-thumb').nth(1).click()
+    await waitForEvent(page, 'lightbox: onDetentChange full')
+    await expect(page.locator('.lb-count')).toHaveText('2 of 24')
+    const fit = await page.evaluate(() => {
+      const sc = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      return document.querySelector<HTMLElement>('[data-ybs-sheet]')!.offsetHeight - sc.clientHeight
+    })
+    expect(Math.abs(fit)).toBeLessThan(2)
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-more')
+  })
+
+  test('desktop: a large dialog; arrow keys and buttons move between photos', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'desktop')
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/#/lightbox')
+    await page.locator('.lb-thumb').first().click()
+    await waitForEvent(page, 'lightbox: dialog shown')
+    expect((await page.locator('[data-ybs-sheet]').boundingBox())!.width).toBeGreaterThan(1000)
+    await page.keyboard.press('ArrowRight')
+    await expect(page.locator('.lb-count')).toHaveText('2 of 24')
+    await page.getByRole('button', { name: 'Previous photo' }).click()
+    await expect(page.locator('.lb-count')).toHaveText('1 of 24')
+    await page.keyboard.press('Escape')
+    await waitForEvent(page, 'lightbox: onOpenChange false')
+  })
+})

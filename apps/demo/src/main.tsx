@@ -6,6 +6,7 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { dialogSetting, subscribe } from './debug'
 import { Places } from './scenarios/places'
 import { Floating } from './scenarios/floating'
+import { Lightbox } from './scenarios/lightbox'
 import { Comments } from './scenarios/comments'
 import { Product } from './scenarios/product'
 import { Share } from './scenarios/share'
@@ -33,6 +34,7 @@ const SCENARIOS: Scenario[] = [
   { id: 'comments', title: 'Comments', blurb: 'Long thread with a pinned composer. Try the keyboard.', icon: '💬', hue: 220, Component: Comments },
   { id: 'product', title: 'Product options', blurb: 'Short sheet that fits its content.', icon: '👟', hue: 25, Component: Product },
   { id: 'share', title: 'Share', blurb: 'Horizontal rows inside a vertical sheet.', icon: '↗︎', hue: 285, Component: Share },
+  { id: 'lightbox', title: 'Photo lightbox', blurb: 'Tap a photo: fullscreen on a phone (swipe down to close), a large dialog on desktop.', icon: '🖼️', hue: 340, Component: Lightbox },
   { id: 'filters', title: 'Filters', blurb: 'Form controls, a slider and a sticky footer.', icon: '🎛️', hue: 45, Component: Filters },
   { id: 'playlist', title: 'Playlist', blurb: 'Built from the headless parts, fully custom look.', icon: '🎧', hue: 320, Component: Playlist },
   { id: 'settings', title: 'Stacked settings', blurb: 'Sheets on sheets, three levels deep. The one below recedes.', icon: '🗂️', hue: 200, Component: Settings },
