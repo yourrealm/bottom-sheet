@@ -384,6 +384,11 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
 - Device suite after the 2026-11-02 changes (footer, `data-ybs-more`, `'header'` detent, edge, close buttons, rename):
   3/3 Chrome + 3/3 Firefox Android PASS, again after the peek catch. By hand (maintainer) in Chrome + Firefox Android and the
   iOS 26 sim (iPhone 17 Pro): footer line, header peek, edge, close button, eyebrow, floating peek + footer, Comments + keyboard.
+- **0.2.1 feedback round** (2026-11-02): dapuzzler's "'header' drops out of the stops" was Vite's dep pre-bundle
+  serving 0.1.0 (it can't read deno.lock, so it never re-bundled); not our bug. From shopping: no `.ybs-body` without
+  children and `.ybs-header + .ybs-footer` trims to one 16px gap (confirm sheet, demo `#/lab?confirm=1`); dark sheet
+  `#2c2c2e` and a 60% dark backdrop (the dark difference lives in `--ybs-backdrop`'s alpha, max 0.6), since dark app
+  pages dimmed 40% came out at the old sheet colour; no font-family (the app's font); eyebrow all caps 12px.
 - **README for agents** (2026-11-02, from shopping's feedback): three-way table under "Use" (BottomSheet first),
   token table, "Closing animates", "Stacked sheets", "Replacing a `<dialog>`", "Testing" (real Escape key presses).
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).

@@ -11,7 +11,7 @@
 @layer ybs {
 :root { --ybs-css-styled: 1; }
 [data-ybs-root] {
-  --ybs-sheet-bg: light-dark(#fff, #1c1c1e);
+  --ybs-sheet-bg: light-dark(#fff, #2c2c2e); /* dark: a raised surface is lighter (iOS elevated), or it melts into dark pages */
   --ybs-sheet-fg: light-dark(#111, #f2f2f7);
   --ybs-muted: light-dark(#6b6b70, #98989f);
   --ybs-handle: light-dark(rgba(60, 60, 67, 0.3), rgba(235, 235, 245, 0.3));
@@ -20,8 +20,10 @@
   --ybs-title-size: 17px;
   /* Side padding of the body, matching the header. 0 for edge-to-edge lists that pad their own rows. */
   --ybs-body-padding: 16px;
-  --ybs-backdrop: #000;
-  --ybs-backdrop-max: 0.4;
+  /* The dim at full is the colour's alpha x max: 40% on light pages, 60% on dark ones (a dark page needs more to drop
+     back). light-dark() only takes colours, so the difference lives in the alpha. */
+  --ybs-backdrop: light-dark(rgb(0 0 0 / 0.667), #000);
+  --ybs-backdrop-max: 0.6;
   --ybs-max-width: 640px;
   --ybs-content-width: 960px;
   --ybs-float-gap: 8px;
@@ -47,7 +49,7 @@
   border-radius: var(--ybs-radius) var(--ybs-radius) 0 0;
   box-shadow: 0 -1px 0 var(--ybs-divider), 0 -8px 30px rgba(0, 0, 0, 0.08);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  font-family: system-ui, -apple-system, sans-serif;
+  /* No font-family: the sheet uses the app's font, like the rest of the page. */
   max-width: var(--ybs-max-width); margin-inline: auto;
   /* The body's real side inset, for content that reaches the edges (Sheet.Edge). The sheet is a size container so
      a full-width sheet's inset (which depends on the sheet's width) resolves the same at any depth inside it. */
@@ -126,7 +128,10 @@
   background: var(--ybs-handle);
   margin: 0 auto 10px;
 }
-.ybs-eyebrow { display: block; margin-bottom: 2px; font-size: 13px; font-weight: 500; color: var(--ybs-muted); }
+.ybs-eyebrow {
+  display: block; margin-bottom: 3px; color: var(--ybs-muted);
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+}
 .ybs-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* No title (a sheet named by aria-label): the header is just the grabber, without the space a title would need. */
 .ybs-header:has(> .ybs-handle:last-child), .ybs-header:has(> .ybs-handle + .ybs-sr-close:last-child) { padding-bottom: 0; }
@@ -147,6 +152,8 @@
 }
 [data-ybs-more] .ybs-footer { border-top-color: var(--ybs-divider); }
 .ybs-sheet:has(> .ybs-footer) { padding-bottom: 0; }
+/* Footer right under the header (a confirm sheet, no body): one gap of 16px under the text, not two paddings. */
+.ybs-header + .ybs-footer { padding-top: 4px; }
 /* Floating: the clip lifts the bottom edge by the gap at lower detents; the footer stays above it. */
 .ybs-sheet-floating > .ybs-footer { bottom: var(--ybs-g); }
 /* Floating: the visible edge is the clip, a gap in from the sheet's box, so the side space adds the gap (fixed, not

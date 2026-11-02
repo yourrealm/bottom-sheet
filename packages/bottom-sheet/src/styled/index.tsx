@@ -209,7 +209,8 @@ export function BottomSheet({
               {headerExtra}
               {srClose}
             </StyledSheet.Header>
-            <StyledSheet.Body>{children}</StyledSheet.Body>
+            {/* No body without content: its padding would stack with the header's and footer's (a confirm sheet). */}
+            {children != null && children !== false && children !== '' && <StyledSheet.Body>{children}</StyledSheet.Body>}
             {footer != null && <StyledSheet.Footer>{footer}</StyledSheet.Footer>}
           </StyledSheet.Content>
         </StyledSheet.View>

@@ -129,6 +129,16 @@ test('close buttons: a visible ✕ when asked, otherwise one only screen readers
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true })).toHaveCount(0)
 })
 
+test('a confirm sheet (no children) has one gap between its text and its buttons', async ({ page }) => {
+  await page.goto('/?confirm=1#/lab')
+  await waitForEvent(page, 'confirm: onDetentChange full')
+  await expect(page.locator('.ybs-body')).toHaveCount(0)
+  const gap = await page.evaluate(() =>
+    document.querySelector('.ybs-footer button')!.getBoundingClientRect().top - document.querySelector('.ybs-description')!.getBoundingClientRect().bottom)
+  expect(gap).toBeGreaterThan(14)
+  expect(gap).toBeLessThan(18)
+})
+
 test('eyebrow: a label above the title, read with it', async ({ page }) => {
   await page.goto('/?open=1#/share')
   await waitForEvent(page, /share: onDetentChange/)
@@ -797,7 +807,7 @@ test('the styled sheet follows the page color-scheme', async ({ page }) => {
   await openLab(page)
   const bg = () => page.evaluate(() => getComputedStyle(document.querySelector('.ybs-sheet')!).backgroundColor)
   await page.evaluate(() => (document.documentElement.style.colorScheme = 'dark'))
-  expect(await bg()).toBe('rgb(28, 28, 30)')
+  expect(await bg()).toBe('rgb(44, 44, 46)')
   await page.evaluate(() => (document.documentElement.style.colorScheme = 'light'))
   expect(await bg()).toBe('rgb(255, 255, 255)')
 })
@@ -957,8 +967,8 @@ test('a color-scheme forced on one sheet reaches its bleed too', async ({ page }
   await page.locator('#open-lab').click()
   await waitForEvent(page, 'lab: onDetentChange 0.5')
   const bg = (sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s)!).backgroundColor, sel)
-  expect(await bg('.ybs-sheet')).toBe('rgb(28, 28, 30)')
-  expect(await bg('[data-ybs-bleed]')).toBe('rgb(28, 28, 30)')
+  expect(await bg('.ybs-sheet')).toBe('rgb(44, 44, 46)')
+  expect(await bg('[data-ybs-bleed]')).toBe('rgb(44, 44, 46)')
 })
 
 // initialFocus, like Base UI: a function of how the sheet was opened. The persistent demo focuses New board unless

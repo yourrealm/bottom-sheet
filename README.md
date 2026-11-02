@@ -210,18 +210,19 @@ never when you change `open` yourself, so `onOpenChange={(o) => !o && onClose()}
   matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no `color-scheme` at all
   the sheet stays light. One sheet in a fixed theme: `className="[color-scheme:dark]"` or
   `contentProps={{ style: { colorScheme: 'dark' } }}`.
+- The sheet uses your app's font (it sets none of its own).
 - Tokens. Set them on `[data-ybs-root]`, and point them at your own variables to match your theme (dark mode then
   comes with it): `[data-ybs-root] { --ybs-sheet-bg: var(--card); --ybs-sheet-fg: var(--card-foreground); }`.
 
   | Token | Default (light / dark) | What it affects |
   |---|---|---|
-  | `--ybs-sheet-bg` | `#fff` / `#1c1c1e` | Sheet background, also behind the keyboard |
+  | `--ybs-sheet-bg` | `#fff` / `#2c2c2e` | Sheet background, also behind the keyboard |
   | `--ybs-sheet-fg` | `#111` / `#f2f2f7` | Text colour |
   | `--ybs-muted` | `#6b6b70` / `#98989f` | Description, eyebrow, the ✕ |
   | `--ybs-handle` | grey, 30% | The grabber at the top |
   | `--ybs-divider` | grey, 12% | Lines under the header and above the footer |
-  | `--ybs-backdrop` | `#000` | Colour of the dimmed page (a colour, no alpha) |
-  | `--ybs-backdrop-max` | `0.4` | How dark the dim gets at full. An `rgba(0,0,0,.5)` scrim is `#000` + `0.5` |
+  | `--ybs-backdrop` | `rgb(0 0 0 / .667)` / `#000` | Colour of the dimmed page; its alpha times `--ybs-backdrop-max` is the dim at full |
+  | `--ybs-backdrop-max` | `0.6` | How dark the dim gets at full: 40% on light pages, 60% on dark ones by default. An `rgba(0,0,0,.5)` scrim is `#000` + `0.5` |
   | `--ybs-radius` | `14px` | Top corners |
   | `--ybs-title-size` | `17px` | Title |
   | `--ybs-body-padding` | `16px` | Side space of the body and footer (`0` for edge-to-edge lists that pad their own rows) |
