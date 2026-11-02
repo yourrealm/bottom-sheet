@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.0 (2026-11-02)
+
+### Changed
+
+- **`BottomSheet` opens as a centred dialog on desktop** (a wide screen with a mouse: `DIALOG_QUERY`), like a
+  SwiftUI `.sheet` on iPad. Phones, touch tablets and non-modal sheets keep the bottom sheet. There are no detents in
+  a dialog, so `onDetentChange` doesn't fire there. To keep the old behaviour: `dialog={false}` on a sheet, or
+  `<BottomSheet.Provider dialog={false}>` around the app. The headless `Sheet` parts are unchanged (opt in with
+  `dialog`). Desktop e2e tests that swipe or check detents need a mobile profile or the Provider.
+
+### Added
+
+- `dialog` (on `BottomSheet` and `Sheet.Root`): `true` uses `DIALOG_QUERY`
+  (`(min-width: 768px) and (hover: hover) and (pointer: fine)`); a string is your own media query; `false` is always
+  a sheet. Same parts, props and behaviour (focus, Escape, back, stacking, outside press, `onExitComplete`);
+  `floating`, `fullscreen` and `recede` don't apply. Decided when it opens, like `modal`. See "Dialog on desktop" in
+  the README.
+- `<BottomSheet.Provider dialog>` / `<Sheet.Provider dialog>`: `dialog` for every sheet in the app. A sheet's own
+  `dialog` wins; nested Providers keep what they don't set from the outer one.
+- `usePresentation()` (`BottomSheet.usePresentation`, `Sheet.usePresentation`): `'sheet'` or `'dialog'`, for content
+  that adapts.
+- `DIALOG_QUERY`, and the tokens `--ybs-dialog-width` (32rem), `--ybs-dialog-gap` (24px) and `--ybs-dialog-radius`
+  (16px in `/styled`). `data-ybs-dialog` on the root.
+- `/styled` in a dialog: rounded on all sides, the ✕ shows by default when the sheet is dismissible (unless it has
+  `leading`/`trailing`), and `variant="page"` is a larger dialog (48rem).
+
+### Fixed
+
+- Shift+wheel over a sideways strip scrolls the strip. Chrome on Windows and Linux reports it as a vertical wheel
+  with `shiftKey`, which stepped the sheet to another detent instead.
+
 ## 0.2.1 (2026-11-02)
 
 ### Changed (`/styled` looks)
