@@ -1,26 +1,27 @@
 import { useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon, type IconName } from '../icons'
 import { log, logged } from '../debug'
 
 type Detent = 'header' | 0.5 | 'full'
 
-const FAVOURITES = [
-  { icon: '🏠', label: 'Home', hint: '12 min' },
-  { icon: '💼', label: 'Work', hint: '24 min' },
-  { icon: '☕', label: 'Café', hint: '4 min' },
-  { icon: '🏋️', label: 'Gym', hint: '9 min' },
-  { icon: '⛴️', label: 'Ferry', hint: '15 min' },
-  { icon: '＋', label: 'Add', hint: '' },
+const FAVOURITES: { icon: IconName; label: string; hint: string; hue: number }[] = [
+  { icon: 'house', label: 'Home', hint: '12 min', hue: 210 },
+  { icon: 'briefcaseBusiness', label: 'Work', hint: '24 min', hue: 25 },
+  { icon: 'coffee', label: 'Café', hint: '4 min', hue: 30 },
+  { icon: 'dumbbell', label: 'Gym', hint: '9 min', hue: 340 },
+  { icon: 'ship', label: 'Ferry', hint: '15 min', hue: 195 },
+  { icon: 'plus', label: 'Add', hint: '', hue: -1 },
 ]
-const RECENTS: [icon: string, name: string, where: string][] = [
-  ['☕', 'Hallonbacken Café', 'Strandvägen 14'],
-  ['🍞', 'Bakery', 'Södra gatan 3'],
-  ['📚', 'Library', 'Torget 1'],
-  ['🌳', 'Park', 'Parkvägen'],
-  ['⛴️', 'Ferry terminal', 'Hamnen'],
-  ['🏛️', 'Museum of Light', 'Slottsbacken 8'],
-  ['🍕', 'Pizzeria Nonna', 'Kvarngatan 21'],
-  ['🏊', 'Open-air pool', 'Badvägen 2'],
+const RECENTS: [icon: IconName, name: string, where: string, hue: number][] = [
+  ['coffee', 'Hallonbacken Café', 'Strandvägen 14', 30],
+  ['croissant', 'Bakery', 'Södra gatan 3', 40],
+  ['library', 'Library', 'Torget 1', 260],
+  ['trees', 'Park', 'Parkvägen', 130],
+  ['ship', 'Ferry terminal', 'Hamnen', 195],
+  ['landmark', 'Museum of Light', 'Slottsbacken 8', 290],
+  ['pizza', 'Pizzeria Nonna', 'Kvarngatan 21', 5],
+  ['waves', 'Open-air pool', 'Badvägen 2', 200],
 ]
 const GUIDES: [title: string, places: number, hue: number][] = [
   ['Coffee with a view', 12, 30],
@@ -97,7 +98,9 @@ export function Floating(_: { autoOpen: boolean }) {
         <BottomSheet.Edge className="favs" aria-label="Favourites">
           {FAVOURITES.map((f) => (
             <button key={f.label} className="fav" onClick={() => setQuery(f.label === 'Add' ? '' : f.label)}>
-              <span className="fav-icon">{f.icon}</span>
+              <span className="fav-icon" style={f.hue < 0 ? undefined : { ['--h' as string]: f.hue }}>
+                <Icon name={f.icon} size={24} />
+              </span>
               <strong>{f.label}</strong>
               <span className="muted small">{f.hint || ' '}</span>
             </button>
@@ -106,10 +109,12 @@ export function Floating(_: { autoOpen: boolean }) {
 
         <h3 className="section">Recents</h3>
         <ul className="recents">
-          {recents.map(([icon, name, where]) => (
+          {recents.map(([icon, name, where, hue]) => (
             <li key={name}>
               <button onClick={() => setDetent(0.5)}>
-                <span className="recent-icon">{icon}</span>
+                <span className="recent-icon" style={{ ['--h' as string]: hue }}>
+                  <Icon name={icon} size={18} />
+                </span>
                 <span>
                   <strong>{name}</strong>
                   <span className="muted small">{where}</span>

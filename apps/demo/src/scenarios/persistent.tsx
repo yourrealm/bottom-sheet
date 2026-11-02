@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon } from '../icons'
 import { log, logged } from '../debug'
 
 /** Full, or the peek bar. Closed only before it first slides up (and after "New board"). */
@@ -87,10 +88,10 @@ export function Persistent({ autoOpen }: { autoOpen: boolean }) {
           <p className="muted">No hints used · 2:41</p>
           <div className="thumbs" role="group" aria-label="Rate this board">
             <button aria-pressed={vote === 1} disabled={vote != null} onClick={() => setVote(1)}>
-              👍 Good one
+              <Icon name="thumbsUp" size={18} /> Good one
             </button>
             <button aria-pressed={vote === -1} disabled={vote != null} onClick={() => setVote(-1)}>
-              👎 Not for me
+              <Icon name="thumbsDown" size={18} /> Not for me
             </button>
           </div>
           <div className="solved-actions">

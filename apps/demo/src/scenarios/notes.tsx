@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon } from '../icons'
 import { log, logged } from '../debug'
+import { useDialogs } from '../media'
 
 type Mode = 'page' | 'fullscreen'
 
@@ -12,10 +14,16 @@ type Mode = 'page' | 'fullscreen'
 export function Notes({ autoOpen }: { autoOpen: boolean }) {
   const startMode: Mode = new URLSearchParams(location.search).get('fullscreen') === '1' ? 'fullscreen' : 'page'
   const [open, setOpen] = useState<Mode | null>(autoOpen ? startMode : null)
-  const [notes, setNotes] = useState<{ title: string; body: string }[]>([])
+  const [notes, setNotes] = useState<{ title: string; body: string }[]>([
+    { title: 'Packing list', body: 'Rain shell, headlamp, the good socks, stove gas, two maps and a spare battery.' },
+    { title: 'Book club', body: 'Thursday at Ines’s. Bring the cardamom buns, finish chapter 9 (no spoilers this time).' },
+    { title: 'Ideas for the cabin', body: 'Paint the door green. Shelf over the window. A proper hook for wet jackets.' },
+  ])
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const mode = open ?? startMode
+  // As a dialog, fullscreen looks the same as the page sheet: offer it only where it differs (phones, or sheets on).
+  const dialogs = useDialogs()
 
   const save = () => {
     setNotes((n) => [{ title: title || 'Untitled', body }, ...n])
@@ -26,14 +34,16 @@ export function Notes({ autoOpen }: { autoOpen: boolean }) {
   }
 
   return (
-    <div className="page-pad">
+    <div className="page-pad notes-page">
       <div className="notes-actions">
         <button className="primary" id="new-note" onClick={() => setOpen('page')}>
           New note
         </button>
-        <button className="secondary" id="new-note-fullscreen" onClick={() => setOpen('fullscreen')}>
-          Fullscreen
-        </button>
+        {!dialogs && (
+          <button className="secondary" id="new-note-fullscreen" onClick={() => setOpen('fullscreen')}>
+            Fullscreen
+          </button>
+        )}
       </div>
       {notes.length === 0 ? (
         <p className="muted">No notes yet.</p>
@@ -42,7 +52,7 @@ export function Notes({ autoOpen }: { autoOpen: boolean }) {
           {notes.map((n, i) => (
             <li key={i}>
               <strong>{n.title}</strong>
-              <span className="muted small">{n.body.slice(0, 80) || 'No text'}</span>
+              <span className="muted small">{n.body || 'No text'}</span>
             </li>
           ))}
         </ul>
@@ -68,7 +78,7 @@ export function Notes({ autoOpen }: { autoOpen: boolean }) {
           <div className="note-toolbar" role="toolbar" aria-label="Formatting">
             <button aria-label="Bold"><b>B</b></button>
             <button aria-label="Italic"><i>I</i></button>
-            <button aria-label="List">☰</button>
+            <button aria-label="List"><Icon name="menu" size={18} /></button>
           </div>
         }
       >

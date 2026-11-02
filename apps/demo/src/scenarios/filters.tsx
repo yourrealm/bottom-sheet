@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon, type IconName } from '../icons'
 import { logged } from '../debug'
 
 const CATEGORIES = [
@@ -7,6 +8,12 @@ const CATEGORIES = [
   'Base layers', 'Gloves', 'Maps', 'First aid', 'Cookware', 'Hammocks', 'Camp chairs', 'Dry bags',
 ]
 const SORTS = ['Relevance', 'Price', 'Newest', 'Rating']
+const ITEMS: [name: string, kind: string, price: number, hue: number, icon: IconName][] = [
+  ['Fjällhem 2 tent', 'Tents', 3490, 140, 'tent'], ['Kvist ultralight tent', 'Tents', 5290, 95, 'tent'], ['Glöd canister stove', 'Stoves', 649, 20, 'flame'],
+  ['Glöd titanium pot', 'Cookware', 399, 210, 'cookingPot'], ['Lavvu down bag −5°', 'Sleeping bags', 2890, 260, 'bedDouble'], ['Ränna 38 L pack', 'Backpacks', 1590, 30, 'backpack'],
+  ['Lykta 400 headlamp', 'Headlamps', 449, 50, 'flashlight'], ['Bäck squeeze filter', 'Water filters', 379, 190, 'droplets'], ['Stig carbon poles', 'Trekking poles', 899, 0, 'mountain'],
+  ['Skur rain shell', 'Rain jackets', 1990, 220, 'cloudRain'], ['Ull merino base layer', 'Base layers', 749, 340, 'shirt'], ['Gunga hammock', 'Hammocks', 549, 160, 'tent'],
+]
 
 export function Filters({ autoOpen }: { autoOpen: boolean }) {
   const [open, setOpen] = useState(autoOpen)
@@ -20,15 +27,30 @@ export function Filters({ autoOpen }: { autoOpen: boolean }) {
   return (
     <div className="results-page">
       <div className="results-bar">
-        <strong>Outdoor gear</strong>
+        <div>
+          <h2>Outdoor gear</h2>
+          <span className="muted small">
+            {results} results · {sort}
+            {inStock && ' · In stock'}
+            {sale && ' · On sale'}
+          </span>
+        </div>
         <button className="primary" onClick={() => setOpen(true)}>Filters · {cats.size}</button>
       </div>
+      <div className="active-filters" aria-label="Active filters">
+        {[...cats].map((c) => (
+          <span key={c} className="tag on">{c}</span>
+        ))}
+        <span className="tag">Up to {maxPrice.toLocaleString('sv-SE')} kr</span>
+      </div>
       <div className="results-grid">
-        {Array.from({ length: 12 }, (_, i) => (
-          <div key={i} className="result-card" style={{ ['--h' as string]: (i * 37) % 360 }}>
-            <div className="result-img" />
-            <div className="result-name">Item {i + 1}</div>
-            <div className="muted small">{(299 + i * 113).toLocaleString('sv-SE')} kr</div>
+        {ITEMS.map(([name, kind, price, hue, icon]) => (
+          <div key={name} className="result-card" style={{ ['--h' as string]: hue }}>
+            <div className="result-img">
+              <Icon name={icon} size={44} strokeWidth={1.4} />
+            </div>
+            <div className="result-name">{name}</div>
+            <div className="muted small">{kind} · {price.toLocaleString('sv-SE')}{'\u00a0'}kr</div>
           </div>
         ))}
       </div>

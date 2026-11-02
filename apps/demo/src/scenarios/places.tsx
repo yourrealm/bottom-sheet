@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon } from '../icons'
 import { logged } from '../debug'
+import { useDialogs } from '../media'
 import { reviews } from '../data'
 
 const REVIEWS = reviews(14)
@@ -12,8 +14,14 @@ const PINS = [
   { x: 30, y: 66, label: 'Park' },
 ]
 
-export function Places(_: { autoOpen: boolean }) {
-  const [open, setOpen] = useState(true)
+/** A peek over the map on a phone, opening on load. As a dialog it would cover the map, so there it waits for the café pin. */
+export function Places({ autoOpen }: { autoOpen: boolean }) {
+  const asDialog = useDialogs()
+  const [open, setOpen] = useState(autoOpen || !asDialog)
+  // Switched to sheets (the top-bar switch, a narrower window): show the peek again.
+  useEffect(() => {
+    if (!asDialog) setOpen(true)
+  }, [asDialog])
   return (
     <div className="map">
       <div className="map-water" />
@@ -21,6 +29,7 @@ export function Places(_: { autoOpen: boolean }) {
       <div className="map-road r1" />
       <div className="map-road r2" />
       <div className="map-road r3" />
+      {asDialog && !open && <p className="map-hint">Click the café to see its details</p>}
       {PINS.map((p) => (
         <button
           key={p.label}
@@ -28,7 +37,7 @@ export function Places(_: { autoOpen: boolean }) {
           style={{ left: `${p.x}%`, top: `${p.y}%` }}
           onClick={() => p.main && setOpen(true)}
         >
-          <span>{p.main ? '☕' : '•'}</span>
+          <span>{p.main ? <Icon name="coffee" size={13} strokeWidth={2.2} /> : '•'}</span>
           {p.label}
         </button>
       ))}
@@ -47,14 +56,16 @@ export function Places(_: { autoOpen: boolean }) {
             <strong>4.6</strong> <span className="stars">★★★★★</span> <span className="muted">(812 reviews)</span>
           </div>
           <div className="actions">
-            {[
-              ['🧭', 'Directions'],
-              ['📞', 'Call'],
-              ['🔖', 'Save'],
-              ['↗︎', 'Share'],
-            ].map(([icon, label]) => (
+            {(
+              [
+                ['navigation', 'Directions'],
+                ['phone', 'Call'],
+                ['bookmark', 'Save'],
+                ['share', 'Share'],
+              ] as const
+            ).map(([icon, label]) => (
               <button key={label} className="action">
-                <span>{icon}</span>
+                <Icon name={icon} />
                 {label}
               </button>
             ))}

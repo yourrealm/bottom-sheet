@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon } from '../icons'
 import { log, logged } from '../debug'
 
 interface Photo {
@@ -60,7 +61,10 @@ export function Lightbox(_: { autoOpen: boolean }) {
 
   return (
     <div className="page-pad">
-      <p className="muted small">{PHOTOS.length} photos · tap one</p>
+      <header className="lb-head">
+        <h2>Summer on Lillholmen</h2>
+        <p className="muted small">{PHOTOS.length} photos · tap one to open it</p>
+      </header>
       <div className="lb-grid">
         {PHOTOS.map((p, i) => (
           <button
@@ -102,17 +106,7 @@ export function Lightbox(_: { autoOpen: boolean }) {
             e.preventDefault()
           },
         }}
-        footer={
-          <div className="lb-footer">
-            <button className="lb-nav" aria-label="Previous photo" disabled={shown === 0} onClick={() => go(-1)}>
-              ‹
-            </button>
-            <span className="lb-caption">{photo.alt}</span>
-            <button className="lb-nav" aria-label="Next photo" disabled={shown === PHOTOS.length - 1} onClick={() => go(1)}>
-              ›
-            </button>
-          </div>
-        }
+        footer={<p className="lb-caption">{photo.alt}</p>}
       >
         <BottomSheet.Edge
           className="lb-strip"
@@ -125,6 +119,13 @@ export function Lightbox(_: { autoOpen: boolean }) {
             </div>
           ))}
         </BottomSheet.Edge>
+        {/* Over the sides of the photo; for a mouse (touch swipes). */}
+        <button className="lb-nav prev" aria-label="Previous photo" disabled={shown === 0} onClick={() => go(-1)}>
+          <Icon name="chevronLeft" size={24} strokeWidth={2.2} />
+        </button>
+        <button className="lb-nav next" aria-label="Next photo" disabled={shown === PHOTOS.length - 1} onClick={() => go(1)}>
+          <Icon name="chevronRight" size={24} strokeWidth={2.2} />
+        </button>
       </BottomSheet>
     </div>
   )

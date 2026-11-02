@@ -18,7 +18,7 @@ export function Settings({ autoOpen }: { autoOpen: boolean }) {
   const [language, setLanguage] = useState('English (UK)')
   const [langOpen, setLangOpen] = useState(false)
   const [accent, setAccent] = useState<string>(ACCENTS[0][1])
-  const [dark, setDark] = useState(false)
+  const [dark, setDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
   const [notify, setNotify] = useState(true)
 
   return (
@@ -27,10 +27,45 @@ export function Settings({ autoOpen }: { autoOpen: boolean }) {
         <div className="avatar big" style={{ ['--h' as string]: 220 }}>AB</div>
         <div>
           <strong>Alva Berg</strong>
-          <div className="muted small">{language} · {notify ? 'Notifications on' : 'Notifications off'}</div>
+          <div className="muted small">alva.berg@example.com · Member since 2021</div>
         </div>
       </div>
-      <button className="primary wide" onClick={() => setOpen(true)}>Open settings</button>
+      <div className="account-grid">
+        <section className="panel">
+          <h3 className="section">Preferences</h3>
+          <dl className="summary">
+            <dt>Language</dt>
+            <dd>{language}</dd>
+            <dt>Notifications</dt>
+            <dd>{notify ? 'On' : 'Off'}</dd>
+            <dt>Theme</dt>
+            <dd>{dark ? 'Dark' : 'Light'}</dd>
+            <dt>Accent</dt>
+            <dd>
+              <span className="accent-dot" /> {ACCENTS.find(([, v]) => v === accent)?.[0]}
+            </dd>
+          </dl>
+          <button className="primary wide" onClick={() => setOpen(true)}>Open settings</button>
+        </section>
+        <section className="panel">
+          <h3 className="section">Plan</h3>
+          <p className="plan">
+            <strong>Family</strong> <span className="muted">· 4 of 6 seats</span>
+          </p>
+          <div className="meter" role="img" aria-label="62% of storage used">
+            <span style={{ width: '62%' }} />
+          </div>
+          <p className="muted small">124 GB of 200 GB used · renews 1 March</p>
+        </section>
+        <section className="panel">
+          <h3 className="section">Signed-in devices</h3>
+          <ul className="devices">
+            <li><strong>Pixel 8</strong> <span className="muted small">Stockholm · now</span></li>
+            <li><strong>MacBook Air</strong> <span className="muted small">Stockholm · 2 hours ago</span></li>
+            <li><strong>iPad</strong> <span className="muted small">Uppsala · last week</span></li>
+          </ul>
+        </section>
+      </div>
 
       <BottomSheet {...logged('settings')} open={open} onOpenChange={setOpen} detents={[0.55]} title="Settings">
         <ul className="menu">

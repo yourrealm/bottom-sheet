@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+import { Icon, type IconName } from '../icons'
 import { logged } from '../debug'
 import { hues, initials, people } from '../data'
 
-const APPS = [
-  ['💬', 'Messages'], ['✉️', 'Mail'], ['📝', 'Notes'], ['🗂️', 'Files'], ['📌', 'Boards'], ['🖨️', 'Print'], ['☁️', 'Drive'],
+const APPS: [IconName, string, number][] = [
+  ['messageCircle', 'Messages', 130], ['mail', 'Mail', 210], ['notebookPen', 'Notes', 45], ['folder', 'Files', 220],
+  ['pin', 'Boards', 0], ['printer', 'Print', 240], ['cloud', 'Drive', 200],
 ]
 const ACTIONS = ['Copy link', 'Add to album', 'Save to files', 'Duplicate', 'Hide', 'Edit details']
 
@@ -53,9 +55,11 @@ export function Share({ autoOpen }: { autoOpen: boolean }) {
               ))}
             </div>
             <div className="share-row" aria-label="Apps">
-              {APPS.map(([icon, label]) => (
+              {APPS.map(([icon, label, hue]) => (
                 <button key={label} className="share-target" onClick={() => act(`Shared to ${label}`)}>
-                  <span className="app-icon">{icon}</span>
+                  <span className="app-icon" style={{ ['--h' as string]: hue }}>
+                    <Icon name={icon} size={28} />
+                  </span>
                   {label}
                 </button>
               ))}
