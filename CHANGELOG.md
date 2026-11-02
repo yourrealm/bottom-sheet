@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.1 (2026-11-02)
+
+### Changed (`/styled` looks)
+
+- Dark mode: the sheet is `#2c2c2e` (was `#1c1c1e`), and the page behind dims 60% (light mode stays at 40%), so the
+  sheet stands out from dark pages. The defaults are now `--ybs-backdrop: light-dark(rgb(0 0 0 / .667), #000)` and
+  `--ybs-backdrop-max: 0.6`; an app that sets both itself sees no change.
+- The sheet uses the app's font; it no longer sets `system-ui`.
+- `eyebrow` is a small all-caps label (12px, letter-spaced, semi-bold), like eyebrows elsewhere on the web.
+
+### Fixed
+
+- A `BottomSheet` without children (a confirm sheet: title, description, footer) no longer renders an empty body, and
+  its buttons sit one 16px gap under the text instead of about 36px.
+
 ## 0.2.0 (2026-11-02)
 
 ### Breaking
