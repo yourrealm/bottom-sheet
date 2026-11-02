@@ -287,6 +287,8 @@ Built for dapuzzler's solved sheet (`../dapuzzler/src/components/game/solved-she
   moving and shift snap positions). The controller sets `--ybs-visible` (on-screen sheet px = min(scrollTop, full));
   `100% - visible` is the part below the screen, so the clip's bottom edge sits a gap above the screen edge.
   `--ybs-float` is 1 below 75% progress and 0 at full; the gap and bottom corners scale with it (they slide off-screen).
+- Side spacing adds `--ybs-float-gap` (header padding, `--ybs-body-inset`), fixed rather than following the float, so
+  text isn't 8px from the visible edge at a peek (2026-11-02). Not with `width="full"`.
 - The clip also stops hits in the gap (test: "floating: inset with a gap at the peek"). It clips the sheet's own box-shadow.
 - Device (2026-11-01): Chrome + Firefox Android render it and drag from the peek to full.
 
@@ -347,6 +349,43 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   the header; the demo uses it as-is and only edge-to-edge sheets (lab, share) set it to 0 (`.edge`).
 - **Default detents `[]`** (decided 2026-11-01): a sheet opens at full unless it asks for partial detents, like iOS
   (`[.large()]`), Base UI and Vaul. The old default `[0.5]` opened dapuzzler's picker half-way, cutting off its content.
+- **Lines only when something is behind them** (2026-11-02, from the dapuzzler/shopping feedback: body content sat
+  flush on an always-on header divider): `/styled` draws the header divider only with `data-ybs-scrolled`, and the
+  footer line only with `data-ybs-more` (controller: sheet taller than the screen and not scrolled to its end, live
+  sizes, 2px slack because Chrome Android rests at 1255.2 of 1256). A sheet that fits never gets `data-ybs-more`, so
+  a short sheet doesn't flash a footer line while gliding open.
+- **`'header'` detent** (2026-11-02): a peek of exactly the header (measured while the header isn't stuck; `/styled`
+  floating adds its gap via `--ybs-header-detent-offset`). Replaced the demo's `'76px'`, which showed ~20px of body.
+- **Footer** (2026-11-02): `footer` prop / `Sheet.Footer`, `position: sticky; bottom: 0` in the one scroller, so it
+  sits at the screen bottom at partial detents too. Takes the safe area from the sheet. Excluded from the iOS
+  non-modal `position: relative` rule.
+- **Edge** (2026-11-02): `BottomSheet.Edge` / `StyledSheet.Edge` pull content to the sheet edges with
+  `--ybs-body-inset`. The sheet is `container-type: inline-size` so the full-width inset (`100cqw`) resolves at any
+  depth. Everything a `BottomSheet` user needs hangs off `BottomSheet` (`.Edge`, `.Close`).
+- **Names** (2026-11-02, for 0.2.0): `BottomSheet` (finished, the default) / `StyledSheet` (its styled parts, from
+  `/styled`) / `Sheet` (headless parts, from the root). The styled parts used to be a second `Sheet`, which led
+  shopping's agent to them instead of `BottomSheet`. No alias for the old name, so agents can't find the old path.
+- **`onExitComplete`** (2026-11-02, Framer Motion's name): fires in Root when `mounted` goes true -> false, so after
+  the portal is gone, whichever path closed it. README "Closing animates" tells apps to keep the sheet rendered
+  (shopping unmounted with `{open && …}` and lost the animation silently). Test: "onExitComplete fires once…".
+- **Close button** (2026-11-02): `/styled` `closeButton` (visible ✕, off by default, in `trailing` or a
+  `.ybs-title-row`) and otherwise a screen-reader-only `Sheet.Close` in the header of every dismissible sheet (shows on
+  keyboard focus): VoiceOver can't swipe or tap the backdrop (reasoned, not tested on a device). The ✕ strokes with
+  `--ybs-muted` directly, since app button resets (`button { color: inherit }`) beat our layer. `closeLabel` localizes.
+- **A `'header'` peek catches flings** (2026-11-02, maintainer felt it on the phone): its marker gets
+  `data-ybs-catch` -> `scroll-snap-stop: always`, so a flick from full or half lands on the peek; a flick from the peek
+  closes (unless `dismissible={false}`). Other partial detents stay passable: stopping at every detent made a half
+  height a speed bump (flick from full stopped at half instead of closing). Like Material's collapsed state.
+- **Footer vs a low peek** (2026-11-02): at a peek lower than header + footer, the footer translates down under the
+  header (`--ybs-header-h`, set by the controller, plus `--ybs-visible`); it used to pin over the title.
+- **`eyebrow` and `--ybs-title-size`** (2026-11-02, shopping lost its "Section" label above the title): the eyebrow
+  renders inside `Sheet.Title` (block span + a hidden ", ") so it fits all three header layouts and is part of the
+  dialog's name ("Gamla stan , Share photo" in Chromium's tree; reads the same).
+- Device suite after the 2026-11-02 changes (footer, `data-ybs-more`, `'header'` detent, edge, close buttons, rename):
+  3/3 Chrome + 3/3 Firefox Android PASS, again after the peek catch. By hand (maintainer) in Chrome + Firefox Android and the
+  iOS 26 sim (iPhone 17 Pro): footer line, header peek, edge, close button, eyebrow, floating peek + footer, Comments + keyboard.
+- **README for agents** (2026-11-02, from shopping's feedback): three-way table under "Use" (BottomSheet first),
+  token table, "Closing animates", "Stacked sheets", "Replacing a `<dialog>`", "Testing" (real Escape key presses).
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
   Parts must stay className/Tailwind friendly. A shadcn-registry variant may come later for dapuzzler.
 - **License:** MIT.

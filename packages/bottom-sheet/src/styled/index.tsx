@@ -24,8 +24,11 @@ function withClass<P extends { className?: string }>(Comp: (p: P) => ReactNode, 
   return (p: P) => <Comp {...p} className={cx(cls, p.className)} />
 }
 
-/** Styled parts: same API as the headless `Sheet`, with the preset look. */
-export const Sheet = {
+/**
+ * Styled parts: the pieces `BottomSheet` is built from, with the preset look (same API as the headless `Sheet`).
+ * Prefer `BottomSheet`; use these only to arrange a sheet yourself.
+ */
+export const StyledSheet = {
   Root: Base.Root,
   Trigger: Base.Trigger,
   Close: Base.Close,
@@ -41,16 +44,25 @@ export const Sheet = {
   Handle: withClass(Base.Handle, 'ybs-handle'),
   Title: withClass(Base.Title, 'ybs-title'),
   Description: withClass(Base.Description, 'ybs-description'),
+  Footer: withClass(Base.Footer, 'ybs-footer'),
+  /** The padded content area, after `Header`: the same side space as the header, so text lines up with the title. */
+  Body: ({ className, ...p }: ComponentPropsWithRef<'div'>) => <div {...p} className={cx('ybs-body', className)} />,
+  /**
+   * Content that reaches the sheet's edges, inside the body: a sideways photo strip, a full-width tappable row, a
+   * separator. Its contents stay lined up with the rest of the body. The inset is `--ybs-body-inset`.
+   */
+  Edge: ({ className, ...p }: ComponentPropsWithRef<'div'>) => <div {...p} className={cx('ybs-edge', className)} />,
 }
 
-export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
+interface BottomSheetBaseProps extends Omit<Base.RootProps, 'children'> {
   /**
    * What opens the sheet. Content (text, elements) is placed inside our trigger button. A function renders your own
    * button instead: `trigger={(props) => <Button variant="paper" {...props}>Open</Button>}` (it receives `type`,
    * `onClick` and the ARIA state; put className, disabled, aria-label on your button).
    */
   trigger?: ReactNode | ((props: Base.TriggerRenderProps) => ReactElement)
-  title: ReactNode
+  /** A small label above the title (a section, a category). Part of the title, so screen readers read both. */
+  eyebrow?: ReactNode
   description?: ReactNode
   /**
    * - `'sheet'` (default): detents as given, a card-width sheet.
@@ -70,11 +82,25 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
    * reaches full. Tokens: --ybs-float-gap (8px), --ybs-float-radius (32px).
    */
   floating?: boolean
-  /** Header bar slots, iOS navigation-bar style: e.g. `leading={<Sheet.Close>Cancel</Sheet.Close>}`. The title centres between them. */
+  /** Header bar slots, iOS navigation-bar style: e.g. `leading={<BottomSheet.Close>Cancel</BottomSheet.Close>}`. The title centres between them. */
   leading?: ReactNode
   trailing?: ReactNode
   /** Extra content placed in the sticky header under the title (e.g. a search field). */
   headerExtra?: ReactNode
+  /**
+   * Actions pinned to the bottom of the screen (Cancel / Confirm, Show results). They stay reachable while a long
+   * sheet scrolls, reach the sheet's edges, and take the home-bar safe area. A line appears above them only while
+   * content is hidden behind them.
+   */
+  footer?: ReactNode
+  /**
+   * A visible ✕ button in the header's top right that closes the sheet. Off by default. Without it, a dismissible
+   * sheet still has a close button that only screen readers announce (it shows when focused by keyboard), because
+   * swipes and the dimmed area aren't usable with VoiceOver.
+   */
+  closeButton?: boolean
+  /** Accessible name of the close button (visible ✕ or screen-reader only). Default `'Close'`. */
+  closeLabel?: string
   /**
    * Where focus goes when the sheet opens, like Base UI's: an element ref, `false`, `true` (the sheet), or a function
    * of how it was opened, e.g. `(type) => type !== 'touch' && saveRef.current`. Default: the sheet for a modal sheet,
@@ -86,6 +112,16 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
   contentProps?: ComponentPropsWithRef<'section'>
 }
 
+/**
+ * Every sheet needs a name for screen readers ("Share photo, dialog"): a visible `title`, or an `aria-label` for a
+ * sheet without one (an action list, a photo viewer). TypeScript refuses a sheet with neither.
+ */
+export type BottomSheetProps = BottomSheetBaseProps &
+  (
+    | { /** Visible title; also names the dialog. */ title: NonNullable<ReactNode>; 'aria-label'?: string }
+    | { title?: undefined; /** Names a sheet that has no visible title. */ 'aria-label': string }
+  )
+
 
 /**
  * The simple path:
@@ -94,6 +130,7 @@ export interface BottomSheetProps extends Omit<Base.RootProps, 'children'> {
 export function BottomSheet({
   trigger,
   title,
+  eyebrow,
   description,
   variant = 'sheet',
   floating = false,
@@ -101,47 +138,87 @@ export function BottomSheet({
   leading,
   trailing,
   headerExtra,
+  footer,
+  closeButton = false,
+  closeLabel = 'Close',
   initialFocus,
   children,
   className,
   contentProps,
+  'aria-label': ariaLabel,
   ...rootProps
 }: BottomSheetProps) {
   const root = variant === 'page' ? { recede: true, ...rootProps } : rootProps
   const bar = leading != null || trailing != null
-  return (
-    <Sheet.Root {...root}>
-      {typeof trigger === 'function' ? (
-        <Sheet.Trigger render={trigger} />
-      ) : (
-        trigger != null && <Sheet.Trigger className="ybs-trigger">{trigger}</Sheet.Trigger>
+  // The eyebrow sits inside the title element so it lines up in every header layout and is read with the title
+  // (the hidden comma keeps a screen reader from running the two together).
+  const heading = title == null ? null : (
+    <StyledSheet.Title>
+      {eyebrow != null && (
+        <span className="ybs-eyebrow">
+          {eyebrow}
+          <span className="ybs-sr-only">, </span>
+        </span>
       )}
-      <Sheet.Portal>
-        {root.modal !== false && <Sheet.Backdrop />}
-        <Sheet.View>
-          <Sheet.Content
+      {title}
+    </StyledSheet.Title>
+  )
+  const close = closeButton ? (
+    <StyledSheet.Close className="ybs-close" aria-label={closeLabel}>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
+    </StyledSheet.Close>
+  ) : null
+  // Screen readers (VoiceOver especially) can't swipe the sheet away or tap the dimmed area, so a dismissible sheet
+  // always has a way out. Hidden until focused.
+  const srClose = !closeButton && rootProps.dismissible !== false && (
+    <StyledSheet.Close className="ybs-sr-close">{closeLabel}</StyledSheet.Close>
+  )
+  return (
+    <StyledSheet.Root {...root}>
+      {typeof trigger === 'function' ? (
+        <StyledSheet.Trigger render={trigger} />
+      ) : (
+        trigger != null && <StyledSheet.Trigger className="ybs-trigger">{trigger}</StyledSheet.Trigger>
+      )}
+      <StyledSheet.Portal>
+        {root.modal !== false && <StyledSheet.Backdrop />}
+        <StyledSheet.View>
+          <StyledSheet.Content
             {...contentProps}
+            aria-label={ariaLabel ?? contentProps?.['aria-label']}
             initialFocus={initialFocus}
             className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', floating && 'ybs-sheet-floating', className, contentProps?.className)}
           >
-            <Sheet.Header>
-              <Sheet.Handle />
+            <StyledSheet.Header>
+              <StyledSheet.Handle />
               {bar ? (
                 <div className="ybs-bar">
                   <div className="ybs-leading">{leading}</div>
-                  <Sheet.Title>{title}</Sheet.Title>
-                  <div className="ybs-trailing">{trailing}</div>
+                  {heading ?? <span />}
+                  <div className="ybs-trailing">{trailing}{close}</div>
+                </div>
+              ) : close ? (
+                <div className="ybs-title-row">
+                  {heading ?? <span />}
+                  {close}
                 </div>
               ) : (
-                <Sheet.Title>{title}</Sheet.Title>
+                heading
               )}
-              {description != null && <Sheet.Description>{description}</Sheet.Description>}
+              {description != null && <StyledSheet.Description>{description}</StyledSheet.Description>}
               {headerExtra}
-            </Sheet.Header>
-            <div className="ybs-body">{children}</div>
-          </Sheet.Content>
-        </Sheet.View>
-      </Sheet.Portal>
-    </Sheet.Root>
+              {srClose}
+            </StyledSheet.Header>
+            <StyledSheet.Body>{children}</StyledSheet.Body>
+            {footer != null && <StyledSheet.Footer>{footer}</StyledSheet.Footer>}
+          </StyledSheet.Content>
+        </StyledSheet.View>
+      </StyledSheet.Portal>
+    </StyledSheet.Root>
   )
 }
+
+/** Content that reaches the sheet's edges (see `StyledSheet.Edge`), for use inside `<BottomSheet>`. */
+BottomSheet.Edge = StyledSheet.Edge
+/** Closes the sheet it's in, e.g. a Cancel button in `leading` or `footer`. */
+BottomSheet.Close = StyledSheet.Close

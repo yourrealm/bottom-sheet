@@ -39,6 +39,7 @@ export function Share({ autoOpen }: { autoOpen: boolean }) {
             </button>
           )}
           detents={[]}
+          eyebrow="Gamla stan"
           title="Share photo"
           className="edge"
         >

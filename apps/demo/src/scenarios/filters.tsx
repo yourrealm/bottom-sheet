@@ -33,7 +33,10 @@ export function Filters({ autoOpen }: { autoOpen: boolean }) {
         ))}
       </div>
 
-      <BottomSheet {...logged('filters')} open={open} onOpenChange={setOpen} detents={[0.6]} title="Filters">
+      <BottomSheet {...logged('filters')} open={open} onOpenChange={setOpen} detents={[0.6]}
+        title="Filters"
+        footer={<button className="primary wide" onClick={() => setOpen(false)}>Show {results} results</button>}
+      >
         <div className="filters">
           <h3 className="section">Sort by</h3>
           <div className="segmented" role="radiogroup" aria-label="Sort by">
@@ -84,9 +87,6 @@ export function Filters({ autoOpen }: { autoOpen: boolean }) {
               </li>
             ))}
           </ul>
-          <div className="sticky-footer">
-            <button className="primary wide" onClick={() => setOpen(false)}>Show {results} results</button>
-          </div>
         </div>
       </BottomSheet>
     </div>

@@ -4,13 +4,13 @@ import { log, logged } from '../debug'
 
 /** Full, or the peek bar. Closed only before it first slides up (and after "New board"). */
 type State = 'full' | 'peek' | 'closed'
-const PEEK = '76px'
+const PEEK = 'header'
 const SIZE = 6
 const HUES = [10, 45, 140, 200, 265, 320]
 
 /**
  * A persistent, non-modal sheet: slides up when the puzzle is solved, never closes by gesture (swipe down,
- * Escape and taps outside drop it to a 76px peek), no backdrop, and the board behind stays tappable.
+ * Escape and taps outside drop it to a peek that shows just the header), no backdrop, and the board behind stays tappable.
  */
 export function Persistent({ autoOpen }: { autoOpen: boolean }) {
   const [state, setState] = useState<State>(autoOpen ? 'full' : 'closed')

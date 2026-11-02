@@ -17,6 +17,7 @@
   --ybs-handle: light-dark(rgba(60, 60, 67, 0.3), rgba(235, 235, 245, 0.3));
   --ybs-divider: light-dark(rgba(60, 60, 67, 0.12), rgba(235, 235, 245, 0.12));
   --ybs-radius: 14px;
+  --ybs-title-size: 17px;
   /* Side padding of the body, matching the header. 0 for edge-to-edge lists that pad their own rows. */
   --ybs-body-padding: 16px;
   --ybs-backdrop: #000;
@@ -48,12 +49,16 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
   font-family: system-ui, -apple-system, sans-serif;
   max-width: var(--ybs-max-width); margin-inline: auto;
+  /* The body's real side inset, for content that reaches the edges (Sheet.Edge). The sheet is a size container so
+     a full-width sheet's inset (which depends on the sheet's width) resolves the same at any depth inside it. */
+  container-type: inline-size;
+  --ybs-body-inset: var(--ybs-body-padding);
 }
 /* Full width: the surface spans the window; header and body keep their full width (no corner seams) but pad
    their contents into a readable centred column. */
-.ybs-sheet.ybs-sheet-full { max-width: none; }
+.ybs-sheet.ybs-sheet-full { max-width: none; --ybs-body-inset: max(var(--ybs-body-padding), (100cqw - var(--ybs-content-width)) / 2); }
 .ybs-sheet-full > .ybs-header { padding-inline: max(16px, (100% - var(--ybs-content-width)) / 2); }
-.ybs-sheet-full > .ybs-body { padding-inline: max(var(--ybs-body-padding), (100% - var(--ybs-content-width)) / 2); }
+
 /* A page sheet sits lower than the receded page's top edge (+10px), so a strip of that page shows above it, like iOS. */
 [data-ybs-root]:has(.ybs-sheet-page):not([data-ybs-fullscreen]) { --ybs-inset: calc(env(safe-area-inset-top, 0px) + 22px); }
 /* A page sheet fills the screen at full even when its content is short (no fit-content). */
@@ -62,6 +67,26 @@
 .ybs-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
 .ybs-bar > .ybs-title { text-align: center; }
 .ybs-leading { justify-self: start; }
+/* Title with the ✕ beside it (closeButton without leading/trailing). */
+.ybs-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ybs-trailing:has(.ybs-close) { display: flex; align-items: center; gap: 8px; }
+/* The ✕: a soft filled 30px circle, with a 44px tap area. */
+.ybs-close {
+  flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin: -7px -7px -7px 0; padding: 0;
+  border: 7px solid transparent; box-sizing: content-box; background: color-mix(in srgb, var(--ybs-muted) 18%, transparent);
+  background-clip: padding-box; border-radius: 50%; color: var(--ybs-muted); cursor: pointer;
+}
+.ybs-close:active { background-color: color-mix(in srgb, var(--ybs-muted) 30%, transparent); }
+.ybs-close svg { width: 12px; height: 12px; stroke: var(--ybs-muted); /* not currentColor: app button resets set color */ stroke-width: 1.8; stroke-linecap: round; fill: none; }
+/* Screen-reader close: off screen until focused (then a small pill in the header's corner). */
+.ybs-sr-close {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%);
+  white-space: nowrap; border: 0;
+}
+.ybs-sr-close:focus-visible {
+  top: 8px; right: 12px; width: auto; height: auto; margin: 0; padding: 4px 12px; overflow: visible; clip-path: none;
+  border-radius: 999px; background: var(--ybs-sheet-fg); color: var(--ybs-sheet-bg); font-size: 14px;
+}
 .ybs-trailing { justify-self: end; }
 /* Floating (iOS 26): at lower detents the sheet floats, inset from the sides and the bottom with large corners;
    over the last quarter of the travel to full it attaches (the gap closes, the bottom corners slide off-screen).
@@ -75,6 +100,8 @@
   clip-path: inset(0 var(--ybs-g) calc((100% - var(--ybs-visible, 0px)) * var(--ybs-float) + var(--ybs-g)) var(--ybs-g)
     round var(--ybs-rt) var(--ybs-rt) var(--ybs-rb) var(--ybs-rb));
 }
+/* A 'header' detent on a floating sheet: the clip lifts the bottom edge by the gap, so the peek grows by it. */
+[data-ybs-root]:has(.ybs-sheet-floating) { --ybs-header-detent-offset: var(--ybs-float-gap); }
 /* Fullscreen: square corners at the top (they would show the page through), header clear of the notch. */
 [data-ybs-fullscreen] .ybs-sheet, [data-ybs-fullscreen] .ybs-header {
   --ybs-r: calc(var(--ybs-radius) * (1 - var(--ybs-at-top)));
@@ -85,19 +112,47 @@
   background: var(--ybs-sheet-bg);
   border-radius: var(--ybs-radius) var(--ybs-radius) 0 0;
   padding: 6px 16px 12px;
-  border-bottom: 1px solid var(--ybs-divider);
+  /* The divider marks content scrolled under the header, so it only shows then (like iOS/Material bars);
+     at rest the header's bottom padding is the gap. data-ybs-scrolled is set by the controller. */
+  border-bottom: 1px solid transparent;
+  transition: border-bottom-color 150ms;
   /* Content scrolls under this sticky header; at fractional positions (device scaling, or a covered
      sheet's scale) a 1px sliver of it can show above. Cover it with the sheet colour. */
   box-shadow: 0 -2px 0 0 var(--ybs-sheet-bg);
 }
+[data-ybs-scrolled] .ybs-header { border-bottom-color: var(--ybs-divider); }
 .ybs-handle {
   width: 36px; height: 5px; border-radius: 3px;
   background: var(--ybs-handle);
   margin: 0 auto 10px;
 }
-.ybs-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.ybs-eyebrow { display: block; margin-bottom: 2px; font-size: 13px; font-weight: 500; color: var(--ybs-muted); }
+.ybs-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* No title (a sheet named by aria-label): the header is just the grabber, without the space a title would need. */
+.ybs-header:has(> .ybs-handle:last-child), .ybs-header:has(> .ybs-handle + .ybs-sr-close:last-child) { padding-bottom: 0; }
+.ybs-title { margin: 0; font-size: var(--ybs-title-size); font-weight: 600; line-height: 1.3; }
 .ybs-description { margin: 4px 0 0; font-size: 14px; color: var(--ybs-muted); }
-.ybs-body { padding: 0 var(--ybs-body-padding) 12px; }
+.ybs-body { padding: 0 var(--ybs-body-inset) 12px; }
+/* Sheet.Edge: reaches the sheet's edges and pads its contents back in line with the body (a photo strip that
+   scrolls sideways, a full-width tappable row, a separator). */
+.ybs-edge { margin-inline: calc(-1 * var(--ybs-body-inset)); padding-inline: var(--ybs-body-inset); }
+/* Footer: actions pinned to the screen bottom. It takes the safe area from the sheet, and its line (like the
+   header's) shows only while content is hidden behind it (data-ybs-more, set by the controller). */
+.ybs-footer {
+  background: var(--ybs-sheet-bg);
+  padding: 12px var(--ybs-body-inset) calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid transparent;
+  transition: border-top-color 150ms;
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+}
+[data-ybs-more] .ybs-footer { border-top-color: var(--ybs-divider); }
+.ybs-sheet:has(> .ybs-footer) { padding-bottom: 0; }
+/* Floating: the clip lifts the bottom edge by the gap at lower detents; the footer stays above it. */
+.ybs-sheet-floating > .ybs-footer { bottom: var(--ybs-g); }
+/* Floating: the visible edge is the clip, a gap in from the sheet's box, so the side space adds the gap (fixed, not
+   following the float: padding that changed while dragging would reflow every frame). */
+.ybs-sheet.ybs-sheet-floating:not(.ybs-sheet-full) { --ybs-body-inset: calc(var(--ybs-body-padding) + var(--ybs-float-gap)); }
+.ybs-sheet-floating:not(.ybs-sheet-full) > .ybs-header { padding-inline: calc(16px + var(--ybs-float-gap)); }
 /* The page behind recedes (Sheet.Root recede + data-ybs-background on the app wrapper), like iOS: it scales back
    from the top of the screen, drops below the status bar and rounds its top corners over black. The wrapper needs
    its own background (html and body turn black). */

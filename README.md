@@ -38,22 +38,235 @@ the preset. Opening a sheet without the CSS logs an error naming the import.
 
 ## Use
 
-The simple path, with the polished preset:
-
 ```tsx
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 
-<BottomSheet trigger="Filters" title="Filters" detents={[0.5]}>
+<BottomSheet
+  trigger={(props) => <Button {...props}>Filters</Button>} // your own button; or control it with open/onOpenChange
+  title="Filters"
+  detents={[0.5]}
+>
   …
 </BottomSheet>
 ```
 
-Headless parts, for your own look:
+Three ways in. **Use `BottomSheet`** unless you've been asked for something else:
+
+| | Import from | What it is |
+|---|---|---|
+| `BottomSheet` | `@yourrealm/bottom-sheet/styled` | The finished sheet. Everything you need hangs off it (`BottomSheet.Close`, `BottomSheet.Edge`). |
+| `StyledSheet` | `@yourrealm/bottom-sheet/styled` | The styled parts `BottomSheet` is built from, to arrange yourself. |
+| `Sheet` | `@yourrealm/bottom-sheet` | The parts with no look at all, only the behaviour. For a fully custom design. |
+
+`BottomSheet`'s options (`leading`, `trailing`, `eyebrow`, `headerExtra`, `footer`, `BottomSheet.Edge`) cover most
+layouts. Use the parts only when the person you're working for asks for them, or for a fully custom design (see
+"Building from parts" below).
+
+**Migrating an existing sheet or dialog?** Move its content into `BottomSheet`, and map its header to `title`,
+`description`, `leading`, `trailing` and its buttons to `footer`. Don't rebuild your old markup from parts to keep the
+diff small: you lose the screen-reader close button, the header layouts and the eyebrow, and your spacing drifts
+from the preset.
+
+### `BottomSheet`
+
+```tsx
+import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+
+// A confirm sheet with actions pinned to the bottom
+<BottomSheet open={open} onOpenChange={setOpen} title="Delete this list?"
+  footer={<><BottomSheet.Close>Cancel</BottomSheet.Close><button onClick={remove}>Delete</button></>}>
+  This can't be undone.
+</BottomSheet>
+
+// Content that reaches the sheet's edges
+<BottomSheet open={open} onOpenChange={setOpen} title="Café Mollan" eyebrow="Gamla stan">
+  <BottomSheet.Edge className="photos">…</BottomSheet.Edge>
+</BottomSheet>
+
+// An iOS page sheet: Cancel / title / Save
+<BottomSheet open={open} onOpenChange={setOpen} variant="page" title="New Note"
+  leading={<BottomSheet.Close>Cancel</BottomSheet.Close>} trailing={<button onClick={save}>Save</button>}>
+  …
+</BottomSheet>
+
+// No visible title: name it with aria-label (description, leading/trailing still work)
+<BottomSheet open={open} onOpenChange={setOpen} aria-label="Photo options">
+  …
+</BottomSheet>
+
+// A persistent result sheet: peeks with just its header, never closes by gesture
+<BottomSheet open={solved} modal={false} dismissible={false} detents={['header']} title="Solved">
+  …
+</BottomSheet>
+```
+
+- **A name is required:** `title` (visible, and it names the dialog for screen readers), or `aria-label` for a sheet
+  without a visible title (an action list, a photo viewer). TypeScript refuses a sheet with neither. A title that may
+  be missing needs a fallback: `title={pending?.question ?? 'Confirm'}`.
+- `eyebrow`: a small label above the title (a section, a category), read together with the title. Needs `title`.
+- `description`: a line under the title; it describes the dialog.
+- `leading` / `trailing`: header slots, iOS navigation-bar style (Cancel / title / Save, the title centred).
+- `headerExtra`: content in the sticky header under the title (a search field).
+- `footer`: actions pinned to the bottom of the screen (Cancel / Delete, Show results). They stay reachable while a
+  long sheet scrolls and at partial detents, reach the sheet's edges, and take the home-bar safe area. At a peek
+  too low for both, the footer stays tucked under the header and slides in as the sheet rises.
+- `closeButton`: a visible ✕ in the header's top right (off by default). Without it, a dismissible sheet still has a
+  close button that only screen readers announce (shown when focused by keyboard), because VoiceOver users can't swipe a
+  sheet away or tap the dimmed area. `closeLabel` names either one (default `'Close'`).
+- `BottomSheet.Close`: a button that closes the sheet (in `leading`, `footer`, or the content).
+- `BottomSheet.Edge`: content in the body that reaches the sheet's edges (a photo strip that scrolls sideways, a
+  full-width tappable row, a separator), its contents kept in line with the body. Right in every variant.
+- `trigger`: text or elements go inside a plain, unstyled `<button class="ybs-trigger">`. For a design-system button,
+  pass a function; it receives `type`, `onClick` and the ARIA state:
+  `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Or leave `trigger` out and control `open`.
+- `variant="page"`: an iOS page sheet for a task: full width, the page behind recedes (`recede`), and the sheet fills
+  the screen at full even with short content.
+- `width`: `'card'` (default for sheets: at most 640px, centred) or `'full'` (default for pages: spans the window,
+  content in a centred 960px column).
+- `floating`: iOS 26 style, inset from the screen edges with large corners at lower detents, attaching as it reaches
+  full. Its side spacing includes the gap, so text keeps its distance from the visible edge.
+- `initialFocus`: see Options.
+- `className` / `contentProps`: go on the sheet element (`<section role="dialog">`).
+- Plus every option below.
+
+### Options (on `BottomSheet` and `Sheet.Root`)
+
+- `detents`: partial resting heights, as fractions of the height available to the sheet (`0.5`), CSS lengths of
+  visible sheet (`'76px'`, `'40dvh'`), or `'header'`: exactly the header, measured, for a peek that shows the title
+  and nothing under it. A `'header'` peek is a minimised state: a flick down from higher up lands on it, and only a
+  flick from the peek itself closes the sheet (with `dismissible={false}`, nothing does). Other partial detents let a
+  flick run past them. Full height (`'full'`) is always included, and is the content's own height when the content
+  is short. Default `[]`: the sheet opens straight to full, like iOS.
+- `initialDetent`: where it opens: `'full'` or one of your `detents`. Default: the smallest partial detent, else full.
+- `detent` / `onDetentChange`: the detent the sheet rests at, `'full'` or the value you passed in `detents`
+  (`0.5`, `'76px'`, `'header'`). Pass `detent` to control it (changing it moves the sheet). `onDetentChange` never
+  reports `'closed'` (closing is `onOpenChange(false)`), so `detent={d} onDetentChange={setD}` round-trips.
+- `open` / `defaultOpen` / `onOpenChange(open, { reason })`: controlled or uncontrolled. The reason is
+  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`. Use `open` when a sheet has several
+  openers, or opening runs your own logic.
+- `onExitComplete`: called once the sheet has finished closing and left the page. See "Closing animates".
+- `modal` (default `true`): `false` leaves the page usable around the sheet: no backdrop (`BottomSheet` drops it), no
+  inert page, no scroll lock. It doesn't move focus unless you pass `initialFocus`, and Escape only acts on it while
+  focus is inside it. `modal` is read when the sheet opens; a change while it's open applies from the next open.
+  On iOS, each direct child of a non-modal sheet becomes a 1px horizontal scroller (Safari needs a scroll container
+  under the finger to drag the sheet): keep sticky elements at the top level, like the header, and render popovers in
+  a portal rather than inside the sheet's children.
+- `initialFocus` (on `BottomSheet` / `Sheet.Content`, like Base UI's): where focus goes when the sheet opens. A ref,
+  `false`, `true` (the sheet), or a function of how it was opened: `initialFocus={(type) => type !== 'touch' &&
+  newBoardRef.current}` focuses a button for mouse and keyboard users only. Default: the sheet for a modal sheet,
+  nothing for a non-modal one. A non-modal sheet that took focus gives it back when it closes.
+- `dismissible` (default `true`): `false` means a swipe down, Escape or an outside press drop the sheet to its lowest
+  detent instead of closing it. `open={false}` and a close button still close it.
+- `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
+  [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
+  never touches your URLs or router. Works in Chrome and Firefox on Android; Safari has no `CloseWatcher` yet, and
+  elsewhere it does nothing.
+- `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with
+  short content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
+- `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
+  `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
+  positioned against it. Modal sheets only. On by default for `variant="page"`.
+- `debug`: a function that receives the sheet's internal decision log, for testing gestures on a device.
+
+### Closing animates
+
+A sheet animates out after `open` turns false, so **keep it rendered**. Don't write `{open && <BottomSheet … />}`:
+removing it skips the animation (it just vanishes). Whatever the content shows (the question in a confirm sheet,
+the item being shared) has to stay around until the sheet is gone. `onExitComplete` tells you when:
+
+```tsx
+import { useState } from 'react'
+import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
+
+function useConfirm() {
+  const [pending, setPending] = useState<{ question: string; onConfirm: () => void } | null>(null)
+  const [open, setOpen] = useState(false)
+  const confirm = (question: string, onConfirm: () => void) => {
+    setPending({ question, onConfirm })
+    setOpen(true)
+  }
+  const sheet = (
+    <BottomSheet
+      open={open}
+      onOpenChange={setOpen}
+      onExitComplete={() => setPending(null)} // the sheet is gone: now it's safe to clear
+      title={pending?.question ?? 'Confirm'}
+      footer={<>
+        <BottomSheet.Close>Cancel</BottomSheet.Close>
+        <button onClick={() => { pending?.onConfirm(); setOpen(false) }}>Confirm</button>
+      </>}
+    />
+  )
+  return { confirm, sheet } // render {sheet} once; call confirm('Delete this list?', remove)
+}
+```
+
+`onOpenChange` fires for what the user does (a trigger click, a swipe, Escape, back, a tap outside, a close button),
+never when you change `open` yourself, so `onOpenChange={(o) => !o && onClose()}` can't loop.
+
+### Styling
+
+- Light and dark follow your app's `color-scheme` (inherited from `<html>`), so a theme switch that sets it gets a
+  matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no `color-scheme` at all
+  the sheet stays light. One sheet in a fixed theme: `className="[color-scheme:dark]"` or
+  `contentProps={{ style: { colorScheme: 'dark' } }}`.
+- Tokens. Set them on `[data-ybs-root]`, and point them at your own variables to match your theme (dark mode then
+  comes with it): `[data-ybs-root] { --ybs-sheet-bg: var(--card); --ybs-sheet-fg: var(--card-foreground); }`.
+
+  | Token | Default (light / dark) | What it affects |
+  |---|---|---|
+  | `--ybs-sheet-bg` | `#fff` / `#1c1c1e` | Sheet background, also behind the keyboard |
+  | `--ybs-sheet-fg` | `#111` / `#f2f2f7` | Text colour |
+  | `--ybs-muted` | `#6b6b70` / `#98989f` | Description, eyebrow, the ✕ |
+  | `--ybs-handle` | grey, 30% | The grabber at the top |
+  | `--ybs-divider` | grey, 12% | Lines under the header and above the footer |
+  | `--ybs-backdrop` | `#000` | Colour of the dimmed page (a colour, no alpha) |
+  | `--ybs-backdrop-max` | `0.4` | How dark the dim gets at full. An `rgba(0,0,0,.5)` scrim is `#000` + `0.5` |
+  | `--ybs-radius` | `14px` | Top corners |
+  | `--ybs-title-size` | `17px` | Title |
+  | `--ybs-body-padding` | `16px` | Side space of the body and footer (`0` for edge-to-edge lists that pad their own rows) |
+  | `--ybs-max-width` | `640px` | Width of a `card` sheet |
+  | `--ybs-content-width` | `960px` | Content column of a `width="full"` sheet |
+  | `--ybs-float-gap` / `--ybs-float-radius` | `8px` / `32px` | `floating`: gap to the screen edges, corner size |
+  | `--ybs-inset` | safe area + 10px | Gap above the sheet at full (+22px for page sheets, `0` with `fullscreen`). Works headless too |
+
+- `--ybs-body-inset` (read it, don't set it) is the side space actually in use, larger on a wide `width="full"` sheet;
+  `BottomSheet.Edge` uses it.
+- The header draws its divider only while content is scrolled under it, and the footer only while content is hidden
+  behind it, so a sheet at rest has no lines splitting it.
+- The sheet already pads its bottom for the home bar (`safe-area-inset-bottom`, in the footer when there is one).
+  Don't add your own.
+
+### Behaviour
+
+- Opening, closing and the other moves the library makes (a new `detent`, the keyboard appearing, wheel steps) animate
+  in about 400ms going up and 280ms going down (Material 3 emphasized easing), and are instant with reduced motion.
+  Drags and flings are the browser's own scrolling.
+- With the content scrolled, dragging the header moves the whole sheet and keeps the content where it is, like native.
+- A tap on content that is still scrolling only stops it, and a drag never presses what it started on.
+- Keys scroll the content but never move the sheet down or close it; closing by keyboard is Escape. Escape that ends
+  an input method's composition (Chinese, Japanese) is left to the input.
+- Once a sheet starts closing, it finishes: a touch, wheel or drag during the animation doesn't bring it back.
+- A sheet closes from a swipe, Escape, back, an outside press, a close button or `open={false}`, never from a scroll
+  nobody asked for: one that lands at closed (the browser revealing a focused field, say) is undone.
+
+### Stacked sheets
+
+A sheet opened from inside another one stacks on top: with `/styled`, the one below recedes (scales back, like iOS)
+and comes forward again when the top one closes (parts: `data-ybs-covered`, see below). Escape, Android back and a tap on the dimmed area all close only the top sheet.
+The page stays inert until the last modal sheet closes. No setup: render the second `BottomSheet` inside the first.
+
+### Building from parts
+
+Not sure you need this? Go back to `BottomSheet`.
+
+`StyledSheet` (the preset look) and `Sheet` (no look) have the same parts; `StyledSheet` adds `Body` (the padded
+content area) and `Edge`. You assemble what `BottomSheet` does for you, so a few things are yours:
 
 ```tsx
 import { Sheet } from '@yourrealm/bottom-sheet'
 
-<Sheet.Root detents={[0.4]} onDetentChange={(d) => console.log(d)}>
+<Sheet.Root detents={[0.4]}>
   <Sheet.Trigger>Up next</Sheet.Trigger>
   <Sheet.Portal>
     <Sheet.Backdrop className="backdrop" />
@@ -65,106 +278,60 @@ import { Sheet } from '@yourrealm/bottom-sheet'
           <Sheet.Close>Done</Sheet.Close>
         </Sheet.Header>
         …
+        <Sheet.Footer className="footer">…</Sheet.Footer>
       </Sheet.Content>
     </Sheet.View>
   </Sheet.Portal>
 </Sheet.Root>
 ```
 
-### Options
-
-- `detents`: partial resting heights, as fractions of the height available to the sheet (`0.5`) or CSS lengths of visible sheet (`'76px'`,
-  `'40dvh'`). Full height is always included, and is the content's own height when the content is short. Default `[]`:
-  the sheet opens straight to full, like iOS. It opens at the smallest partial detent when you give some, or at
-  `initialDetent`.
-- `open` / `defaultOpen` / `onOpenChange(open, { reason })`: controlled or uncontrolled. The reason is
-  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`. Use `open` when a sheet has several
-  openers, or opening runs your own logic.
-- `detent` / `onDetentChange`: the detent the sheet rests at. Pass `detent` to control it (changing it moves the
-  sheet); `onDetentChange` reports where it came to rest, never `'closed'` (closing is `onOpenChange(false)`), so
-  `detent={d} onDetentChange={setD}` round-trips.
-- `trigger` (`/styled`): text or elements go inside our trigger button; a function renders your own button (a
-  design-system `<Button>`), receiving `type`, `onClick` and the ARIA state:
-  `trigger={(props) => <Button variant="outline" {...props}>Filters</Button>}`. Headless: `<Sheet.Trigger render={…} />`.
-- `modal` (default `true`): `false` gives a sheet without a backdrop that leaves the page usable around it (no inert,
-  no scroll lock). It doesn't move focus unless you pass `initialFocus`, and Escape only acts on it while focus is
-  inside it. `modal` is read when the sheet opens; a change while it's open applies from the next open.
-  On iOS, each direct child of a non-modal sheet becomes a 1px horizontal scroller (Safari needs a scroll container
-  under the finger to drag the sheet): keep sticky elements at the top level, like `Sheet.Header`, and render popovers
-  in a portal rather than inside the sheet's children.
-- `initialFocus` (on `BottomSheet` / `Sheet.Content`, like Base UI's): where focus goes when the sheet opens. A ref,
-  `false`, `true` (the sheet), or a function of how it was opened: `initialFocus={(type) => type !== 'touch' &&
-  newBoardRef.current}` focuses a button for mouse and keyboard users only. Default: the sheet for a modal sheet,
-  nothing for a non-modal one. A non-modal sheet that took focus gives it back when it closes.
-- `dismissible` (default `true`): `false` means a swipe down, Escape or an outside press drop the sheet to its lowest
-  detent instead of closing it. `open={false}` and `<Sheet.Close>` still close it.
-- `closeOnBack` (default: `modal`): the Android back button closes the top sheet, like a native sheet. Built on
-  [`CloseWatcher`](https://developer.mozilla.org/en-US/docs/Web/API/CloseWatcher), so it adds no history entries and
-  never touches your URLs or router. Works in Chrome and Firefox on Android; Safari has no `CloseWatcher` yet, and
-  elsewhere it does nothing.
-- `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with short
-  content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
-- `Sheet.Portal container`: render into an element other than `<body>`. A modal sheet still makes everything else on
-  the page inert.
-- `debug`: a function that receives the sheet's internal decision log, for testing gestures on a device.
-- `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
-  `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
-  positioned against it. Page sheets (`variant="page"`) recede by default.
-- `/styled` only:
-  - `title`, `description` (headless: `Sheet.Title`, `Sheet.Description`, which name and describe the dialog; without
-    a `Sheet.Title`, give `Sheet.Content` an `aria-label`), and `leading` / `trailing` header slots (Cancel / title / Save, title centred), plus
-    `headerExtra` for things under the title (a search field).
-  - `variant="page"`: an iOS page sheet for a task: full width, the page behind recedes, and the sheet fills the
-    screen at full. Leave `detents` out and it opens straight to full.
-  - `width`: `'card'` (at most 640px, centred) or `'full'` (spans the window, content in a centred 960px column).
-  - `floating`: iOS 26 style, inset from the screen edges with large corners at lower detents, attaching as it reaches
-    full (tokens `--ybs-float-gap`, `--ybs-float-radius`).
-
-  ```tsx
-  <BottomSheet variant="page" title="New Note" leading={<Sheet.Close>Cancel</Sheet.Close>} trailing={<button onClick={save}>Save</button>}>
-  ```
-
-A persistent "result" sheet that peeks at 76px and never closes by gesture:
-
-```tsx
-<BottomSheet open={solved} modal={false} dismissible={false} detents={['76px']} title="Solved">
-  …
-</BottomSheet>
-```
-
-### Styling
-
-- `/styled` light and dark follow your app's `color-scheme` (inherited from `<html>`), so a theme switch that sets it
-  gets a matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no `color-scheme`
-  at all the sheet stays light. All colours are `--ybs-*` tokens.
-- One sheet in a fixed theme: set `color-scheme` on it, e.g. `className="[color-scheme:dark]"` or
-  `contentProps={{ style: { colorScheme: 'dark' } }}` (headless: on `Sheet.Content`).
-- The `/styled` body gets 16px side padding like the header (`--ybs-body-padding`; set it to `0` for edge-to-edge lists).
-- Headless `Sheet.View` passes its props (`className`, `style`, `ref`, `data-*`) to the scroller, the one scroll container.
-- CSS variables on `[data-ybs-root]`: `--ybs-progress` (0 to 1, closed to full) for your own backdrop or effects,
-  `--ybs-visible` (px of the sheet on screen), and `--ybs-sheet-bg` (the colour that continues behind the keyboard).
-  While the content is scrolled the root has `data-ybs-scrolled`.
-- Headless: content scrolling under a sticky `Sheet.Header` can show a 1px sliver above it; cover it with a
+- **With `StyledSheet`:** put your content in `StyledSheet.Body` after the `Header` (it's the padded area, and
+  `StyledSheet.Edge` lines up with it), add `StyledSheet.Backdrop` for a modal sheet, and lay out the header yourself
+  (the Cancel / title / Save row, the ✕ and the eyebrow are `BottomSheet` features).
+- **Naming:** `Sheet.Title` and `Sheet.Description` name and describe the dialog. Without a `Title`, give
+  `Sheet.Content` an `aria-label` (or `aria-labelledby` pointing at your own heading).
+- **Closing:** add your own `Sheet.Close`; there's no automatic screen-reader close button.
+- **Non-modal:** leave `Backdrop` out yourself (a rendered `Backdrop` still dims and closes on tap).
+- **`Sheet.Portal container`:** render into an element other than `<body>`. A modal sheet still makes everything else
+  on the page inert.
+- **`Sheet.View`** passes its props (`className`, `style`, `ref`, `data-*`) to the scroller, the one scroll
+  container; `bleedClassName` styles the layer that continues the sheet colour behind the keyboard.
+- **Set by the library on `[data-ybs-root]`**, for your own styling: `--ybs-progress` (0 to 1, closed to full),
+  `--ybs-visible` (px of the sheet on screen), and the attributes `data-ybs-scrolled` (content scrolled under the
+  header), `data-ybs-more` (content hidden behind the footer), `data-ybs-fit` (the sheet is shorter than the screen),
+  `data-ybs-fullscreen`, `data-ybs-modeless` (non-modal), and on the sheet below a stacked one `data-ybs-covered`
+  with `--ybs-covered` (0 to 1, following the top sheet).
+- **Recede headless:** style `html[data-ybs-recede] [data-ybs-background]` with `--ybs-recede` (0 to 1, how much of
+  the screen the sheet covers) and `--ybs-scroll-y` (for a `transform-origin` at the top of the screen).
+- **Headless sticky header:** content scrolling under it can show a 1px sliver above it; cover it with
   `box-shadow: 0 -2px 0 0 <sheet colour>` on the header (only while `data-ybs-scrolled` if your sheet has a border).
-- Don't put `touch-action` classes on `Sheet.Header` (Tailwind's utilities layer beats ours): the library turns it off
+- Don't put `touch-action` classes on the header (Tailwind's utilities layer beats ours): the library turns it off
   there while the content is scrolled, so that dragging the header moves the whole sheet.
+- **Types** for wrappers: `Detent`, `OpenChangeReason`, `OpenChangeDetails`, `RootProps`, `ContentProps`,
+  `InitialFocus` and the other part props from both entry points, and `BottomSheetProps` from `/styled`.
 
-### Behaviour
+### Replacing a `<dialog>`
 
-- Opening, closing and the other moves the library makes (a new `detent`, the keyboard appearing, wheel steps) animate
-  in about 400ms going up and 280ms going down (Material 3 emphasized easing), and are instant with reduced motion. Drags and flings are the
-  browser's own scrolling.
-- With the content scrolled, dragging the header moves the whole sheet and keeps the content where it is, like native.
-- A tap on content that is still scrolling only stops it, and a drag never presses what it started on.
-- Keys scroll the content but never move the sheet down or close it; closing by keyboard is Escape. Escape that ends
-  an input method's composition (Chinese, Japanese) is left to the input.
-- Once a sheet starts closing, it finishes: a touch, wheel or drag during the animation doesn't bring it back.
-- A sheet closes from a swipe, Escape, back, an outside press, a close button or `open={false}`, never from a scroll
-  nobody asked for: one that lands at closed (the browser revealing a focused field, say) is undone.
+| `<dialog>` | bottom-sheet |
+|---|---|
+| `showModal()` / `close()` | `open` (keep the sheet rendered, see "Closing animates") |
+| `cancel` event (Escape) | `onOpenChange(false, { reason: 'escape' })` |
+| click where `target === currentTarget` (backdrop) | `onOpenChange(false, { reason: 'outside-press' })` |
+| `::backdrop` styling | `--ybs-backdrop` + `--ybs-backdrop-max` |
+| `autofocus` on a button inside | `initialFocus={ref}` |
+| `aria-labelledby` on the dialog | `title`, or `aria-label` for a sheet without one |
+
+### Testing
+
+- Press Escape with a real key press (Playwright's `page.keyboard.press('Escape')`). A sheet that listens for back
+  (`closeOnBack`, on for modal sheets) gets Escape from the browser where `CloseWatcher` exists (Chrome, Firefox), and
+  the browser ignores a dispatched `keydown`. A real key press works everywhere.
+- To know a sheet has fully closed, use `onExitComplete`, or wait for its dialog to leave the page
+  (`getByRole('dialog', { name: 'Share photo' })`), which also works with several sheets open.
 
 ## Status
 
-Early (0.x). Tested on Android in Chrome and Firefox (a gesture suite on a real phone) and in iOS Safari in the
+Early (0.x); see the [changelog](CHANGELOG.md) for what changed between versions. Tested on Android in Chrome and Firefox (a gesture suite on a real phone) and in iOS Safari in the
 simulator; a real iPhone is still to come. Desktop works with mouse, wheel, trackpad and keyboard.
 
 ## Found a problem?

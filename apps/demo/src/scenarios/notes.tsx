@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BottomSheet, Sheet } from '@yourrealm/bottom-sheet/styled'
+import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { log, logged } from '../debug'
 
 type Mode = 'page' | 'fullscreen'
@@ -58,7 +58,7 @@ export function Notes({ autoOpen }: { autoOpen: boolean }) {
           if (!o) setOpen(null)
         }}
         title="New Note"
-        leading={<Sheet.Close className="bar-button">Cancel</Sheet.Close>}
+        leading={<BottomSheet.Close className="bar-button">Cancel</BottomSheet.Close>}
         trailing={
           <button className="bar-button strong" onClick={save}>
             Save

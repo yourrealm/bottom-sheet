@@ -106,6 +106,84 @@ test('tapping the dimmed area closes', async ({ page }) => {
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
 })
 
+test('close buttons: a visible ✕ when asked, otherwise one only screen readers get, none when not dismissible', async ({ page }) => {
+  // closeButton: a visible ✕ named "Close" that closes the sheet.
+  await page.goto('/?open=1#/product')
+  await waitForEvent(page, /product: onDetentChange/)
+  const x = page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true })
+  await expect(x).toBeVisible()
+  await x.click()
+  await waitForEvent(page, 'product: onExitComplete roots=0')
+  // Without it: a dismissible sheet still has a "Close" button in the accessibility tree, visually hidden.
+  await page.goto('/?open=1#/filters')
+  await waitForEvent(page, /filters: onDetentChange/)
+  const sr = page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true })
+  await expect(sr).toHaveCount(1)
+  expect(await sr.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
+  await sr.evaluate((el: HTMLElement) => el.click())
+  await waitForEvent(page, 'filters: onExitComplete roots=0')
+  // A sheet that can't be dismissed gets none.
+  await page.goto('/#/persistent')
+  await page.locator('#solve').click()
+  await waitForEvent(page, 'solved: onDetentChange full')
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true })).toHaveCount(0)
+})
+
+test('eyebrow: a label above the title, read with it', async ({ page }) => {
+  await page.goto('/?open=1#/share')
+  await waitForEvent(page, /share: onDetentChange/)
+  await expect(page.getByRole('dialog', { name: /^Gamla stan ?, Share photo$/ })).toBeVisible()
+  const [eyebrow, title] = await page.evaluate(() => ['.ybs-eyebrow', '.ybs-title'].map((s) => document.querySelector(s)!.getBoundingClientRect().top))
+  expect(eyebrow).toBeLessThan(title! + 1) // the eyebrow is at the top of the title element, above the title text
+})
+
+test('a footer stays under the header at a header peek, and pins to the bottom with room', async ({ page }) => {
+  await page.goto('/?float=1#/lab')
+  await waitForEvent(page, 'float: onDetentChange header')
+  await page.waitForTimeout(300)
+  const at = () => page.evaluate(() => {
+    const r = (s: string) => document.querySelector(s)!.getBoundingClientRect()
+    return { headerBottom: r('.ybs-header').bottom, footerTop: r('.ybs-footer').top, footerBottom: r('.ybs-footer').bottom, H: innerHeight }
+  })
+  const peek = await at()
+  expect(peek.footerTop).toBeGreaterThanOrEqual(peek.headerBottom - 1) // not over the title
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>('#open-lab, .lab .primary')!.blur())
+  await page.getByRole('dialog', { name: 'Floating' }).evaluate(() => {
+    const s = document.querySelector('[data-ybs-scroller]')!; s.scrollTop = s.clientHeight * 0.5
+  })
+  await page.waitForTimeout(600)
+  const half = await at()
+  expect(half.footerTop).toBeGreaterThan(half.headerBottom) // room: pinned at the bottom, below the header
+  expect(half.footerBottom).toBeGreaterThan(half.H - 40)
+})
+
+test('only a header peek catches flings: its snap point stops momentum, other partial detents do not', async ({ page }) => {
+  await page.goto('/?float=1#/lab')
+  await waitForEvent(page, 'float: onDetentChange header')
+  const stops = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('[data-ybs-marker]:not([hidden])')].map((m) => getComputedStyle(m).scrollSnapStop))
+  expect(stops.filter((s) => s === 'always')).toHaveLength(1) // the header peek; half (0.5) and closed let a fling past
+  await page.goto('/?open=1#/filters') // a plain 0.5 detent: no catch
+  await waitForEvent(page, /filters: onDetentChange/)
+  expect(await page.locator('[data-ybs-catch]').count()).toBe(0)
+})
+
+test('a sheet without a title is named by aria-label', async ({ page }) => {
+  await page.goto('/?untitled=1#/lab')
+  await expect(page.getByRole('dialog', { name: 'Photo options' })).toBeVisible()
+  await expect(page.locator('.ybs-title')).toHaveCount(0)
+})
+
+test('onExitComplete fires once, after the close animation, with the sheet gone', async ({ page }) => {
+  await openLab(page)
+  expect((await events(page)).some((e) => e.includes('onExitComplete'))).toBe(false)
+  await page.mouse.click(40, 120)
+  await waitForEvent(page, 'lab: onExitComplete roots=0')
+  const ev = await events(page)
+  expect(ev.filter((e) => e.includes('onExitComplete'))).toHaveLength(1)
+  expect(ev.indexOf('lab: onOpenChange false')).toBeLessThan(ev.indexOf('lab: onExitComplete roots=0'))
+})
+
 test('wheel steps detents, then scrolls content, and stops at the content top', async ({ page }, info) => {
   test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
   await openLab(page)
@@ -372,6 +450,8 @@ test('a touch held while the sheet finishes closing still lets it close', async 
 
 test.describe('persistent (non-modal) sheet', () => {
   const st = (page: Page) => page.evaluate(() => document.querySelector('[data-ybs-scroller]')!.scrollTop)
+  // The peek is the 'header' detent: exactly the header's height, nothing of the body showing.
+  const headerH = (page: Page) => page.evaluate(() => (document.querySelector('[data-ybs-header]') as HTMLElement).offsetHeight)
 
   async function openSolved(page: Page) {
     await page.goto('/#/persistent')
@@ -387,8 +467,8 @@ test.describe('persistent (non-modal) sheet', () => {
     // A tap on the board (above the sheet) reaches the page; the app drops the sheet to its peek.
     await page.getByRole('button', { name: 'Cell 1', exact: true }).click({ force: true }) // cells animate
     await expect(page.getByTestId('board-taps')).toHaveText('1')
-    await waitForEvent(page, 'solved: onDetentChange 76px')
-    await expect.poll(() => st(page)).toBeCloseTo(76, -1)
+    await waitForEvent(page, 'solved: onDetentChange header')
+    await expect.poll(async () => (await st(page)) - (await headerH(page))).toBeCloseTo(0, 0)
     // At the peek most of the board is uncovered and still tappable.
     await page.getByRole('button', { name: 'Cell 20', exact: true }).click({ force: true }) // cells animate
     await expect(page.getByTestId('board-taps')).toHaveText('2')
@@ -399,7 +479,7 @@ test.describe('persistent (non-modal) sheet', () => {
     test.skip(info.project.name !== 'firefox-desktop', 'keyboard is a desktop concern')
     await openSolved(page)
     await page.keyboard.press('Escape')
-    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await waitForEvent(page, 'solved: onDetentChange header')
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
     expect((await events(page)).some((e) => e.startsWith('solved: onOpenChange'))).toBe(false)
   })
@@ -410,20 +490,20 @@ test.describe('persistent (non-modal) sheet', () => {
     const box = (await page.locator('[data-ybs-header]').boundingBox())!
     await page.mouse.move(box.x + box.width / 2, box.y + 30)
     await page.mouse.wheel(0, -120)
-    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await waitForEvent(page, 'solved: onDetentChange header')
     await page.waitForTimeout(400)
     const peek = (await page.locator('[data-ybs-header]').boundingBox())!
     await page.mouse.move(peek.x + peek.width / 2, peek.y + 30)
     await page.mouse.wheel(0, -120) // already at the floor: stays
     await page.waitForTimeout(800)
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
-    expect(await st(page)).toBeCloseTo(76, -1)
+    expect((await st(page)) - (await headerH(page))).toBeCloseTo(0, 0)
   })
 
   test('the controlled detent and New board work', async ({ page }) => {
     await openSolved(page)
     await page.getByRole('button', { name: 'Show less' }).click()
-    await waitForEvent(page, 'solved: onDetentChange 76px')
+    await waitForEvent(page, 'solved: onDetentChange header')
     await page.getByRole('button', { name: 'Show more' }).click()
     await clearEvents(page)
     await waitForEvent(page, 'solved: onDetentChange full')
@@ -458,7 +538,7 @@ test.describe('persistent (non-modal) sheet', () => {
     // CI's headless Linux Chromium ignores synthesized touch scrolls: nothing moved at all.
     test.skip(moved > start - 20 && Math.abs((await st(page)) - start) < 20, 'synthesized touch scrolling is not supported in this environment')
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
-    expect(await st(page)).toBeCloseTo(76, -1)
+    expect((await st(page)) - (await headerH(page))).toBeCloseTo(0, 0)
     expect((await events(page)).some((e) => e.startsWith('solved: onOpenChange'))).toBe(false)
   })
 })
@@ -510,7 +590,7 @@ test('a non-modal sheet leaves back and Escape order alone: no watcher', async (
   await page.goto('/?open=1#/persistent')
   await waitForEvent(page, /solved: onDetentChange full/)
   await page.keyboard.press('Escape')
-  await waitForEvent(page, 'solved: onDetentChange 76px')
+  await waitForEvent(page, 'solved: onDetentChange header')
   expect((await events(page)).some((e) => e.includes('close watcher'))).toBe(false)
 })
 
@@ -1046,7 +1126,7 @@ test('a non-modal sheet ignores Escape while focus is elsewhere on the page', as
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('Escape')
   await page.waitForTimeout(600)
-  expect(await events(page)).not.toContain('solved: onDetentChange 76px')
+  expect(await events(page)).not.toContain('solved: onDetentChange header')
 })
 
 // ---------- found by the second pre-release review (2026-11-01) ----------

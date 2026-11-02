@@ -60,12 +60,20 @@
   position: absolute; left: 0; width: 1px; height: 1px;
   scroll-snap-align: start; pointer-events: none;
 }
+/* The 'header' peek catches flings (like Material's collapsed state); other partial detents let a fling run past. */
+[data-ybs-marker][data-ybs-catch] { scroll-snap-stop: always; }
 /* scroll-snap-stop: a fling may not skip the full position, in either direction. This is the native
    way to stop momentum at the content top / full detent; the JS guard is only a fallback. (Firefox
    Android: the JS overflow toggle made the next touch get swallowed as a "stop the fling" tap.) */
 [data-ybs-sheet] { position: relative; scroll-snap-align: start; scroll-snap-stop: always; outline: none; }
 [data-ybs-root][data-ybs-fit] [data-ybs-sheet] { scroll-snap-align: end; }
 [data-ybs-header] { position: sticky; top: 0; z-index: 1; }
+[data-ybs-footer] {
+  position: sticky; bottom: 0; z-index: 1;
+  /* At a peek lower than header + footer, pinning the footer to the screen bottom would cover the header. Push it
+     down so it sits under the header instead (off screen at a header peek), and let it pin once there's room. */
+  translate: 0 max(0px, var(--ybs-header-h, 0px) + var(--ybs-header-detent-offset, 0px) + 100% - var(--ybs-visible, 100vh));
+}
 /* Content scrolled: a drag on the header moves the whole sheet (JS, "detached drag"), like native, instead of
    scrolling the content back first. */
 [data-ybs-root][data-ybs-scrolled] [data-ybs-drag] { touch-action: none; }
@@ -83,7 +91,7 @@
   }
   [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *::-webkit-scrollbar { display: none; }
   /* 1px of horizontal overflow, measured from the padding box so side padding can't absorb it. */
-  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-header]) { position: relative; }
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-header], [data-ybs-footer]) { position: relative; }
   [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *::after {
     content: ''; position: absolute; top: 0; left: 0; width: calc(100% + 1px); height: 1px; pointer-events: none;
   }

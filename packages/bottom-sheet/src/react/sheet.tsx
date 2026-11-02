@@ -110,8 +110,15 @@ export interface RootProps {
   /** Called when the user opens or closes the sheet (not when the `open` prop changes). */
   onOpenChange?: (open: boolean, details: OpenChangeDetails) => void
   /**
+   * Called once the sheet has finished closing (animation done, removed from the page). Keep the sheet rendered with
+   * `open={false}` so it can animate out, and clear what its content needs here, e.g. `() => setPending(null)`.
+   * Unmounting the sheet (`{open && <BottomSheet/>}`) skips the animation.
+   */
+  onExitComplete?: () => void
+  /**
    * Partial detents; `full` is always included. Default `[]`: the sheet opens straight to full (fit to short content).
-   * Each is a fraction of the available height (0.5) or a CSS length of visible sheet ('76px', '40dvh').
+   * Each is a fraction of the available height (0.5), a CSS length of visible sheet ('76px', '40dvh'), or `'header'`
+   * (exactly the header: a peek that shows the title and nothing under it).
    */
   detents?: readonly Detent[]
   /**
@@ -208,6 +215,7 @@ export function Root(props: RootProps) {
     fullscreen = false,
     recede = false,
     debug,
+    onExitComplete,
   } = props
   const [openState, setOpenState] = useState(defaultOpen)
   const open = openProp ?? openState
@@ -268,6 +276,15 @@ export function Root(props: RootProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- detent is read when (re)opening, not followed here
   }, [open, mounted])
+
+  // Finished closing: mounted went from true to false (the portal is gone by the time this effect runs).
+  const exitRef = useRef(onExitComplete)
+  exitRef.current = onExitComplete
+  const wasMounted = useRef(mounted)
+  useEffect(() => {
+    if (wasMounted.current && !mounted) exitRef.current?.()
+    wasMounted.current = mounted
+  }, [mounted])
 
   const onClosed = useCallback(() => {
     debugRef.current?.(`onClosed (open=${open}, mounted=${mounted})`)
@@ -607,6 +624,14 @@ export function Content({ ref, initialFocus, ...props }: ContentProps) {
 /** Sticky top part of the sheet. Mouse-draggable on desktop. */
 export function Header(props: ComponentPropsWithRef<'div'>) {
   return <div data-ybs-header="" data-ybs-drag="" {...props} />
+}
+
+/**
+ * Sticky bottom part of the sheet, for actions. It stays at the bottom of the screen while the content scrolls, and at
+ * partial detents too. The controller sets `data-ybs-more` on the root while content is hidden behind it.
+ */
+export function Footer(props: ComponentPropsWithRef<'div'>) {
+  return <div data-ybs-footer="" {...props} />
 }
 
 /** Visual grabber. Decorative; dragging works on the whole Header. */

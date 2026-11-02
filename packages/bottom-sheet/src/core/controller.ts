@@ -132,6 +132,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // layout
   let H = 0
   let full = 0
+  let sheetH = 0
   let stops: Stop[] = []
   const markers = new Map<Detent, HTMLElement>()
   const closedMarker = makeMarker()
@@ -173,8 +174,25 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (d === 'closed') return 0
     if (d === 'full') return full
     if (typeof d === 'number') return H * d
-    probe.style.height = d
+    probe.style.height = d === 'header' ? `calc(${headerBottom()}px + var(--ybs-header-detent-offset, 0px))` : d
     return probe.getBoundingClientRect().height
+  }
+  /**
+   * The `'header'` detent: how far the header reaches into the sheet (its bottom edge), so the peek shows exactly
+   * the header. Measured only while the header isn't stuck (content scrolled moves a sticky header down the sheet);
+   * otherwise the last measurement is kept. Styles can add to it with --ybs-header-detent-offset (/styled's floating
+   * adds its bottom gap).
+   */
+  let headerPx = 0
+  function headerBottom(): number {
+    const header = sheet.querySelector<HTMLElement>('[data-ybs-header]')
+    if (!header) return 0
+    if (scroller.scrollTop <= full + 1) {
+      const box = sheet.getBoundingClientRect()
+      const scale = sheet.offsetHeight > 0 ? box.height / sheet.offsetHeight : 1 // a covered sheet is scaled down
+      headerPx = (header.getBoundingClientRect().bottom - box.top) / (scale || 1)
+    }
+    return headerPx
   }
   const resolve = (d: Detent) => resolveStop(d, rawTop(d), stops)
   const pos = (d: Detent) => resolve(d).top
@@ -190,11 +208,13 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   function layout() {
     H = scroller.clientHeight
-    const sheetH = sheet.offsetHeight
+    sheetH = sheet.offsetHeight
     full = Math.min(H, sheetH)
     const partials = requested.filter((d) => d !== 'closed' && d !== 'full').map((d) => ({ detent: d, top: rawTop(d) }))
     stops = buildStops(partials, full, closable())
     root.style.setProperty('--ybs-h', `${H}px`)
+    // How far the header reaches into the sheet: the footer stays tucked under it while the sheet is too low to show both.
+    root.style.setProperty('--ybs-header-h', `${headerBottom()}px`)
     // The bleed (the sheet's colour behind the keyboard) is a sibling of the sheet, so a color-scheme set on the sheet
     // alone (one sheet forced dark) wouldn't reach it. Copy it over.
     const bleed = root.querySelector<HTMLElement>('[data-ybs-bleed]')
@@ -217,6 +237,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
         markers.set(p.detent, m)
       }
       m.style.top = `${p.top}px`
+      // A header peek is a minimised state: a fling down from above lands on it instead of running past to closed.
+      m.toggleAttribute('data-ybs-catch', p.detent === 'header')
       m.hidden = !stops.some((s) => s.detent === p.detent)
     }
   }
@@ -322,6 +344,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
    * stays scrolled (see detachedDrag).
    */
   let scrolled = false
+  let more = false
   function paint(st: number, drop = 0) {
     const shown = Math.max(Math.min(st, full) - drop, 0)
     const progress = full > 0 ? Math.min(Math.max(shown / full, 0), 1) : 0
@@ -335,6 +358,15 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (s !== scrolled) {
       scrolled = s
       root.toggleAttribute('data-ybs-scrolled', s)
+    }
+    // Content hidden below the screen (behind a sticky footer): the sheet is taller than the screen and not scrolled
+    // to its end. A sheet that fits never sets it, so a short sheet doesn't flash a footer line while it glides open.
+    // Live sizes (the URL bar changes them without a resize of the sheet), and 2px of slack: Chrome Android rests at
+    // fractional positions just short of the end (1255.2 of 1256).
+    const m = sheetH > H + 1 && st < scroller.scrollHeight - scroller.clientHeight - 2
+    if (m !== more) {
+      more = m
+      root.toggleAttribute('data-ybs-more', m)
     }
   }
 

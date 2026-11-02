@@ -59,11 +59,11 @@ export function Places(_: { autoOpen: boolean }) {
               </button>
             ))}
           </div>
-          <div className="photos" aria-label="Photos">
+          <BottomSheet.Edge className="photos" aria-label="Photos">
             {[30, 12, 200, 45, 330, 150, 280].map((h, i) => (
               <div key={i} className="photo" style={{ ['--h' as string]: h }} />
             ))}
-          </div>
+          </BottomSheet.Edge>
           <dl className="info">
             <dt>Hours</dt>
             <dd>Mon–Fri 07:30–18:00 · Sat–Sun 09:00–17:00</dd>

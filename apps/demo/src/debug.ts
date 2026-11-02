@@ -53,6 +53,8 @@ export function logged(name: string) {
   return {
     debug: (m: string) => log(`${name}: ${m}`),
     onDetentChange: (d: unknown) => log(`${name}: onDetentChange ${String(d)}`),
+    // Counts the sheets still on the page: 0 for a single sheet means the portal was already gone.
+    onExitComplete: () => log(`${name}: onExitComplete roots=${document.querySelectorAll('[data-ybs-root]').length}`),
   }
 }
 

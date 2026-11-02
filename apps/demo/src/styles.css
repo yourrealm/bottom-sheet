@@ -127,7 +127,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
   background: var(--fill); font-size: 12px; color: var(--accent); font-weight: 600;
 }
 .action span { font-size: 18px; }
-.photos { display: flex; gap: 8px; overflow-x: auto; margin: 16px -16px 0; padding: 0 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
+.photos { display: flex; gap: 8px; overflow-x: auto; margin-top: 16px; scroll-padding-inline: var(--ybs-body-inset); scrollbar-width: none; overscroll-behavior-x: contain; }
 .photo {
   flex: 0 0 150px; height: 190px; border-radius: 14px;
   background: radial-gradient(circle at 30% 30%, hsl(var(--h) 80% 75%), transparent 60%),
@@ -149,10 +149,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .comments { list-style: none; margin: 0; padding: 0; }
 .comment { display: flex; gap: 12px; padding: 12px 0; }
 .comment p { margin: 3px 0 4px; line-height: 1.4; }
-.composer {
-  position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-  background: var(--ybs-sheet-bg); border-top: 1px solid var(--ybs-divider);
-}
+.composer { flex: 1; display: flex; gap: 8px; }
 .composer input {
   flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 14px; border-radius: 999px;
   border: 1px solid var(--ybs-divider); background: var(--fill); color: inherit;
@@ -213,11 +210,6 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .checks { list-style: none; margin: 0; padding: 0; }
 .checks label { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--ybs-divider); }
 .checks input { width: 20px; height: 20px; accent-color: var(--accent); }
-.sticky-footer {
-  position: sticky; bottom: 0; margin: 16px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--ybs-sheet-bg) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border-top: 1px solid var(--ybs-divider);
-}
 
 /* ---------- playlist (headless) ---------- */
 .player {

@@ -38,6 +38,7 @@ export function Product({ autoOpen }: { autoOpen: boolean }) {
         detents={[]}
         title="Fjällstig Runner"
         description="Choose size and colour"
+        closeButton
       >
         <div className="options">
           <h3 className="section">Size (EU)</h3>

@@ -8,13 +8,16 @@ import { logged, log } from '../debug'
  * steady: device scripts use fixed coordinates.
  * Test switches: `?short=1` (short content), `?modal=0` (non-modal), `?back=1` (closeOnBack on),
  * `?late=1` (a headless sheet with no header whose content arrives after opening; with `&container=1` it is
- * portalled into an element of the page).
+ * portalled into an element of the page), `?untitled=1` (a sheet named by aria-label, no visible title),
+ * `?float=1` (floating, a header peek and a footer).
  */
 export function Lab({ autoOpen }: { autoOpen: boolean }) {
   const params = new URLSearchParams(location.search)
   const [short, setShort] = useState(params.get('short') === '1')
   const [open, setOpen] = useState(autoOpen)
   if (params.get('late') === '1') return <LateLab />
+  if (params.get('untitled') === '1') return <UntitledLab />
+  if (params.get('float') === '1') return <FloatLab />
 
   return (
     <div className="lab">
@@ -92,3 +95,38 @@ function LateLab() {
     </div>
   )
 }
+
+/** No visible title: an action list named by aria-label. The header shows just the grabber. */
+function UntitledLab() {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="lab">
+      <button className="primary" onClick={() => setOpen(true)}>Open actions</button>
+      <BottomSheet {...logged('untitled')} open={open} onOpenChange={setOpen} aria-label="Photo options"
+        footer={<BottomSheet.Close className="secondary wide">Cancel</BottomSheet.Close>}>
+        <ul className="menu">
+          {['Copy link', 'Add to album', 'Duplicate', 'Hide'].map((a) => (
+            <li key={a}><button className="menu-row" onClick={() => setOpen(false)}>{a}</button></li>
+          ))}
+        </ul>
+      </BottomSheet>
+    </div>
+  )
+}
+
+/** Floating (iOS 26), resting at a peek of exactly the header, with a footer: both must clear the bottom gap. */
+function FloatLab() {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="lab">
+      <button className="primary" onClick={() => setOpen(true)}>Open floating</button>
+      <p className="filler">{'Background page text. '.repeat(400)}</p>
+      <BottomSheet {...logged('float')} open={open} onOpenChange={setOpen} floating detents={['header', 0.5]}
+        initialDetent="header" title="Floating" description="Peek, half, full"
+        footer={<button className="primary wide" onClick={() => setOpen(false)}>Done</button>}>
+        {Array.from({ length: 40 }, (_, i) => <div key={i} className="row">Row {i + 1}</div>)}
+      </BottomSheet>
+    </div>
+  )
+}
+

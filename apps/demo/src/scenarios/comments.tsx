@@ -42,6 +42,26 @@ export function Comments({ autoOpen }: { autoOpen: boolean }) {
         detents={[0.6]}
         title="Comments"
         description={`${COMMENTS.length + mine.length} comments`}
+        footer={
+          <form
+            className="composer"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!draft.trim()) return
+              setMine((m) => [draft.trim(), ...m])
+              setDraft('')
+            }}
+          >
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Add a comment…"
+              enterKeyHint="send"
+              aria-label="Add a comment"
+            />
+            <button type="submit" disabled={!draft.trim()}>Post</button>
+          </form>
+        }
       >
         <ul className="comments">
           {mine.map((text, i) => (
@@ -64,24 +84,6 @@ export function Comments({ autoOpen }: { autoOpen: boolean }) {
             </li>
           ))}
         </ul>
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!draft.trim()) return
-            setMine((m) => [draft.trim(), ...m])
-            setDraft('')
-          }}
-        >
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Add a comment…"
-            enterKeyHint="send"
-            aria-label="Add a comment"
-          />
-          <button type="submit" disabled={!draft.trim()}>Post</button>
-        </form>
       </BottomSheet>
     </div>
   )
