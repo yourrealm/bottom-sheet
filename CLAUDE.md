@@ -405,7 +405,10 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   (a context of defaults; the sheet's own prop wins). The demo wraps the app in it (`?dialog=0` or the home switch
   turns it off; `#/lab?nodialog=1` opts one sheet out). Classic scrollbars: the dialog is clipped with
   `clip-path: inset(0 round var(--ybs-dialog-radius))` (Chrome/Safari don't round a scroller's own scrollbar), so its
-  shadow is a `drop-shadow` filter on the overlay. Tests: "dialog on desktop (dialog prop)", firefox-desktop at 1280x800.
+  shadow is a `drop-shadow` filter on the overlay. Demo `#/floating`: Maps-style non-modal floating panel.
+  Device suite with all of it (2026-11-03): 3/3 Chrome + 3/3 Firefox Android PASS. Demo lesson: the hash router must
+  `scrollTo(0, 0)` on route change; a scroll kept from the overview left Firefox Android's toolbar hidden on a page one
+  screen tall (100dvh grew past the layout viewport) and fixed elements below the screen. Sheets were unaffected. Tests: "dialog on desktop (dialog prop)", firefox-desktop at 1280x800.
   Playwright's Firefox stops a wheel that overshoots the top a few px short under any sticky header (plain page too).
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
   Parts must stay className/Tailwind friendly. A shadcn-registry variant may come later for dapuzzler.

@@ -1514,6 +1514,17 @@ test.describe('dialog on desktop (dialog prop)', () => {
     await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-dialog')
   })
 
+  test('the floating map panel (non-modal) stays a floating sheet at its header peek', async ({ page }) => {
+    await page.goto('/#/floating')
+    await waitForEvent(page, 'floating: onDetentChange header')
+    const root = page.locator('[data-ybs-root]')
+    await expect(root).not.toHaveAttribute('data-ybs-dialog')
+    await expect(page.locator('.ybs-sheet-floating')).toBeVisible()
+    await page.locator('.pin', { hasText: 'Café' }).click()
+    await waitForEvent(page, 'floating: onDetentChange 0.5')
+    await expect(page.getByRole('button', { name: /Hallonbacken Café/ })).toBeVisible()
+  })
+
   test('a page sheet becomes a larger dialog without the ✕ (it has Cancel)', async ({ page }) => {
     await page.goto('/?open=1#/notes')
     await waitForEvent(page, 'notes: dialog shown')

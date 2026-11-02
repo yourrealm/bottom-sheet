@@ -268,6 +268,39 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
   border: 1px solid var(--ybs-divider); background: var(--fill); color: inherit;
 }
 
+/* ---------- floating (Maps-style search panel) ---------- */
+.favs { display: flex; gap: 10px; overflow-x: auto; scroll-padding-inline: var(--ybs-body-inset); scrollbar-width: none; overscroll-behavior-x: contain; }
+.fav {
+  flex: 0 0 76px; display: grid; justify-items: center; gap: 2px; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 13px;
+}
+.fav-icon { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--fill); margin-bottom: 4px; }
+.recents { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--fill); overflow: hidden; }
+.recents li + li { border-top: 1px solid var(--ybs-divider); }
+.recents li.muted { padding: 14px; }
+.recents button { width: 100%; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+.recents button > span:last-child { display: grid; }
+.recent-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--card); flex: none; }
+.guides { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding-bottom: 8px; }
+.guide { display: grid; gap: 2px; font-size: 14px; }
+.guide-img {
+  aspect-ratio: 4 / 3; border-radius: 12px; margin-bottom: 6px;
+  background: radial-gradient(circle at 30% 30%, hsl(var(--h) 80% 75%), transparent 60%), linear-gradient(135deg, hsl(var(--h) 60% 55%), hsl(calc(var(--h) + 40) 55% 40%));
+}
+
+/* Sideways strips hide their scrollbar for touch; with a mouse that leaves no way to scroll them (a vertical wheel never
+   scrolls sideways), so show a thin one there. */
+@media (hover: hover) and (pointer: fine) {
+  .favs, .photos, .hscroll { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent; padding-bottom: 6px; }
+}
+/* Wide screen with a mouse: a narrow card on the left (Maps on iPad and Mac), instead of a centred column covering the
+   middle of the map. Its full detent stays below the demo's top bar. It attaches at full like any floating sheet:
+   forcing --ybs-float: 1 there kept the clip, which is in sheet coordinates, so content scrolled under it was cut off. */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  [data-ybs-root]:has(.map-panel) { --ybs-inset: 60px; }
+  .ybs-sheet.map-panel { --ybs-max-width: 380px; margin-inline: 8px auto; }
+  .map-panel .guide-img { aspect-ratio: 16 / 10; }
+}
+
 /* ---------- shared: rows that are sheet triggers ---------- */
 /* Sheet bodies get the preset's side padding (--ybs-body-padding); edge-to-edge lists opt out with .edge. */
 .edge { --ybs-body-padding: 0px; }
@@ -368,3 +401,9 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 
 /* The page wrapper that recedes behind a sheet (data-ybs-background) needs its own background. */
 .scenario { background: var(--bg); min-height: 100dvh; }
+/* Full-screen demos (map, photo viewer, player) fill the screen under the top bar, whatever its height (it was a
+   guessed 52px; on desktop the bar is shorter and the page showed through below). */
+.scenario:has(> .map, > .viewer, > .player) { display: grid; grid-template-rows: auto 1fr; }
+.scenario:has(> .map, > .viewer) { height: 100dvh; grid-template-rows: auto minmax(0, 1fr); }
+.scenario > :is(.map, .viewer) { height: auto; min-height: 0; }
+.scenario > .player { min-height: 0; }

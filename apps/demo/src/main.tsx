@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { dialogSetting, subscribe } from './debug'
 import { Places } from './scenarios/places'
+import { Floating } from './scenarios/floating'
 import { Comments } from './scenarios/comments'
 import { Product } from './scenarios/product'
 import { Share } from './scenarios/share'
@@ -28,6 +29,7 @@ interface Scenario {
 
 const SCENARIOS: Scenario[] = [
   { id: 'places', title: 'Place details', blurb: 'Peek over a map, expand into photos and reviews.', icon: '🗺️', hue: 150, Component: Places },
+  { id: 'floating', title: 'Floating (iOS 26)', blurb: 'A search panel floating over a map: header peek, half, full. Never closes.', icon: '🫧', hue: 190, Component: Floating },
   { id: 'comments', title: 'Comments', blurb: 'Long thread with a pinned composer. Try the keyboard.', icon: '💬', hue: 220, Component: Comments },
   { id: 'product', title: 'Product options', blurb: 'Short sheet that fits its content.', icon: '👟', hue: 25, Component: Product },
   { id: 'share', title: 'Share', blurb: 'Horizontal rows inside a vertical sheet.', icon: '↗︎', hue: 285, Component: Share },
@@ -44,7 +46,12 @@ function useRoute() {
   const read = () => location.hash.replace(/^#\/?/, '')
   const [route, setRoute] = useState(read)
   useEffect(() => {
-    const on = () => setRoute(read())
+    const on = () => {
+      // Each demo starts at the top, like a router does. Kept from the overview, the scroll left Firefox Android's
+      // toolbar hidden on a page one screen tall, with fixed elements (Playlist's "Up next") placed below the screen.
+      window.scrollTo(0, 0)
+      setRoute(read())
+    }
     addEventListener('hashchange', on)
     return () => removeEventListener('hashchange', on)
   }, [])
