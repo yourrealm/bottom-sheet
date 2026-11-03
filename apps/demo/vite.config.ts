@@ -30,4 +30,6 @@ export default defineConfig({
   // GitHub Pages serves the demo from /bottom-sheet/ (set by the deploy workflow).
   base: process.env.BASE_PATH ?? '/',
   plugins: [react(), deviceLog()],
+  // MapLibre (the map demos' lazy chunk) is ~1 MB on its own.
+  build: { chunkSizeWarningLimit: 1200 },
 })

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { Icon, type IconName } from '../icons'
 import { log, logged } from '../debug'
+import { MapView, type Pin } from '../map'
 
 type Detent = 'header' | 0.5 | 'full'
 
@@ -29,12 +30,13 @@ const GUIDES: [title: string, places: number, hue: number][] = [
   ['Walks by the water', 15, 150],
   ['Late-night food', 10, 330],
 ]
-const PINS = [
-  { x: 22, y: 30, label: 'Bakery' },
-  { x: 64, y: 22, label: 'Library' },
-  { x: 48, y: 46, label: 'Café' },
-  { x: 78, y: 58, label: 'Ferry' },
-  { x: 30, y: 66, label: 'Park' },
+// Around Strandvägen, Stockholm.
+const PINS: Pin[] = [
+  { at: [18.079, 59.3358], x: 22, y: 30, label: 'Bakery' },
+  { at: [18.073, 59.3388], x: 64, y: 22, label: 'Library' },
+  { at: [18.0812, 59.3329], x: 48, y: 46, label: 'Café' },
+  { at: [18.0775, 59.3318], x: 78, y: 58, label: 'Ferry' },
+  { at: [18.0715, 59.3312], x: 30, y: 66, label: 'Park' },
 ]
 
 /**
@@ -47,17 +49,14 @@ export function Floating(_: { autoOpen: boolean }) {
   const [query, setQuery] = useState('')
   const recents = RECENTS.filter(([, name]) => name.toLowerCase().includes(query.toLowerCase()))
   return (
-    <div className="map">
-      <div className="map-water" />
-      <div className="map-park" />
-      <div className="map-road r1" />
-      <div className="map-road r2" />
-      <div className="map-road r3" />
-      {PINS.map((p) => (
+    <MapView
+      pins={PINS}
+      center={[18.0764, 59.3345]}
+      zoom={14}
+      bottomInset={0.12}
+      renderPin={(p) => (
         <button
-          key={p.label}
           className="pin"
-          style={{ left: `${p.x}%`, top: `${p.y}%` }}
           onClick={() => {
             setQuery(p.label)
             setDetent(0.5)
@@ -66,7 +65,8 @@ export function Floating(_: { autoOpen: boolean }) {
           <span>•</span>
           {p.label}
         </button>
-      ))}
+      )}
+    >
 
       <BottomSheet
         {...logged('floating')}
@@ -136,6 +136,6 @@ export function Floating(_: { autoOpen: boolean }) {
           ))}
         </div>
       </BottomSheet>
-    </div>
+    </MapView>
   )
 }

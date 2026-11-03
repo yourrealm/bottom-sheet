@@ -4,14 +4,17 @@ import { Icon } from '../icons'
 import { logged } from '../debug'
 import { useDialogs } from '../media'
 import { reviews } from '../data'
+import { MapView, type Pin } from '../map'
 
 const REVIEWS = reviews(14)
-const PINS = [
-  { x: 22, y: 30, label: 'Bakery' },
-  { x: 64, y: 22, label: 'Library' },
-  { x: 48, y: 46, label: 'Hallonbacken Café', main: true },
-  { x: 78, y: 58, label: 'Ferry' },
-  { x: 30, y: 66, label: 'Park' },
+// Around Strandvägen, Stockholm.
+const CAFE: [number, number] = [18.0812, 59.3329]
+const PINS: Pin[] = [
+  { at: [18.079, 59.3358], x: 22, y: 30, label: 'Bakery' },
+  { at: [18.073, 59.3388], x: 64, y: 22, label: 'Library' },
+  { at: CAFE, x: 48, y: 46, label: 'Hallonbacken Café', main: true },
+  { at: [18.0775, 59.3318], x: 78, y: 58, label: 'Ferry' },
+  { at: [18.0715, 59.3312], x: 30, y: 66, label: 'Park' },
 ]
 
 /** A peek over the map on a phone, opening on load. As a dialog it would cover the map, so there it waits for the café pin. */
@@ -23,24 +26,19 @@ export function Places({ autoOpen }: { autoOpen: boolean }) {
     if (!asDialog) setOpen(true)
   }, [asDialog])
   return (
-    <div className="map">
-      <div className="map-water" />
-      <div className="map-park" />
-      <div className="map-road r1" />
-      <div className="map-road r2" />
-      <div className="map-road r3" />
-      {asDialog && !open && <p className="map-hint">Click the café to see its details</p>}
-      {PINS.map((p) => (
-        <button
-          key={p.label}
-          className={`pin${p.main ? ' main' : ''}`}
-          style={{ left: `${p.x}%`, top: `${p.y}%` }}
-          onClick={() => p.main && setOpen(true)}
-        >
+    <MapView
+      pins={PINS}
+      center={CAFE}
+      zoom={14.3}
+      bottomInset={asDialog ? 0 : 0.35}
+      renderPin={(p) => (
+        <button className={`pin${p.main ? ' main' : ''}`} onClick={() => p.main && setOpen(true)}>
           <span>{p.main ? <Icon name="coffee" size={13} strokeWidth={2.2} /> : '•'}</span>
           {p.label}
         </button>
-      ))}
+      )}
+    >
+      {asDialog && !open && <p className="map-hint">Click the café to see its details</p>}
 
       <BottomSheet
         {...logged('places')}
@@ -79,7 +77,7 @@ export function Places({ autoOpen }: { autoOpen: boolean }) {
             <dt>Hours</dt>
             <dd>Mon–Fri 07:30–18:00 · Sat–Sun 09:00–17:00</dd>
             <dt>Address</dt>
-            <dd>Strandvägen 14, Lillholmen</dd>
+            <dd>Strandvägen 14, Stockholm</dd>
             <dt>Good to know</dt>
             <dd>Outdoor seating · Wi-Fi · Dog friendly · Card only</dd>
           </dl>
@@ -100,6 +98,6 @@ export function Places({ autoOpen }: { autoOpen: boolean }) {
           ))}
         </div>
       </BottomSheet>
-    </div>
+    </MapView>
   )
 }

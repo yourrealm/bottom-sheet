@@ -447,6 +447,10 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   One wheel event per "gesture" in tests: Playwright's wheel calls can land more than 250ms apart.
 - **Device suite:** `scripts/android-suite.sh [runs] [browsers]` → `scripts/summarize-device-log.py`. URLs carry a nonce,
   because Firefox reuses an open tab for an identical URL (a stale page with old code). Log lines carry `?run=` as the tab id.
+- **Map demos** (`#/places`, `#/floating`) use a real map: MapLibre GL + OpenFreeMap tiles (OSM data, no key; styles
+  `liberty`/`dark` by `prefers-color-scheme`), lazy-loaded from `apps/demo/src/real-map.tsx` (~290 KB gz + worker).
+  Automated browsers (`navigator.webdriver`) and `?map=fake` get the drawn stand-in, so e2e needs no network/WebGL;
+  `?map=real` forces the real one. Pins are DOM `.pin` buttons in MapLibre markers either way.
 - Playground: `pnpm dev` (port 5180). The spike can be served with `python3 -m http.server 5173 --bind 0.0.0.0` from `spikes/`.
 - **Reading device behaviour as text:** pass `debug` to `Sheet.Root`/`BottomSheet`. The playground forwards those lines (plus
   onDetentChange/onOpenChange) to `apps/demo/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.
