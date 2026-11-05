@@ -2112,6 +2112,140 @@ test.describe('tokens: --ybs-* overrides from app CSS', () => {
       })
       expect(culprits).toEqual([])
     })
+
+    test('--ybs-dialog-width on [data-ybs-root] sizes the dialog too, a page sheet included', async ({ page }) => {
+      await withCss(page, '[data-ybs-root] { --ybs-dialog-width: 600px; }')
+      for (const route of ['lab', 'notes']) {
+        await page.goto(`/?open=1&n=${route}#/${route}`)
+        await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-fade')
+        await expect.poll(async () => Math.round((await sheetBox(page)).width), { message: route }).toBe(600)
+        expect(Math.round((await shadow(page)).w)).toBe(600)
+      }
+    })
+  })
+
+  // One sheet themed on its own (a dark event sheet on a light page): its tokens go on its own root (`rootProps`, here
+  // `data-demo` from the demo's logged()), the element around everything drawn for it. They must reach every part:
+  // inside the sheet and outside it (the dialog's ring and shadow, the colour behind the keyboard, the view's corner
+  // clip, the header peek). The page-wide values sit on :root, so a part that misses the sheet's shows up.
+  test.describe("one sheet's theme on its own root (rootProps)", () => {
+    const PAGE = `:root {
+      --ybs-sheet-bg: rgb(250, 0, 0); --ybs-divider: rgb(0, 250, 0); --ybs-radius: 3px; --ybs-float-gap: 2px;
+      --ybs-dialog-radius: 3px;
+    }`
+    const THEMED = `[data-ybs-root][data-demo] {
+      --ybs-sheet-bg: rgb(1, 2, 3); --ybs-divider: rgb(13, 14, 15); --ybs-radius: 22px; --ybs-float-gap: 20px;
+      --ybs-dialog-radius: 7px;
+    }
+    [data-ybs-root][data-demo][data-t='flipped'] { --ybs-divider: rgb(40, 41, 42); }`
+    test.beforeEach(async ({ page }) => withCss(page, PAGE + THEMED))
+
+    test.describe('as a sheet', () => {
+      test.beforeEach(({}, info) => test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen'))
+
+      test('rootProps land on the root; colours inside the sheet, the bleed and the corner clip', async ({ page }) => {
+        await openLab(page)
+        await expect(page.locator('[data-ybs-root][data-demo="lab"]')).toHaveCount(1)
+        expect(await style(page, '.ybs-sheet', 'background-color')).toBe('rgb(1, 2, 3)')
+        expect(await style(page, '.ybs-bleed', 'background-color')).toBe('rgb(1, 2, 3)')
+        await page.evaluate(() => {
+          const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+          s.scrollTop = s.clientHeight + 300
+        })
+        await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+        await expect.poll(() => style(page, '.ybs-header', 'border-bottom-color')).toBe('rgb(13, 14, 15)')
+        expect(await style(page, '.ybs-view', 'clip-path')).toContain('22px')
+      })
+
+      test('a covered sheet recedes with its own corners', async ({ page }) => {
+        await page.goto('/?open=1#/settings')
+        await waitForEvent(page, 'settings: onDetentChange')
+        await page.getByRole('button', { name: /Appearance/ }).click()
+        await waitForEvent(page, 'appearance: onDetentChange')
+        await expect(page.locator('[data-ybs-root]').first()).toHaveAttribute('data-ybs-covered', '')
+        expect(await style(page, '[data-ybs-root][data-ybs-covered] .ybs-view', 'border-top-left-radius')).toBe('22px')
+      })
+
+      test("a floating sheet's header peek adds its own gap", async ({ page }) => {
+        await page.goto('/?open=1&float=1#/lab')
+        await waitForEvent(page, 'float: onDetentChange header')
+        const { visible, header } = await page.evaluate(() => {
+          const sheet = document.querySelector('.ybs-sheet-floating')!
+          return {
+            visible: innerHeight - sheet.getBoundingClientRect().top,
+            header: sheet.querySelector('.ybs-header')!.getBoundingClientRect().height,
+          }
+        })
+        expect(Math.abs(visible - header - 20)).toBeLessThan(1.5)
+      })
+    })
+
+    test.describe('as a dialog', () => {
+      test.beforeEach(async ({ page }, info) => {
+        test.skip(info.project.name !== 'firefox-desktop', 'needs a desktop pointer')
+        await page.setViewportSize({ width: 1440, height: 900 })
+      })
+      /** Every line and shadow drawn around the dialog, wherever it's drawn: the sheet, its pseudo-elements, and the
+       *  parts outside it (track and its ::before, scroller, view, root). */
+      const painted = (page: Page) =>
+        page.evaluate(() => {
+          const sheet = document.querySelector('[data-ybs-sheet]')!
+          const parts: [Element, string | null][] = [
+            [sheet, null], [sheet, '::before'], [sheet, '::after'],
+            ...['[data-ybs-track]', '[data-ybs-scroller]', '.ybs-view', '[data-ybs-root]'].flatMap((sel) => {
+              const el = document.querySelector(sel)!
+              return [[el, null], [el, '::before'], [el, '::after']] as [Element, string | null][]
+            }),
+          ]
+          return parts.flatMap(([el, pseudo]) => {
+            const cs = getComputedStyle(el, pseudo)
+            const out = []
+            if (cs.boxShadow !== 'none') out.push(`box-shadow ${cs.boxShadow} radius ${cs.borderTopLeftRadius}`)
+            if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) out.push(`outline ${cs.outlineColor}`)
+            return out.map((s) => `${el.getAttribute('class') ?? el.tagName}${pseudo ?? ''}: ${s}`)
+          })
+        })
+
+      test("the ring and shadow use the sheet's divider and corners (issue #9)", async ({ page }) => {
+        await page.goto('/?open=1#/lab')
+        await waitForEvent(page, 'lab: dialog shown')
+        await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-fade')
+        expect(await style(page, '[data-ybs-sheet]', 'border-top-left-radius')).toBe('7px')
+        const lines = await painted(page)
+        expect(lines.join('\n')).toContain('rgb(13, 14, 15)')
+        expect(lines.join('\n')).toContain('radius 7px')
+        // Nothing painted for this dialog reads the page's values (its divider, its 3px corners).
+        expect(lines.filter((l) => /rgb\(0, 250, 0\)|radius 3px/.test(l))).toEqual([])
+      })
+
+      test('the ring follows a theme change on the root while it is open', async ({ page }) => {
+        await page.goto('/?open=1#/lab')
+        await waitForEvent(page, 'lab: dialog shown')
+        await expect.poll(async () => (await painted(page)).join('\n')).toContain('rgb(13, 14, 15)')
+        await page.evaluate(() => document.querySelector('[data-ybs-root]')!.setAttribute('data-t', 'flipped'))
+        await expect.poll(async () => (await painted(page)).join('\n')).toContain('rgb(40, 41, 42)')
+        expect((await painted(page)).join('\n')).not.toContain('rgb(13, 14, 15)')
+      })
+    })
+  })
+
+  test('a token that only works on the root, set on the sheet, logs one warning naming it', async ({ page }) => {
+    const warnings: string[] = []
+    page.on('console', (m) => m.type() === 'warning' && m.text().includes('bottom-sheet') && warnings.push(m.text()))
+    // In the HTML, like an app's own stylesheet: in place before the sheet opens (the check runs once, on open).
+    await page.route(
+      (url) => url.pathname === '/',
+      async (route) => {
+        const res = await route.fetch()
+        const css = '[data-ybs-sheet] { --ybs-divider: rgb(13, 14, 15); --ybs-sheet-fg: rgb(4, 5, 6); }'
+        await route.fulfill({ response: res, body: (await res.text()).replace('</head>', `<style>${css}</style></head>`) })
+      },
+    )
+    await openLab(page)
+    await expect.poll(() => warnings.length).toBe(1)
+    expect(warnings[0]).toContain('--ybs-divider')
+    expect(warnings[0]).not.toContain('--ybs-sheet-fg') // only read inside the sheet: fine there
+    expect(warnings[0]).toContain('rootProps')
   })
 })
 

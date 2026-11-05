@@ -253,7 +253,8 @@
   transform: scale(calc(0.96 + 0.04 * var(--ybs-progress, 0)));
 }
 [data-ybs-dialog] .ybs-sheet.ybs-sheet-full { --ybs-body-inset: max(var(--ybs-body-padding), (100cqw - var(--ybs-content-width)) / 2); }
-[data-ybs-dialog] .ybs-sheet.ybs-sheet-page { --ybs-dialog-width: 48rem; min-height: min(100%, 36rem); }
+/* 48rem only as the fallback: a --ybs-dialog-width set on the root (or the sheet) still wins. */
+[data-ybs-dialog] .ybs-sheet.ybs-sheet-page { width: min(100%, var(--ybs-dialog-width, 48rem)); min-height: min(100%, 36rem); }
 [data-ybs-dialog] .ybs-sheet > .ybs-header.ybs-header {
   border-radius: var(--ybs-dialog-radius) var(--ybs-dialog-radius) 0 0; padding: 16px 16px 12px;
 }

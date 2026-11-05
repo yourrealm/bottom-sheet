@@ -132,8 +132,16 @@ interface BottomSheetBaseProps extends Omit<Base.RootProps, 'children'> {
    */
   dialog?: boolean | string
   children?: ReactNode
+  /** On the sheet (the panel). For one sheet's theme (tokens, `data-theme`, `color-scheme`) use `rootProps`. */
   className?: string
+  /** Props for the sheet element (the `<section>`): `aria-*`, `role`, `data-*`, a `ref`. */
   contentProps?: ComponentPropsWithRef<'section'>
+  /**
+   * Props for this sheet's `[data-ybs-root]`, the element around everything drawn for it: the place for one sheet's
+   * own theme (`className`, `style`, `data-theme`, `--ybs-*` tokens, `color-scheme`). Set on the sheet instead, a token
+   * misses the parts outside it (backdrop, dialog ring and shadow, the colour behind the keyboard).
+   */
+  rootProps?: Omit<Base.PortalProps, 'children' | 'container'>
 }
 
 /**
@@ -170,12 +178,13 @@ export function BottomSheet({
   children,
   className,
   contentProps,
+  rootProps,
   'aria-label': ariaLabel,
-  ...rootProps
+  ...sheetProps
 }: BottomSheetProps) {
   // Dialog on desktop by default: the sheet's own prop, else the Provider's, else on.
   const defaults = useContext(DefaultsContext)
-  const withDialog = { ...rootProps, dialog: rootProps.dialog ?? defaults.dialog ?? true }
+  const withDialog = { ...sheetProps, dialog: sheetProps.dialog ?? defaults.dialog ?? true }
   const root = variant === 'page' ? { recede: true, ...withDialog } : withDialog
   const bar = leading != null || trailing != null
   // The eyebrow sits inside the title element so it lines up in every header layout and is read with the title
@@ -198,7 +207,7 @@ export function BottomSheet({
       ) : (
         trigger != null && <StyledSheet.Trigger className="ybs-trigger">{trigger}</StyledSheet.Trigger>
       )}
-      <StyledSheet.Portal>
+      <StyledSheet.Portal {...rootProps}>
         {root.modal !== false && <StyledSheet.Backdrop />}
         <StyledSheet.View>
           <StyledSheet.Content
@@ -217,7 +226,7 @@ export function BottomSheet({
               headerExtra={headerExtra}
               closeButton={closeButton}
               closeLabel={closeLabel}
-              dismissible={rootProps.dismissible !== false}
+              dismissible={sheetProps.dismissible !== false}
             />
             {/* No body without content: its padding would stack with the header's and footer's (a confirm sheet). */}
             {children != null && children !== false && children !== '' && <StyledSheet.Body>{children}</StyledSheet.Body>}

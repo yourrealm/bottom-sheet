@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `rootProps` on `BottomSheet` (headless: `Sheet.Portal` takes `className`, `style` and other attributes): props for
+  this sheet's own `[data-ybs-root]`, the element around its backdrop and the sheet. That's where one sheet's own
+  theme goes, e.g. `rootProps={{ 'data-theme': 'dark' }}` or `rootProps={{ style: { colorScheme: 'dark' } }}`.
+  Everything drawn for the sheet follows, also when the theme changes while it's open.
+- A console warning when a sheet opens with a token set on the sheet itself that the parts outside it read (the
+  colours, corners, widths and gaps the backdrop, dialog ring and shadow, keyboard bleed or header peek use, and
+  `color-scheme`). It names the token and points at `rootProps`. Tokens only read inside the sheet are fine there.
+
+### Changed
+
+- **One sheet's theme goes on its root, not the sheet.** Tokens, a `data-theme` or `color-scheme` set on the sheet
+  (`className`, `contentProps`) can't reach the parts drawn outside it, because CSS variables don't inherit up:
+  in the dialog presentation the ring and shadow kept the page's divider colour and corners (#9), behind the keyboard
+  the page's sheet colour showed, a covered sheet and the scrolled-header clip kept the page's corners, and a
+  floating sheet's header peek ignored its gap. Move them to `rootProps`. The README's "one sheet in a fixed theme"
+  example changed from `className="[color-scheme:dark]"` to `rootProps={{ style: { colorScheme: 'dark' } }}`.
+  `--ybs-dialog-width` still works on the sheet.
+
+### Fixed
+
+- `--ybs-dialog-width` set on `[data-ybs-root]` now sizes a `variant="page"` dialog too (its 48rem default set on the
+  sheet used to win).
+
 ## 0.5.0 (2026-11-05)
 
 ### Added

@@ -487,6 +487,25 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   `scrollTo(0, 0)` on route change; a scroll kept from the overview left Firefox Android's toolbar hidden on a page one
   screen tall (100dvh grew past the layout viewport) and fixed elements below the screen. Sheets were unaffected. Tests: "dialog on desktop (dialog prop)", firefox-desktop at 1280x800.
   Playwright's Firefox stops a wheel that overshoots the top a few px short under any sticky header (plain page too).
+- **One sheet's theme goes on its root** (issue #9, 2026-11-05; #8 was the same bug). Each sheet has its own
+  `[data-ybs-root]`, an ancestor of everything drawn for it (backdrop, bleed, scroller/view, track and its `::before`,
+  markers, sheet), so a token set there reaches every part by plain inheritance, live. Set on the sheet, it can't
+  reach the parts outside it (custom properties don't inherit up). That was an API gap, not a CSS bug: apps had no
+  way to reach a sheet's root (the demo itself used `[data-ybs-root]:has(.pl-sheet)`), so they themed the sheet. Now
+  `BottomSheet rootProps` / props on `Sheet.Portal` land on the root, and `checkSheetTheme` (css-check.ts) warns once
+  per token when a sheet opens with a root-only token set on the sheet (list `OUTSIDE`: tokens read outside the
+  sheet, page-level tokens, `color-scheme`). **Rule: CSS outside `.ybs-sheet` may read tokens directly (they come
+  from the root); when a new outside part reads another token, add it to `OUTSIDE`.** Tokens only read inside the
+  sheet, and `--ybs-dialog-width` (the shadow follows the measured box), keep working on the sheet.
+  Tried and dropped (same day): copying the sheet's computed tokens to the root (`--ybs-own-*`) and keeping them live
+  with MutationObservers on the sheet, its ancestors and <head>, a `load` listener and `matchMedia`: it worked, but
+  it was a lot of machinery per open sheet for a styling contract. Also ruled out for the ring: an outline on the sheet
+  (the sticky header/footer cover it in all three engines, Chromium draws 0.5px as 1px) and anything drawn inside
+  the sheet (can't reach past a classic scrollbar, Windows' default). Also fixed: `variant="page"`'s 48rem moved into
+  the width's fallback, so a root `--ybs-dialog-width` applies to it. The demo's `logged()` passes
+  `rootProps: { 'data-demo': name }`. Tests: "one sheet's theme on its own root (rootProps)" (painted values on
+  every part, pseudo-elements included, plus a live theme flip on the root), "a token that only works on the root,
+  set on the sheet, logs one warning…", "--ybs-dialog-width on [data-ybs-root]…".
 - **Packages:** headless core (`@yourrealm/bottom-sheet`) plus one polished preset on a separate import path (`/styled`).
   Parts must stay className/Tailwind friendly. A shadcn-registry variant may come later for dapuzzler.
 - **License:** MIT.

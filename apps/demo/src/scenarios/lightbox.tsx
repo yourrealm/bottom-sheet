@@ -83,7 +83,7 @@ export function Lightbox(_: { autoOpen: boolean }) {
       </div>
 
       <BottomSheet
-        {...logged('lightbox')}
+        {...logged('lightbox', { className: 'lightbox-root' })}
         open={open}
         onOpenChange={(o) => {
           log(`lightbox: onOpenChange ${o}`)

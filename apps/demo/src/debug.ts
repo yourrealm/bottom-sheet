@@ -63,12 +63,15 @@ export function dialogSetting(): boolean {
 }
 
 /** Props that wire a sheet into the log. */
-export function logged(name: string) {
+/** `root`: extra props for the sheet's root (one sheet's theme), merged with the test hook. */
+export function logged(name: string, root?: Record<string, string>) {
   return {
     debug: (m: string) => log(`${name}: ${m}`),
     onDetentChange: (d: unknown) => log(`${name}: onDetentChange ${String(d)}`),
     // Counts the sheets still on the page: 0 for a single sheet means the portal was already gone.
     onExitComplete: () => log(`${name}: onExitComplete roots=${document.querySelectorAll('[data-ybs-root]').length}`),
+    // Names each demo sheet's root, so tests can theme one sheet there (BottomSheet only; Sheet.Root ignores it).
+    rootProps: { 'data-demo': name, ...root } as Record<string, string>,
   }
 }
 

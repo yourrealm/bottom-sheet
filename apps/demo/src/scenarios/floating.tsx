@@ -69,7 +69,7 @@ export function Floating(_: { autoOpen: boolean }) {
     >
 
       <BottomSheet
-        {...logged('floating')}
+        {...logged('floating', { className: 'map-root' })}
         open
         modal={false}
         dismissible={false}

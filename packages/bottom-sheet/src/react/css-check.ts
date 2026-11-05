@@ -36,3 +36,39 @@ export function checkTokens() {
       `(Chrome 123, Firefox 120, Safari 17.5).`,
   )
 }
+
+/**
+ * One sheet's theme goes on its root (`rootProps` / `Sheet.Portal` props), not on the sheet: these tokens are also
+ * read by parts outside the sheet (the backdrop, the dialog's ring and shadow, the colour behind the keyboard, the
+ * corner clip), and custom properties don't inherit up, so a value set on the sheet leaves those parts on the old
+ * one (issue #9). Checked once per open, warned once per token. Tokens only read inside the sheet (text colours,
+ * paddings, `--ybs-dialog-width`) work on the sheet and aren't checked.
+ */
+const OUTSIDE = [
+  '--ybs-sheet-bg',
+  '--ybs-divider',
+  '--ybs-radius',
+  '--ybs-max-width',
+  '--ybs-float-gap',
+  '--ybs-dialog-radius',
+  '--ybs-backdrop',
+  '--ybs-backdrop-max',
+  '--ybs-inset',
+  '--ybs-dialog-gap',
+  'color-scheme',
+]
+const themeReported = new Set<string>()
+
+export function checkSheetTheme(root: HTMLElement, sheet: HTMLElement) {
+  const r = getComputedStyle(root)
+  const s = getComputedStyle(sheet)
+  const moved = OUTSIDE.filter((t) => !themeReported.has(t) && r.getPropertyValue(t).trim() !== s.getPropertyValue(t).trim())
+  if (!moved.length) return
+  for (const t of moved) themeReported.add(t)
+  console.warn(
+    `@yourrealm/bottom-sheet: ${moved.join(', ')} ${moved.length > 1 ? 'are' : 'is'} set on the sheet, so the parts ` +
+      `drawn outside it (backdrop, dialog ring and shadow, the colour behind the keyboard) don't get it. Set one ` +
+      `sheet's theme on its root instead: <BottomSheet rootProps={{ className, style, 'data-theme': … }}> ` +
+      `(headless: props on <Sheet.Portal>).`,
+  )
+}

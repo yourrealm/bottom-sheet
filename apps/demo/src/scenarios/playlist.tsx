@@ -25,7 +25,7 @@ export function Playlist({ autoOpen }: { autoOpen: boolean }) {
 
       <Sheet.Root {...logged('playlist')} defaultOpen={autoOpen} detents={[0.45]}>
         <Sheet.Trigger className="up-next">Up next ⌃</Sheet.Trigger>
-        <Sheet.Portal>
+        <Sheet.Portal className="pl-root">
           <Sheet.Backdrop className="pl-backdrop" />
           <Sheet.View bleedClassName="pl-bleed">
             <Sheet.Content className="pl-sheet">

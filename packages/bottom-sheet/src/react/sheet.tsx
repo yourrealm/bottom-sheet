@@ -1,5 +1,6 @@
 import {
   type ComponentPropsWithRef,
+  type ComponentPropsWithoutRef,
   createContext,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -34,7 +35,7 @@ import {
   takesEscape,
   updateSheet,
 } from './stack'
-import { checkCss } from './css-check'
+import { checkCss, checkSheetTheme } from './css-check'
 import { DefaultsContext } from './defaults'
 
 /** Why the sheet is asking to open or close. */
@@ -477,14 +478,19 @@ export function Close(props: ComponentPropsWithRef<'button'>) {
 
 // ---------------------------------------------------------------------------
 
-export interface PortalProps {
+/**
+ * `className`, `style` and other attributes go on the sheet's own `[data-ybs-root]`, the element around everything
+ * drawn for this sheet (backdrop, the sheet, its dialog ring and shadow, the colour behind the keyboard). That's where
+ * one sheet's theme goes: a `data-theme`, a class, `--ybs-*` tokens, `color-scheme`.
+ */
+export interface PortalProps extends Omit<ComponentPropsWithoutRef<'div'>, 'children'> {
   children?: ReactNode
   /** Where to render. Default document.body. */
   container?: HTMLElement | null
 }
 
 /** Fixed layer. Mounted while open or animating closed. A modal sheet makes the rest of the page inert. */
-export function Portal({ children, container }: PortalProps) {
+export function Portal({ children, container, ...rootProps }: PortalProps) {
   const ctx = useSheet('Portal')
   const sheetRoots = useContext(SheetRootsContext)
   useEffect(() => {
@@ -597,6 +603,7 @@ export function Portal({ children, container }: PortalProps) {
   if (!ctx.mounted || typeof document === 'undefined') return null
   return createPortal(
     <div
+      {...rootProps}
       data-ybs-root=""
       data-ybs-modeless={ctx.modal ? undefined : ''}
       data-ybs-dialog={ctx.dialog ? '' : undefined}
@@ -668,6 +675,7 @@ export function View({ children, bleedClassName, ref, ...props }: ViewProps) {
       },
     )
     ctx.controller.current = c
+    checkSheetTheme(root, sheet)
     c.open(ctx.detent ?? ctx.initialDetent)
     // Title/Description report themselves in a layout effect, which re-renders only after this one: name the dialog
     // now so focusing it below announces it.

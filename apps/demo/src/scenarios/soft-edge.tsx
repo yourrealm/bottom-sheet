@@ -78,7 +78,7 @@ export function SoftEdge({ autoOpen }: { autoOpen: boolean }) {
       </div>
 
       <BottomSheet
-        {...logged('soft')}
+        {...logged('soft', glass ? { className: 'glass' } : undefined)}
         open={open}
         onOpenChange={setOpen}
         modal={modal}
@@ -87,7 +87,7 @@ export function SoftEdge({ autoOpen }: { autoOpen: boolean }) {
         title="Albums"
         description={`${ALBUMS.length} albums`}
         scrollEdge={soft ? 'soft' : 'line'}
-        className={[glass && 'glass', glass && blur && 'blur'].filter(Boolean).join(' ')}
+        className={glass && blur ? 'blur' : undefined}
         contentProps={{
           style: {
             ['--ybs-soft-fade' as string]: `${fade}px`,

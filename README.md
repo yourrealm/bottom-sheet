@@ -138,6 +138,8 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 - `initialFocus`: see Options.
 - `className` / `contentProps`: go on the sheet element (`<section role="dialog">`). Props there override the
   defaults, the role too (see "Confirm prompts" below).
+- `rootProps`: go on this sheet's `[data-ybs-root]`, around the backdrop and the sheet. The place for one sheet's own
+  theme (Styling).
 - Plus every option below.
 
 ### Options (on `BottomSheet` and `Sheet.Root`)
@@ -246,11 +248,19 @@ Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the rol
   matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no `color-scheme` at all
   the sheet stays light. That also holds after a production build lowers `light-dark()` for older browsers (Lightning
   CSS, used by Vite and Tailwind v4, does): `styled.css` defaults its switches to light. Other tools that lower it
-  need a `color-scheme` on `:root`; if `--ybs-sheet-bg` isn't a colour when a sheet opens, the console says so. One sheet in a fixed theme: `className="[color-scheme:dark]"` or
-  `contentProps={{ style: { colorScheme: 'dark' } }}`.
+  need a `color-scheme` on `:root`; if `--ybs-sheet-bg` isn't a colour when a sheet opens, the console says so. One sheet in a fixed theme:
+  `rootProps={{ style: { colorScheme: 'dark' } }}` (on its root, see below).
 - The sheet uses your app's font (it sets none of its own).
-- Tokens. Set them on `[data-ybs-root]`, and point them at your own variables to match your theme (dark mode then
-  comes with it): `[data-ybs-root] { --ybs-sheet-bg: var(--card); --ybs-sheet-fg: var(--card-foreground); }`.
+- Tokens. Set them on `[data-ybs-root]` for every sheet, and point them at your own variables to match your theme
+  (dark mode then comes with it): `[data-ybs-root] { --ybs-sheet-bg: var(--card); --ybs-sheet-fg: var(--card-foreground); }`.
+- One sheet with its own theme (a dark event sheet on a light page): put it on that sheet's root with `rootProps`,
+  `<BottomSheet rootProps={{ 'data-theme': 'dark' }}>` (or a `className`, a `style` with tokens or `colorScheme`;
+  headless: the same props on `Sheet.Portal`). Each sheet has its own `[data-ybs-root]`, around everything drawn for
+  it, so the backdrop, the dialog's ring and shadow and the colour behind the keyboard follow too, also when the
+  theme changes while it's open. Not on the sheet itself (`className`, `contentProps`): CSS variables don't inherit
+  up, so the parts outside the sheet would keep the page's values, and a `[data-ybs-root] { --ybs-sheet-bg:
+  var(--card) }` mapping reads `--card` on the root, not the sheet. A sheet that opens with such a token set on it
+  logs a warning naming it.
 
   | Token | Default (light / dark) | What it affects |
   |---|---|---|
@@ -364,7 +374,7 @@ Provider. Providers nest: an inner one overrides what it sets and keeps the rest
   UI from the current detent on desktop should pass `dialog={false}` there.
 - A dismissible `BottomSheet` gets a visible ✕ (it has nothing to swipe) unless it has `leading`/`trailing`, which
   carry its own way out (Cancel / Done). `variant="page"` becomes a larger dialog (48rem); to change that width, set
-  `--ybs-dialog-width` on the sheet itself (`className`), not on `[data-ybs-root]`.
+  `--ybs-dialog-width` on `[data-ybs-root]` or on the sheet itself (`className`).
 - `dismissible={false}` makes it behave like an alert dialog (the role stays `dialog`; set it with
   `contentProps={{ role: 'alertdialog' }}`, see "Confirm prompts"): Escape, back and an outside
   press do nothing and there's no ✕, so give it a button that closes it.
@@ -418,7 +428,8 @@ import { Sheet } from '@yourrealm/bottom-sheet'
 - **Closing:** add your own `Sheet.Close`; there's no automatic screen-reader close button.
 - **Non-modal:** leave `Backdrop` out yourself (a rendered `Backdrop` still dims and closes on tap).
 - **`Sheet.Portal container`:** render into an element other than `<body>`. A modal sheet still makes everything else
-  on the page inert.
+  on the page inert. Its other props (`className`, `style`, `data-*`) go on the sheet's `[data-ybs-root]`: one sheet's
+  theme goes there.
 - **`Sheet.View`** passes its props (`className`, `style`, `ref`, `data-*`) to the scroller, the one scroll
   container; `bleedClassName` styles the layer that continues the sheet colour behind the keyboard.
 - **Set by the library on `[data-ybs-root]`**, for your own styling: `--ybs-progress` (0 to 1, closed to full),
