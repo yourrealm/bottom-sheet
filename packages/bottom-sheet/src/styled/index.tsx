@@ -293,3 +293,5 @@ BottomSheet.Close = StyledSheet.Close
 BottomSheet.Provider = Base.Provider
 /** `'sheet'` or `'dialog'`: how the sheet around the calling component is shown (see `dialog`). */
 BottomSheet.usePresentation = Base.usePresentation
+/** The element that scrolls the sheet's content (the one scroller, or the dialog), for a virtualized list. */
+BottomSheet.useScrollElement = Base.useScrollElement

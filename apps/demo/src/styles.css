@@ -739,3 +739,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
   width: 52px; height: 52px; border-radius: 14px;
   background: linear-gradient(160deg, hsl(var(--h) 70% 60%), hsl(calc(var(--h) + 40) 65% 42%));
 }
+/* ?virtual=1 on #/thousand: rows are absolutely placed at a fixed height (ROW_H in thousand.tsx). */
+.orders.virtual { position: relative; box-sizing: content-box; }
+.orders.virtual > li { position: absolute; top: 0; inset-inline: 8px; height: 58px; display: flex; align-items: center; }
+.orders.virtual > li > .ybs-trigger { flex: 1; }

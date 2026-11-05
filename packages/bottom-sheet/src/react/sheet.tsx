@@ -433,6 +433,21 @@ export function usePresentation(): 'sheet' | 'dialog' {
   return useSheet('usePresentation').dialog ? 'dialog' : 'sheet'
 }
 
+/**
+ * The element that scrolls this sheet's content, for a virtualized list (TanStack Virtual's `getScrollElement`, with
+ * `scrollMargin` = the list's offset in it): the sheet's one scroller, or in a dialog the sheet itself. `null` on the
+ * first render: ancestors' refs attach after a child's layout effects, so it is read in an effect and re-renders.
+ */
+export function useScrollElement(): HTMLElement | null {
+  const ctx = useSheet('useScrollElement')
+  const [el, setEl] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const sheet = ctx.sheetEl.current
+    setEl(ctx.dialog ? sheet : (sheet?.closest<HTMLElement>('[data-ybs-scroller]') ?? null))
+  }, [ctx.dialog, ctx.sheetEl])
+  return el
+}
+
 // ---------------------------------------------------------------------------
 
 /** What `Trigger`'s `render` function receives: spread it onto your own button. */

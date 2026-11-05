@@ -10,6 +10,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.26",
     "@yourrealm/bottom-sheet": "workspace:*",
     "maplibre-gl": "^6.16.0",
     "react": "^19.3.1",

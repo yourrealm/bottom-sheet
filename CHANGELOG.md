@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `BottomSheet.useScrollElement()` (headless: `Sheet.useScrollElement()`): the element a sheet's content scrolls in
+  (the sheet's one scroller, or the dialog on desktop), for virtualizing a long list in a sheet. A 1000-row sheet
+  took ~800ms from tap to first frame on a throttled phone profile, ~130ms virtualized. See "Long lists
+  (virtualized)" in the README.
+
 ## 0.6.0 (2026-11-05)
 
 ### Added

@@ -614,6 +614,39 @@ test('1000 rows, each with its own sheet: renders fast and any row opens its she
   await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
 })
 
+test('a virtualized list follows the sheet scroller (or the dialog): few rows mounted, a far row opens its sheet', async ({ page }, info) => {
+  // Mobile projects show a sheet (the one scroller scrolls), firefox-desktop a dialog (the sheet itself scrolls).
+  const dialog = info.project.name === 'firefox-desktop'
+  if (dialog) await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/?virtual=1#/thousand')
+  await page.locator('#open-orders').click()
+  await expect(page.locator('[data-ybs-root][data-ybs-dialog]')).toHaveCount(dialog ? 1 : 0)
+  if (!dialog) await waitForEvent(page, 'orders: onDetentChange')
+  const scroller = dialog ? '[data-ybs-sheet]' : '[data-ybs-scroller]'
+  // The rows on screen are there, lined up under the header, and nowhere near all 1000.
+  await expect(page.locator('[data-order="0"]')).toBeInViewport()
+  const mounted = await page.locator('.orders > li').count()
+  expect(mounted).toBeGreaterThan(5)
+  expect(mounted).toBeLessThan(80)
+  const gap = await page.evaluate(() => {
+    const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+    return document.querySelector('[data-order="0"]')!.closest('li')!.getBoundingClientRect().top - header.bottom
+  })
+  expect(Math.abs(gap)).toBeLessThan(2)
+
+  // Scroll the content until row 500 is rendered, then open its sheet.
+  await page.evaluate((sel) => {
+    const s = document.querySelector<HTMLElement>(sel)!
+    s.scrollTop += 499 * 58
+  }, scroller)
+  const row = page.locator('[data-order="500"]')
+  await expect(row).toBeInViewport()
+  expect(await page.locator('.orders > li').count()).toBeLessThan(80)
+  await row.click()
+  await expect(page.getByRole('dialog', { name: 'Order #48710' })).toBeVisible()
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(2)
+})
+
 test('wide screen: clicking beside the sheet closes it, clicking inside does not', async ({ page }, info) => {
   test.skip(info.project.name !== 'firefox-desktop', 'desktop layout (sheet narrower than the screen)')
   await page.setViewportSize({ width: 1200, height: 860 })

@@ -391,6 +391,62 @@ Provider. Providers nest: an inner one overrides what it sets and keeps the rest
   scroller, in dialog mode only: `[data-ybs-dialog] [data-ybs-scroller] { filter: drop-shadow(…) }`. Give it its own
   close button.
 
+### Long lists (virtualized)
+
+A sheet with hundreds of rows is slow to open: the browser styles and lays out every row before the first frame
+(1000 rows took ~750ms on a throttled phone profile, ~130ms virtualized). Virtualize the list, but don't give it a
+scroll box of its own: the sheet's content scrolls in the same scroller as the sheet itself (that's how a drag hands
+over from content to sheet). Point the virtualizer at that scroller with `BottomSheet.useScrollElement()` (headless:
+`Sheet.useScrollElement()`). It returns the sheet's scroller, or the dialog on desktop, and `null` on the first
+render. Pass the list's offset inside it as `scrollMargin`:
+
+```tsx
+import { useVirtualizer } from '@tanstack/react-virtual'
+
+function Orders({ rows }: { rows: Order[] }) {
+  const scroller = BottomSheet.useScrollElement()
+  const list = useRef<HTMLUListElement>(null)
+  const [margin, setMargin] = useState(0)
+  useLayoutEffect(() => {
+    const ul = list.current
+    if (!scroller || !ul) return
+    const measure = () => {
+      const s = scroller.getBoundingClientRect()
+      const scale = s.height / (scroller.offsetHeight || 1) || 1 // a dialog scales in while it opens
+      setMargin((ul.getBoundingClientRect().top - s.top) / scale + scroller.scrollTop)
+    }
+    measure()
+    const ro = new ResizeObserver(measure) // the offset includes the screen height
+    ro.observe(scroller)
+    return () => ro.disconnect()
+  }, [scroller])
+  const v = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scroller,
+    estimateSize: () => 58, // fixed: see below
+    overscan: 15,
+    scrollMargin: margin,
+  })
+  return (
+    <ul ref={list} style={{ position: 'relative', height: v.getTotalSize() }}>
+      {v.getVirtualItems().map((item) => (
+        <li key={item.key} style={{ position: 'absolute', top: 0, insetInline: 0, height: 58, transform: `translateY(${item.start - margin}px)` }}>
+          …
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+- **Give the rows a fixed height.** A virtualizer that measures rows corrects `scrollTop` when a row above the
+  screen changes size. In a sheet that's a programmatic scroll in the middle of a native fling, which stops the
+  momentum on iOS.
+- Overscan generously: a fling moves faster than React renders, and too few rows show as a blank strip.
+- Rows outside the range aren't in the DOM: find-in-page can't reach them, and a row's own `<BottomSheet>` unmounts
+  with it (the list is covered and inert while a row's sheet is open, so in practice it stays put). For a "tap a
+  row, see details" list, one sheet whose content follows the selected row is simpler.
+
 ### Building from parts
 
 Not sure you need this? Go back to `BottomSheet`.

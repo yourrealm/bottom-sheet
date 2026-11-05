@@ -264,6 +264,17 @@ listeners exist. Measured on the "1000 sheets" demo (production build, desktop C
 times that on phones. `?bare=1` on that demo renders the same rows without sheets, for comparison on devices. Guidance: put
 expensive sheet content in a component (it only renders when open); for "tap a row to see details", one sheet whose content
 follows the selected row is lighter still.
+**Opening a 1000-row sheet is slow, and the sheets aren't why** (2026-11-05, maintainer: "a bit slow on device").
+Production build, Pixel 7 emulation, 6x CPU: ~750-890ms from tap to first frame, ~720ms with `?bare=1`
+(scrolling stays at 60fps). The cost is style + layout of ~10k nodes in one task before the glide can start.
+Ruled out: our `:has()` rules (deleting all 24 changed nothing), the per-frame `--ybs-*` vars on the root, and
+`content-visibility: auto` (less layout, more style, no faster). Fix: virtualize. `Sheet.useScrollElement()` /
+`BottomSheet.useScrollElement()` returns the scroller (sheet) or the sheet (dialog) for `getScrollElement`, read in a
+passive effect (ancestor refs attach after descendants' layout effects), so it's `null` for one render. Demo
+`#/thousand?virtual=1` (TanStack Virtual, fixed `ROW_H` 58, `scrollMargin` measured + ResizeObserver): ~110-145ms,
+longest task ~65ms. Fixed row heights on purpose: measuring rows makes the virtualizer write `scrollTop` mid-fling.
+Test: "a virtualized list follows the sheet scroller (or the dialog)…" (firefox-desktop runs it at 1280 as a dialog).
+Not yet on a device.
 
 ### Keyboard (spike 01)
 The overlay layer (backdrop, scroller, bleed) is positioned from `visualViewport` (`--vv-top`, `--vv-h`), not
