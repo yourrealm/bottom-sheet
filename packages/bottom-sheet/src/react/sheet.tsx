@@ -148,8 +148,9 @@ export interface RootProps {
   onExitComplete?: () => void
   /**
    * Partial detents; `full` is always included. Default `[]`: the sheet opens straight to full (fit to short content).
-   * Each is a fraction of the available height (0.5), a CSS length of visible sheet ('76px', '40dvh'), or `'header'`
-   * (exactly the header: a peek that shows the title and nothing under it).
+   * Each is a fraction of the available height (0.5), a CSS length of visible sheet ('76px', '40dvh'), `'header'`
+   * (exactly the header: a peek that shows the title and nothing under it), or `'header+footer'` (the header and the
+   * footer right under it: a chat's title and composer).
    */
   detents?: readonly Detent[]
   /**

@@ -10,6 +10,7 @@ import { Lightbox } from './scenarios/lightbox'
 import { Comments } from './scenarios/comments'
 import { Product } from './scenarios/product'
 import { Confirm } from './scenarios/confirm'
+import { Assistant } from './scenarios/assistant'
 import { Share } from './scenarios/share'
 import { Filters } from './scenarios/filters'
 import { Playlist } from './scenarios/playlist'
@@ -37,6 +38,7 @@ interface Scenario {
 const SCENARIOS: Scenario[] = [
   { id: 'places', title: 'Place details', blurb: 'Peek over a map, expand into photos and reviews.', hue: 150, Component: Places },
   { id: 'floating', title: 'Floating (iOS 26)', blurb: 'A search panel floating over a map: header peek, half, full. Never closes.', hue: 190, modeless: true, Component: Floating },
+  { id: 'assistant', title: 'Chat over a page', blurb: 'Create with AI: minimised it shows the title and the composer, the page stays usable.', hue: 265, modeless: true, Component: Assistant },
   { id: 'comments', title: 'Comments', blurb: 'Long thread with a pinned composer. Try the keyboard.', hue: 220, Component: Comments },
   { id: 'product', title: 'Product options', blurb: 'Short sheet that fits its content.', hue: 25, Component: Product },
   { id: 'confirm', title: 'Confirm prompts', blurb: 'Delete, move, clear: an alert dialog that asks first and starts on Cancel.', hue: 0, Component: Confirm },

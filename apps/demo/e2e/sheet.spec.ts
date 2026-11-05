@@ -188,6 +188,64 @@ test('a footer stays under the header at a header peek, and pins to the bottom w
   expect(half.footerBottom).toBeGreaterThan(half.H - 40)
 })
 
+test.describe("'header+footer' detent (chat over a page)", () => {
+  // The peek shows the header and the footer right under it: visible sheet = header bottom + footer height.
+  const peek = (page: Page) => page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    const header = document.querySelector<HTMLElement>('[data-ybs-header]')!
+    const footer = document.querySelector<HTMLElement>('[data-ybs-footer]')!
+    const sr = s.getBoundingClientRect()
+    return {
+      st: s.scrollTop,
+      expected: header.offsetHeight + footer.offsetHeight,
+      footerH: footer.offsetHeight,
+      headerBottom: header.getBoundingClientRect().bottom,
+      footerTop: footer.getBoundingClientRect().top,
+      footerBottom: footer.getBoundingClientRect().bottom,
+      screenBottom: sr.bottom,
+    }
+  })
+
+  test('minimised, it shows exactly the header and the footer, and the page stays usable', async ({ page }) => {
+    await page.goto('/#/assistant')
+    await waitForEvent(page, 'assistant: onDetentChange header+footer')
+    const p = await peek(page)
+    expect(Math.abs(p.st - p.expected)).toBeLessThan(2)
+    expect(Math.abs(p.footerTop - p.headerBottom)).toBeLessThan(2) // the composer sits right under the header
+    expect(Math.abs(p.footerBottom - p.screenBottom)).toBeLessThan(2) // and at the bottom of the screen
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeInViewport()
+    await expect(page.locator('[data-ybs-catch]')).toHaveCount(1) // a minimised state: catches flings like 'header'
+    await page.getByRole('button', { name: "I'm going" }).click()
+    await waitForEvent(page, 'assistant: RSVP tapped')
+  })
+
+  test('a composer that grows a line grows the peek with it', async ({ page }) => {
+    await page.goto('/#/assistant')
+    await waitForEvent(page, 'assistant: onDetentChange header+footer')
+    const before = await peek(page)
+    await page.getByRole('textbox', { name: 'Message' }).evaluate((el: HTMLTextAreaElement) => {
+      el.blur() // no keyboard step to full: only the height changes
+    })
+    await page.getByRole('textbox', { name: 'Message' }).fill('one\ntwo\nthree')
+    await page.getByRole('textbox', { name: 'Message' }).blur()
+    await expect.poll(async () => (await peek(page)).footerH).toBeGreaterThan(before.footerH + 20)
+    await expect.poll(async () => { const p = await peek(page); return Math.abs(p.st - p.expected) }).toBeLessThan(2)
+    // In the same frame: the re-measure paints --ybs-visible itself instead of waiting for the scroll event.
+    const after = await peek(page)
+    expect(Math.abs(after.footerTop - after.headerBottom)).toBeLessThan(2)
+  })
+
+  test('expanded, the composer sits at the bottom with the chat above it', async ({ page }) => {
+    await page.goto('/?open=1#/assistant')
+    await waitForEvent(page, 'assistant: onDetentChange full')
+    const p = await peek(page)
+    expect(Math.abs(p.footerBottom - p.screenBottom)).toBeLessThan(2)
+    expect(p.footerTop - p.headerBottom).toBeGreaterThan(100) // the body shows between them
+    await page.getByRole('button', { name: 'Make it a summer party' }).click()
+    await expect(page.getByRole('heading', { name: 'Midsummer on the roof' })).toBeVisible()
+  })
+})
+
 test('only a header peek catches flings: its snap point stops momentum, other partial detents do not', async ({ page }) => {
   await page.goto('/?float=1#/lab')
   await waitForEvent(page, 'float: onDetentChange header')

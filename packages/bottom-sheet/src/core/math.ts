@@ -3,10 +3,12 @@
  * - `'closed'` and `'full'` are always available (`'closed'` only while the sheet is dismissible).
  * - A number is a fraction (0..1) of the available height that is visible, e.g. `0.5`.
  * - `'header'` shows exactly the sheet's header (`Sheet.Header`), measured, e.g. a peek with just the title.
+ * - `'header+footer'` shows the header and the footer (`Sheet.Footer`) right under it, e.g. a chat's title and its
+ *   composer; the body stays covered. Without a footer it's the same as `'header'`.
  * - Any other string is a CSS length of visible sheet, e.g. `'76px'`, `'40dvh'`, `'min(320px, 50dvh)'`.
  */
 // `string & {}` keeps editor completion for the literals while accepting any CSS length.
-export type Detent = 'closed' | 'full' | 'header' | number | (string & {})
+export type Detent = 'closed' | 'full' | 'header' | 'header+footer' | number | (string & {})
 
 /** A detent resolved for the current layout: `top` is its scrollTop (= visible sheet height in px). */
 export interface Stop {

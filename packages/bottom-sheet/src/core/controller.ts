@@ -174,8 +174,22 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (d === 'closed') return 0
     if (d === 'full') return full
     if (typeof d === 'number') return H * d
-    probe.style.height = d === 'header' ? `calc(${headerBottom()}px + var(--ybs-header-detent-offset, 0px))` : d
+    probe.style.height = isPeek(d) ? `calc(${peekPx(d)}px + var(--ybs-header-detent-offset, 0px))` : d
     return probe.getBoundingClientRect().height
+  }
+  /** The measured peeks: a minimised state that shows the header (and the footer under it). */
+  const isPeek = (d: Detent) => d === 'header' || d === 'header+footer'
+  const peekPx = (d: Detent) => headerBottom() + (d === 'header+footer' ? footerHeight() : 0)
+  /**
+   * The `'header+footer'` detent adds the footer's height (it pins right under the header there, see the footer's
+   * translate in styles.css). offsetHeight ignores that translate and includes the safe-area padding. Observed, so a
+   * composer that grows a line re-measures even when the sheet's own height doesn't change.
+   */
+  function footerHeight(): number {
+    const footer = sheet.querySelector<HTMLElement>('[data-ybs-footer]')
+    if (!footer) return 0
+    ro.observe(footer)
+    return footer.offsetHeight
   }
   /**
    * The `'header'` detent: how far the header reaches into the sheet (its bottom edge), so the peek shows exactly
@@ -238,7 +252,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       }
       m.style.top = `${p.top}px`
       // A header peek is a minimised state: a fling down from above lands on it instead of running past to closed.
-      m.toggleAttribute('data-ybs-catch', p.detent === 'header')
+      m.toggleAttribute('data-ybs-catch', isPeek(p.detent))
       m.hidden = !stops.some((s) => s.detent === p.detent)
     }
   }
@@ -814,6 +828,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (d == null) return
     if (gliding) return // the glide aims at the target's current position every frame
     scroller.scrollTop = pos(d)
+    // Paint now, not on the scroll event a frame later: a footer that grew a line (a 'header+footer' peek) would sit
+    // off the header for that frame.
+    if (!detached) paint(scroller.scrollTop)
   })
 
   function finishClose() {

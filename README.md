@@ -138,13 +138,16 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 
 - `detents`: partial resting heights, as fractions of the height available to the sheet (`0.5`), CSS lengths of
   visible sheet (`'76px'`, `'40dvh'`), or `'header'`: exactly the header, measured, for a peek that shows the title
-  and nothing under it. A `'header'` peek is a minimised state: a flick down from higher up lands on it, and only a
-  flick from the peek itself closes the sheet (with `dismissible={false}`, nothing does). Other partial detents let a
+  and nothing under it. `'header+footer'` adds the footer right under the header, for a chat whose composer lives in
+  `footer` (at the bottom when expanded) but must show when minimised; both are re-measured as they change size (a
+  composer that grows a line). Without a footer it's `'header'`. These peeks are minimised states: a flick down from
+  higher up lands on one, and only a flick from the peek itself closes the sheet (with `dismissible={false}`,
+  nothing does). Other partial detents let a
   flick run past them. Full height (`'full'`) is always included, and is the content's own height when the content
   is short. Default `[]`: the sheet opens straight to full, like iOS.
 - `initialDetent`: where it opens: `'full'` or one of your `detents`. Default: the smallest partial detent, else full.
 - `detent` / `onDetentChange`: the detent the sheet rests at, `'full'` or the value you passed in `detents`
-  (`0.5`, `'76px'`, `'header'`). Pass `detent` to control it (changing it moves the sheet). `onDetentChange` never
+  (`0.5`, `'76px'`, `'header'`, `'header+footer'`). Pass `detent` to control it (changing it moves the sheet). `onDetentChange` never
   reports `'closed'` (closing is `onOpenChange(false)`), so `detent={d} onDetentChange={setD}` round-trips.
 - `open` / `defaultOpen` / `onOpenChange(open, { reason })`: controlled or uncontrolled. The reason is
   `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`. Use `open` when a sheet has several

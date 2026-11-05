@@ -386,6 +386,14 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   `data-ybs-catch` -> `scroll-snap-stop: always`, so a flick from full or half lands on the peek; a flick from the peek
   closes (unless `dismissible={false}`). Other partial detents stay passable: stopping at every detent made a half
   height a speed bump (flick from full stopped at half instead of closing). Like Material's collapsed state.
+- **`'header+footer'` detent** (issue #5, 2026-11-05, for Venga's "Create with AI" chat): header bottom + the footer's
+  `offsetHeight` (ignores the footer's translate, includes its safe-area padding), so the composer pins right under
+  the header and the body is covered. Same not-stuck rule for the header part, same `data-ybs-catch`, `'header'`
+  without a footer. The footer is observed by the controller's ResizeObserver (a composer growing a line), and that
+  observer now paints `--ybs-visible` itself when it re-pins: waiting for the scroll event left the footer off the
+  header for a frame. Demo `#/assistant` (chat over a live event page, non-modal, not dismissible). Tests:
+  "'header+footer' detent (chat over a page)". Demo lesson: don't `scrollIntoView` inside the sheet (it moves the
+  sheet: one scroller), and Chromium's `scrollIntoView` now returns a Promise (an effect returning it breaks React).
 - **Footer vs a low peek** (2026-11-02): at a peek lower than header + footer, the footer translates down under the
   header (`--ybs-header-h`, set by the controller, plus `--ybs-visible`); it used to pin over the title.
 - **`eyebrow` and `--ybs-title-size`** (2026-11-02, shopping lost its "Section" label above the title): the eyebrow
