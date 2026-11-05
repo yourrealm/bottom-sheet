@@ -411,6 +411,18 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   header for a frame. Demo `#/assistant` (chat over a live event page, non-modal, not dismissible). Tests:
   "'header+footer' detent (chat over a page)". Demo lesson: don't `scrollIntoView` inside the sheet (it moves the
   sheet: one scroller), and Chromium's `scrollIntoView` now returns a Promise (an effect returning it breaks React).
+- **Soft scroll edges** (`/styled` `scrollEdge="soft"`, issue #2, 2026-11-05): the body gets a `mask-image` and the
+  header/footer lose their fill, so a translucent sheet doesn't stack into darker bands under the bars. CSS alone
+  can't place the mask: a mask moves with its element, and in our one scroller the body moves while the header
+  sticks. `core/soft-edge.ts` measures the bar edges in the body's coordinates (rects, divided by the scale of a
+  covered or fading sheet) on every paint (sheet) or scroll (dialog) and sets `--ybs-edge-*` on the root (internal,
+  undocumented). Defaults (maintainer, 2026-11-05): behind both bars, 48px. `styled.css` builds four fade lines from them; `--ybs-soft-behind-header/-footer` (0/1) blend the
+  "fade before the bar" and "fade under the bar" positions in one `calc()` (CSS can't branch on a word token). The
+  top fade grows in from 0 (`min()` with how much is under the header), so a sheet at rest fades nothing.
+  Known and accepted: a fast fling shows content past the fade for a frame or two (scroll runs on the compositor, our
+  paint on the main thread). The scrolled-header
+  corner clip (`clip-path` on the non-scrolling `.ybs-view`) doesn't have that lag. Demo `#/soft-edge` (Albums,
+  switches for the tokens, `?modal=1` for the dialog). Tests: "soft scroll edges".
 - **Footer vs a low peek** (2026-11-02): at a peek lower than header + footer, the footer translates down under the
   header (`--ybs-header-h`, set by the controller, plus `--ybs-visible`); it used to pin over the title.
 - **`eyebrow` and `--ybs-title-size`** (2026-11-02, shopping lost its "Section" label above the title): the eyebrow
@@ -442,7 +454,10 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   (a context of defaults; the sheet's own prop wins). The demo wraps the app in it (`?dialog=0` or the home switch
   turns it off; `#/lab?nodialog=1` opts one sheet out). Classic scrollbars: the dialog is clipped with
   `clip-path: inset(0 round var(--ybs-dialog-radius))` (Chrome/Safari don't round a scroller's own scrollbar), so its
-  shadow is a `drop-shadow` filter on the overlay. Demo `#/floating`: Maps-style non-modal floating panel.
+  shadow is a `box-shadow` on `[data-ybs-track]` (a flex box the size of the dialog in `/styled`; it also takes the
+  open animation's scale so the shadow follows). It used to be a `drop-shadow` filter on the overlay, but a filter,
+  clip-path, opacity or mask on an ancestor cuts off what a `backdrop-filter` on the sheet sees (a blurred dialog
+  showed the page sharp). Same reason the scrolled-header corner clip skips `scrollEdge="soft"` sheets. Demo `#/floating`: Maps-style non-modal floating panel.
   Device suite with all of it (2026-11-03): 3/3 Chrome + 3/3 Firefox Android PASS. Demo lesson: the hash router must
   `scrollTo(0, 0)` on route change; a scroll kept from the overview left Firefox Android's toolbar hidden on a page one
   screen tall (100dvh grew past the layout viewport) and fixed elements below the screen. Sheets were unaffected. Tests: "dialog on desktop (dialog prop)", firefox-desktop at 1280x800.

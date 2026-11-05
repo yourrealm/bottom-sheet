@@ -51,7 +51,7 @@ const SCENARIOS: Scenario[] = [
   { id: 'thousand', title: '1000 sheets', blurb: 'A list of 1000 rows where every row owns its own sheet.', hue: 100, Component: Thousand },
   { id: 'persistent', title: 'Persistent (non-modal)', blurb: 'Never closes, peeks at 76px; the page behind stays usable.', hue: 260, modeless: true, Component: Persistent },
   { id: 'notes', title: 'New note (page sheet)', blurb: 'Opens straight to full, Cancel / Save header, full width on desktop. Try fullscreen.', hue: 50, Component: Notes },
-  { id: 'soft-edge', title: 'Soft edges (prototype)', blurb: 'Content fades out under the header and footer; try a translucent sheet.', hue: 300, modeless: true, Component: SoftEdge },
+  { id: 'soft-edge', title: 'Soft edges', blurb: 'Content fades out under the header and footer; try a translucent sheet.', hue: 300, modeless: true, Component: SoftEdge },
   { id: 'lab', title: 'Lab', blurb: 'Plain test page used by the device scripts.', hue: 0, Component: Lab },
 ]
 

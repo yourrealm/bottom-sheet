@@ -1,5 +1,6 @@
 import type { Detent } from './math'
 import { easeAccelerate, easeDecelerate } from './math'
+import { softEdge } from './soft-edge'
 import { lockHtml, unlockHtml, type SheetController, type SheetControllerOptions, type SheetElements } from './controller'
 
 /**
@@ -72,6 +73,7 @@ export function createDialogController(els: SheetElements, options: SheetControl
   let scrolled = false
   let more = false
   function syncLines() {
+    softEdge(root, sheet, sheet.getBoundingClientRect().bottom)
     const s = sheet.scrollTop > 1
     if (s !== scrolled) root.toggleAttribute('data-ybs-scrolled', (scrolled = s))
     const m = sheet.scrollHeight - sheet.clientHeight - sheet.scrollTop > 2

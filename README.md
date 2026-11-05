@@ -129,6 +129,12 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
   content in a centred 960px column).
 - `floating`: iOS 26 style, inset from the screen edges with large corners at lower detents, attaching as it reaches
   full. Its side spacing includes the gap, so text keeps its distance from the visible edge.
+- `scrollEdge`: how content scrolling under the header and footer shows. `'line'` (default): the bars are filled with
+  the sheet colour and a divider appears. `'soft'`: the bars have no fill or line, and the content fades out under them, like
+  iOS 26's soft scroll edge. Use it for a translucent or blurred sheet (`--ybs-sheet-bg` with alpha plus your own
+  `backdrop-filter`), where filled bars would stack into darker bands. Tune it with `--ybs-soft-fade`,
+  `--ybs-soft-behind-header` and `--ybs-soft-behind-footer` (Styling). Works in the dialog too. Known limit: the fade
+  is placed from scroll events, so during a fast fling content can show past it for a frame or two.
 - `initialFocus`: see Options.
 - `className` / `contentProps`: go on the sheet element (`<section role="dialog">`). Props there override the
   defaults, the role too (see "Confirm prompts" below).
@@ -260,6 +266,8 @@ Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the rol
   | `--ybs-max-width` | `640px` | Width of a `card` sheet |
   | `--ybs-content-width` | `960px` | Content column of a `width="full"` sheet |
   | `--ybs-float-gap` / `--ybs-float-radius` | `8px` / `32px` | `floating`: gap to the screen edges, corner size |
+  | `--ybs-soft-fade` | `48px` | `scrollEdge="soft"`: length of the fade at the header and the footer |
+  | `--ybs-soft-behind-header` / `--ybs-soft-behind-footer` | `1` | `scrollEdge="soft"`: `1` lets content carry on under the bar and fade out there, showing faintly through it; `0` fades it out before the bar |
   | `--ybs-inset` | safe area + 10px | Gap above the sheet at full (safe area + 22px for page sheets, `0` with `fullscreen`). Works headless too |
   | `--ybs-dialog-width` | `32rem` (`48rem` for `variant="page"`) | Width of the dialog on desktop. Works headless too |
   | `--ybs-dialog-gap` | `24px` | Space kept around the dialog. Works headless too |

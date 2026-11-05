@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { logged } from '../debug'
 
 /**
- * Prototype for issue #2: soft scroll edges (`scrollEdge="soft"`). Content fades out before it reaches the header and
- * the footer, so they need no fill, and a translucent sheet colour doesn't stack into darker bands. The sheet is
- * non-modal, so the switches on the page stay usable while it's open.
- * URL: `?edge=line&glass=0&blur=0&behindHeader=1&behind=1&fade=24`.
+ * Soft scroll edges (`scrollEdge="soft"`, issue #2). Content fades out at the header and the footer, so they need no
+ * fill, and a translucent sheet colour doesn't stack into darker bands. The switches set the tokens
+ * `--ybs-soft-behind-header`, `--ybs-soft-behind-footer` and `--ybs-soft-fade`, starting at the library defaults
+ * (behind both bars, 48px). Dark sets the page's theme (`data-theme` on <html>); the sheet follows `color-scheme`.
+ * The sheet is non-modal, so the switches stay usable while it's open; `?modal=1` makes it modal, so a desktop shows
+ * it as a dialog.
+ * URL: `?edge=line&glass=0&blur=0&behindHeader=0&behind=0&fade=24&theme=dark&modal=1`.
  * Known limit: the mask is placed from scroll events, so a fast fling shows content past it for a frame or two.
  */
 const ALBUMS: [name: string, count: number, hue: number][] = [
@@ -23,9 +26,17 @@ export function SoftEdge({ autoOpen }: { autoOpen: boolean }) {
   const [soft, setSoft] = useState(q.get('edge') !== 'line')
   const [glass, setGlass] = useState(q.get('glass') !== '0')
   const [blur, setBlur] = useState(q.get('blur') !== '0')
-  const [behindHeader, setBehindHeader] = useState(q.get('behindHeader') === '1')
-  const [behind, setBehind] = useState(q.get('behind') === '1')
-  const [fade, setFade] = useState(Number(q.get('fade') ?? 24))
+  const [behindHeader, setBehindHeader] = useState(q.get('behindHeader') !== '0')
+  const [behind, setBehind] = useState(q.get('behind') !== '0')
+  const [fade, setFade] = useState(Number(q.get('fade') ?? 48))
+  const [dark, setDark] = useState(() => (q.get('theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark')
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    return () => {
+      delete document.documentElement.dataset.theme
+    }
+  }, [dark])
+  const modal = q.get('modal') === '1'
   const [open, setOpen] = useState(true)
   const [album, setAlbum] = useState<string | null>(null)
   void autoOpen
@@ -40,7 +51,7 @@ export function SoftEdge({ autoOpen }: { autoOpen: boolean }) {
   return (
     <div className="soft-page">
       <p className="muted small">
-        Prototype: content fades out at the header and footer instead of sliding under a filled bar, so the sheet can be
+        Content fades out at the header and footer instead of sliding under a filled bar, so the sheet can be
         see-through. Flip the switches while the sheet is open.
       </p>
       <section className="panel soft-panel">
@@ -55,6 +66,7 @@ export function SoftEdge({ autoOpen }: { autoOpen: boolean }) {
         </label>
         {toggle('Translucent', glass, setGlass)}
         {toggle('Blur', blur, setBlur, !glass)}
+        {toggle('Dark', dark, setDark)}
         {!open && <button className="primary wide" onClick={() => setOpen(true)}>Show albums</button>}
       </section>
 
@@ -69,16 +81,20 @@ export function SoftEdge({ autoOpen }: { autoOpen: boolean }) {
         {...logged('soft')}
         open={open}
         onOpenChange={setOpen}
-        modal={false}
+        modal={modal}
         detents={['header', 0.5]}
         initialDetent={0.5}
         title="Albums"
         description={`${ALBUMS.length} albums`}
         scrollEdge={soft ? 'soft' : 'line'}
-        className={[glass && 'glass', glass && blur && 'blur', behind && 'fade-behind', behindHeader && 'fade-behind-header']
-          .filter(Boolean)
-          .join(' ')}
-        contentProps={{ style: { ['--ybs-soft-fade' as string]: `${fade}px` } }}
+        className={[glass && 'glass', glass && blur && 'blur'].filter(Boolean).join(' ')}
+        contentProps={{
+          style: {
+            ['--ybs-soft-fade' as string]: `${fade}px`,
+            ['--ybs-soft-behind-header' as string]: behindHeader ? 1 : 0,
+            ['--ybs-soft-behind-footer' as string]: behind ? 1 : 0,
+          },
+        }}
         footer={<>
           <button className="secondary" onClick={() => setAlbum(null)}>Recents</button>
           <button className="primary" onClick={() => setOpen(false)}>Done</button>

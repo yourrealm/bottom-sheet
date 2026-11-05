@@ -39,8 +39,11 @@
   --ybs-content-width: 960px;
   --ybs-float-gap: 8px;
   --ybs-float-radius: 32px;
-  /* scrollEdge="soft": how long the fade at the header and footer is. */
-  --ybs-soft-fade: 24px;
+  /* scrollEdge="soft": the length of the fade at the header and the footer, and whether content fades out before
+     each bar (0) or carries on behind it and fades out under it (1). */
+  --ybs-soft-fade: 48px;
+  --ybs-soft-behind-header: 1;
+  --ybs-soft-behind-footer: 1;
   /* 1 within the last 10% of travel to full, else 0..: corners square off as a fullscreen sheet reaches the top. */
   --ybs-at-top: clamp(0, (var(--ybs-progress, 0) - 0.9) * 10, 1);
 }
@@ -59,8 +62,10 @@
 /* Content scrolled: the sticky header sits at the top of the screen with rounded corners, and the content scrolling
    under it showed through the corner cut-outs (seen on Firefox Android: a light card in the top-right corner). Clip
    the scroller itself, which doesn't move, to those corners: no scroll offset involved, so it holds during a fling.
-   A card-width sheet is clipped to its column. Not for fullscreen (square at the top) or the dialog. */
-[data-ybs-root][data-ybs-scrolled]:not([data-ybs-dialog], [data-ybs-fullscreen]) .ybs-view {
+   A card-width sheet is clipped to its column. Not for fullscreen (square at the top) or the dialog.
+   Not with scrollEdge="soft": its mask already hides the content there, and a clip-path on an ancestor of the sheet
+   cuts off what a backdrop-filter on the sheet can see (Chrome: the blur of a translucent sheet vanished). */
+[data-ybs-root][data-ybs-scrolled]:not([data-ybs-dialog], [data-ybs-fullscreen]) .ybs-view:not(:has([data-ybs-sheet][data-ybs-soft-edge])) {
   --ybs-clip-x: calc((100% - min(100%, var(--ybs-max-width))) / 2);
   clip-path: inset(0 var(--ybs-clip-x) 0 round var(--ybs-radius) var(--ybs-radius) 0 0);
 }
@@ -177,23 +182,31 @@
 /* Footer right under the header (a confirm sheet, no body): one gap of 16px under the text, not two paddings. */
 .ybs-header + .ybs-footer { padding-top: 4px; }
 /*
- * Soft scroll edges (scrollEdge="soft", prototype): no fill or line on the header and footer; the body fades out
- * before it reaches them instead. The controller publishes the edges in the body's coordinates (see softEdge()).
- * Everything above the header line and below the footer line is fully masked, so a translucent sheet colour shows
- * the same everywhere. Not in the dialog presentation (its sheet scrolls itself; no edge vars there yet).
+ * Soft scroll edges (scrollEdge="soft"): no fill or line on the header and footer; the body fades out at them
+ * instead. The controller publishes the edges in the body's coordinates (core/soft-edge.ts). Everything past the fade
+ * is fully masked, so a translucent sheet colour shows the same everywhere.
  */
-[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet[data-ybs-soft-edge] > .ybs-header,
-[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet[data-ybs-soft-edge] > .ybs-footer {
+.ybs-sheet[data-ybs-soft-edge] > .ybs-header,
+.ybs-sheet[data-ybs-soft-edge] > .ybs-footer {
   background: none; box-shadow: none; border-color: transparent;
 }
-/* The four fade lines are variables, so a variant only moves them (fade across the header or footer instead).
-   --ybs-soft-fade is the length of each fade. A fade grows in from 0 as content goes under the edge (min() with how
-   much is hidden there), so a sheet at rest doesn't fade its first or last line. */
-[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet[data-ybs-soft-edge] > .ybs-body {
-  --ybs-mask-t0: var(--ybs-edge-top, 0px);
-  --ybs-mask-t1: calc(var(--ybs-edge-top, 0px) + min(var(--ybs-soft-fade), var(--ybs-edge-top, 0px)));
-  --ybs-mask-b0: calc(var(--ybs-edge-bottom, 100vh) - min(var(--ybs-soft-fade), var(--ybs-edge-below, 0px)));
-  --ybs-mask-b1: var(--ybs-edge-bottom, 100vh);
+/* Four fade lines: t0..t1 at the top (transparent to opaque), b0..b1 at the bottom. Each blends two positions by
+   its --ybs-soft-behind-* (0 or 1):
+   - before (0): the fade starts at the bar's edge and runs --ybs-soft-fade into the content, growing in from 0 as
+     content goes under the edge (min() with how much is hidden there), so a sheet at rest fades nothing.
+   - behind (1): the fade ends at the bar's edge, over the last --ybs-soft-fade under the bar, so content shows
+     faintly through it. Never into the header's rounded corners (nothing else hides content there). */
+.ybs-sheet[data-ybs-soft-edge] > .ybs-body {
+  --ybs-et: var(--ybs-edge-top, 0px);
+  --ybs-eb: var(--ybs-edge-bottom, 100vh);
+  --ybs-mask-t0: calc(var(--ybs-et) + var(--ybs-soft-behind-header)
+    * (max(var(--ybs-edge-top-start, 0px) + var(--ybs-radius), var(--ybs-et) - var(--ybs-soft-fade)) - var(--ybs-et)));
+  --ybs-mask-t1: calc(var(--ybs-et)
+    + (1 - var(--ybs-soft-behind-header)) * min(var(--ybs-soft-fade), var(--ybs-et)));
+  --ybs-mask-b0: calc(var(--ybs-eb)
+    - (1 - var(--ybs-soft-behind-footer)) * min(var(--ybs-soft-fade), var(--ybs-edge-below, 0px)));
+  --ybs-mask-b1: calc(var(--ybs-eb)
+    + var(--ybs-soft-behind-footer) * (min(var(--ybs-edge-bottom-end, 100vh), var(--ybs-eb) + var(--ybs-soft-fade)) - var(--ybs-eb)));
   mask-image: linear-gradient(to bottom,
     transparent var(--ybs-mask-t0), #000 var(--ybs-mask-t1), #000 var(--ybs-mask-b0), transparent var(--ybs-mask-b1));
 }
@@ -210,16 +223,32 @@
   --ybs-at-top: 0;
 }
 /* The structural CSS clips the dialog to --ybs-dialog-radius (so a classic scrollbar is rounded too). A clip cuts off
-   a box-shadow, so the shadow is a drop-shadow on the overlay, drawn around the clipped dialog. */
+   the sheet's own box-shadow, so the shadow is drawn by the track around it (below). */
 [data-ybs-dialog] .ybs-sheet.ybs-sheet {
   border-radius: var(--ybs-dialog-radius); margin: 0; max-width: none; padding-bottom: 0; clip-path: inset(0 round var(--ybs-dialog-radius)); box-shadow: none;
   /* A classic scrollbar on the sheet's own colour (transparent track), not a grey strip down its side. */
   scrollbar-color: color-mix(in srgb, var(--ybs-muted) 45%, transparent) transparent;
   --ybs-body-inset: var(--ybs-body-padding);
 }
-[data-ybs-dialog] .ybs-view:has(> [data-ybs-track] > .ybs-sheet) {
-  filter: drop-shadow(0 0 0.5px var(--ybs-divider)) drop-shadow(0 16px 40px rgba(0, 0, 0, 0.22));
+/* The shadow: the track (display: contents in the structural CSS) becomes a box the size of the dialog and draws it.
+   Not a filter: drop-shadow() on the overlay, which was simpler, because a filter (or clip-path, opacity, mask) on an
+   ancestor cuts off what a backdrop-filter on the sheet can see: a blurred translucent dialog lost its blur.
+   While it fades in, the scale moves to the track (a transform doesn't do that) so the shadow scales with the dialog,
+   and the shadow fades with --ybs-progress. */
+[data-ybs-dialog] [data-ybs-track]:has(> .ybs-sheet) {
+  display: flex; flex-direction: column; min-height: 0; max-height: 100%;
+  width: min(100%, var(--ybs-dialog-width, 32rem));
+  border-radius: var(--ybs-dialog-radius);
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--ybs-divider) calc(100% * var(--ybs-progress, 1)), transparent),
+    0 16px 40px rgb(0 0 0 / calc(0.22 * var(--ybs-progress, 1)));
 }
+[data-ybs-dialog] [data-ybs-track]:has(> .ybs-sheet-page) { --ybs-dialog-width: 48rem; }
+[data-ybs-dialog] [data-ybs-track] > .ybs-sheet.ybs-sheet { width: 100%; }
+[data-ybs-root][data-ybs-dialog][data-ybs-fade] [data-ybs-track]:has(> .ybs-sheet) {
+  transform: scale(calc(0.96 + 0.04 * var(--ybs-progress, 0)));
+}
+[data-ybs-root][data-ybs-dialog][data-ybs-fade] [data-ybs-track] > .ybs-sheet { transform: none; }
 [data-ybs-dialog] .ybs-sheet.ybs-sheet-full { --ybs-body-inset: max(var(--ybs-body-padding), (100cqw - var(--ybs-content-width)) / 2); }
 [data-ybs-dialog] .ybs-sheet.ybs-sheet-page { --ybs-dialog-width: 48rem; min-height: min(100%, 36rem); }
 [data-ybs-dialog] .ybs-sheet > .ybs-header.ybs-header {

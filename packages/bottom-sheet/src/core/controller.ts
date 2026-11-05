@@ -1,4 +1,5 @@
 import { type Detent, type Stop, buildStops, easeAccelerate, easeDecelerate, nearestStop, project, resolveStop, stopAt } from './math'
+import { softEdge } from './soft-edge'
 
 /**
  * Sheet controller. Framework-agnostic; React (or anything) renders the DOM, this drives it.
@@ -400,7 +401,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let scrolled = false
   let more = false
   function paint(st: number, drop = 0) {
-    softEdge()
+    softEdge(root, sheet, scroller.getBoundingClientRect().bottom)
     const shown = Math.max(Math.min(st, full) - drop, 0)
     const progress = full > 0 ? Math.min(Math.max(shown / full, 0), 1) : 0
     root.style.setProperty('--ybs-progress', String(progress))
@@ -423,36 +424,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
       more = m
       root.toggleAttribute('data-ybs-more', m)
     }
-  }
-
-  /**
-   * Soft scroll edges (`/styled` `scrollEdge="soft"`, a prototype): the body fades out where it meets the header and
-   * the footer, so they need no fill. A mask scrolls with its element, and the body scrolls in the one scroller, so
-   * publish where those edges are in the body's own coordinates (px from its top), and how much of it is hidden
-   * past the bottom one. CSS turns them into fade lines with the --ybs-soft-fade length (styled.css).
-   * Measured: works with the inset, sticky header, the footer's translate, a detached drag's transform.
-   */
-  function softEdge() {
-    if (!sheet.hasAttribute('data-ybs-soft-edge')) return
-    const body = sheet.querySelector<HTMLElement>('[data-ybs-body]')
-    if (!body) return
-    const b = body.getBoundingClientRect()
-    const header = sheet.querySelector<HTMLElement>('[data-ybs-header]')?.getBoundingClientRect()
-    const footer = sheet.querySelector<HTMLElement>('[data-ybs-footer]')?.getBoundingClientRect()
-    const scale = body.offsetHeight > 0 ? b.height / body.offsetHeight : 1 // a covered sheet is scaled down
-    const top = header ? Math.max(0, (header.bottom - b.top) / scale) : 0
-    // Where the header starts: content can also fade out behind the header instead (negative at rest: nothing under it).
-    const topStart = header ? (header.top - b.top) / scale : 0
-    const screenBottom = scroller.getBoundingClientRect().bottom
-    const bottom = ((footer ? footer.top : screenBottom) - b.top) / scale
-    // Where the footer ends (the screen bottom without one): content can also fade out behind the footer instead.
-    const end = ((footer ? Math.min(footer.bottom, screenBottom) : screenBottom) - b.top) / scale
-    const below = Math.max(0, body.offsetHeight - bottom)
-    root.style.setProperty('--ybs-edge-top', `${top}px`)
-    root.style.setProperty('--ybs-edge-top-start', `${Math.min(topStart, top - 1)}px`)
-    root.style.setProperty('--ybs-edge-bottom', `${bottom}px`)
-    root.style.setProperty('--ybs-edge-below', `${below}px`)
-    root.style.setProperty('--ybs-edge-bottom-end', `${Math.max(end, bottom + 1)}px`)
   }
 
   function onScroll() {

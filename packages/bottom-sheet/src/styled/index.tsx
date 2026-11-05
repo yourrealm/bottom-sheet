@@ -105,8 +105,9 @@ interface BottomSheetBaseProps extends Omit<Base.RootProps, 'children'> {
   /**
    * How content scrolling under the header (and behind the footer) is shown:
    * - `'line'` (default): the header and footer are filled with the sheet colour and a divider appears.
-   * - `'soft'`: the content fades out before it reaches them, and they have no fill or line (iOS 26's soft scroll
-   *   edge). Works with a translucent `--ybs-sheet-bg`. Prototype: not in the dialog presentation yet.
+   * - `'soft'`: they have no fill or line, and the content fades out under them (iOS 26's soft scroll edge). Works
+   *   with a translucent `--ybs-sheet-bg`. Tokens: `--ybs-soft-fade` (48px), `--ybs-soft-behind-header` and
+   *   `--ybs-soft-behind-footer` (`1`: carry on under the bar, the default; `0`: fade out before it).
    */
   scrollEdge?: 'line' | 'soft'
   /**

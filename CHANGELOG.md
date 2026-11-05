@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.4.0 (2026-11-05)
+
+### Added
+
+- `'header+footer'` detent: a peek that shows the header and the footer, with the footer pinned right under the
+  header and the body covered. For a chat whose composer lives in `footer` and must show while minimised. It
+  re-measures when the footer grows (a composer getting a second line), and catches flings like `'header'`. Without
+  a footer it is `'header'`.
+- `scrollEdge="soft"` on `/styled` `BottomSheet`: the header and footer lose their fill and the content fades out
+  under them, so a translucent or blurred sheet works. Tokens: `--ybs-soft-fade` (the fade's length, 48px), and
+  `--ybs-soft-behind-header` / `--ybs-soft-behind-footer` (`1`, the default: content carries on under that bar and
+  fades out there; `0`: it fades out before the bar). Works in the dialog too. During a fast fling, content can show
+  past the fade for a frame or two.
+
+### Changed
+
+- Closing with a wheel or trackpad has friction. A step that would close the sheet now starts a pull: the sheet
+  follows a damped share of the scroll and closes on the third mouse-wheel notch, or after about 150px of trackpad
+  scrolling. Let go for 400ms and it springs back. A 1px trackpad nudge used to close a single-detent sheet. Steps
+  between detents are unchanged.
+- A wheel scroll back up through the content lands at the content top with a short slide, instead of overshooting
+  and snapping back (which also swallowed the next few notches).
+
+### Fixed
+
+- `/styled`: the sheet went transparent in light mode when a build (Lightning CSS: Vite production builds, Tailwind
+  v4) lowered `light-dark()` and the app set no `color-scheme`. Other lowerers log a console error when
+  `--ybs-sheet-bg` isn't a colour.
+- A sheet opened together with a sheet nested inside it (a deep link) stacks on top of its parent instead of under it.
+- Scrolling the content in one wheel gesture from full and back up could run on down the detents and close the
+  sheet (Chrome).
+- A sheet whose content grew at full (a chat getting a reply) could stop responding to swipes on its header.
+- A tap right after a sheet settled (an early tap on the backdrop) was ignored.
+- A footer trailed the sheet by a frame while it animated open or closed.
+- A non-dismissible sheet swiped below its lowest detent fought the browser's own snap back (a jank).
+- Firefox Android could leave a swiped-down sheet resting a few pixels above closed, an invisible layer that blocked
+  taps on the page for a moment. It now closes at once, or snaps to the nearer stop.
+- `/styled`: content scrolled under the header showed through its rounded top corners.
+- `/styled`: a dialog's shadow no longer stops a `backdrop-filter` on the sheet from working (a blurred, translucent
+  dialog showed the page sharp behind it).
+
 ## 0.3.0 (2026-11-02)
 
 ### Changed

@@ -23,6 +23,15 @@
     --fill: rgba(118, 118, 128, 0.24);
   }
 }
+/* A page that picks its own theme (the soft-edges demo's Dark switch) sets data-theme on <html>. */
+:root[data-theme='light'] {
+  --bg: #f2f2f7; --fg: #111114; --muted: #6b6b70; --card: #fff; --line: rgba(60, 60, 67, 0.12); --accent: #0a66ff;
+  --danger: #e5302a; --fill: rgba(118, 118, 128, 0.12); color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --bg: #000; --fg: #f2f2f7; --muted: #98989f; --card: #1c1c1e; --line: rgba(235, 235, 245, 0.14); --accent: #3d8bff;
+  --danger: #ff5a52; --fill: rgba(118, 118, 128, 0.24); color-scheme: dark;
+}
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); }
 a { color: var(--accent); }
@@ -441,7 +450,7 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .confirm-actions .secondary:disabled { opacity: 0.45; }
 .danger { border: 0; border-radius: 12px; padding: 12px 18px; background: var(--danger); color: #fff; font-weight: 600; }
 
-/* ---------- soft edges (prototype) ---------- */
+/* ---------- soft edges ---------- */
 .soft-page { max-width: 560px; margin: 0 auto; padding: 4px 16px 60vh; }
 .soft-page > .muted { margin: 4px 0 12px; line-height: 1.45; }
 .soft-panel .switch-row { padding: 8px 0; }
@@ -468,16 +477,6 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .soft-thumb {
   width: 48px; height: 48px; border-radius: 9px; flex: none;
   background: linear-gradient(160deg, hsl(var(--h) 70% 60%), hsl(calc(var(--h) + 60) 65% 40%));
-}
-/* Prototype variant: the content runs on behind the footer and fades out across it, instead of ending above it. */
-[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet.fade-behind[data-ybs-soft-edge] > .ybs-body {
-  --ybs-mask-b0: var(--ybs-edge-bottom, 100vh);
-  --ybs-mask-b1: min(var(--ybs-edge-bottom-end, 100vh), calc(var(--ybs-edge-bottom, 100vh) + var(--ybs-soft-fade)));
-}
-/* And behind the header: hidden under most of it, fading in over the last --ybs-soft-fade above its bottom edge. */
-[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet.fade-behind-header[data-ybs-soft-edge] > .ybs-body {
-  --ybs-mask-t0: max(var(--ybs-edge-top-start, 0px), calc(var(--ybs-edge-top, 0px) - var(--ybs-soft-fade)));
-  --ybs-mask-t1: var(--ybs-edge-top, 0px);
 }
 .soft-range { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .soft-range input { flex: 1; accent-color: var(--accent); }

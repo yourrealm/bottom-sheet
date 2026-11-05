@@ -1816,3 +1816,126 @@ test.describe('photo lightbox', () => {
     await waitForEvent(page, 'lightbox: onOpenChange false')
   })
 })
+
+test.describe('soft scroll edges (scrollEdge="soft")', () => {
+  /** The body mask's four fade lines (px from the body's top), and the bars' edges in the same coordinates. */
+  const edges = (page: Page) =>
+    page.evaluate(() => {
+      const body = document.querySelector<HTMLElement>('[data-ybs-body]')!
+      const mask = getComputedStyle(body).maskImage
+      const lines = [...mask.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1]))
+      const b = body.getBoundingClientRect()
+      const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+      const footer = document.querySelector('[data-ybs-footer]')!.getBoundingClientRect()
+      const bg = (sel: string) => getComputedStyle(document.querySelector(sel)!).backgroundColor
+      return {
+        mask,
+        lines,
+        headerTop: header.top - b.top,
+        headerBottom: header.bottom - b.top,
+        footerTop: footer.top - b.top,
+        footerBottom: footer.bottom - b.top,
+        headerBg: bg('[data-ybs-header]'),
+        radius: parseFloat(getComputedStyle(document.querySelector('[data-ybs-header]')!).borderTopLeftRadius),
+        viewClip: getComputedStyle(document.querySelector('.ybs-view')!).clipPath,
+        footerBg: bg('[data-ybs-footer]'),
+      }
+    })
+
+  async function openSoft(page: Page, query = '') {
+    await page.goto(`/?n=1${query}#/soft-edge`)
+    await waitForEvent(page, 'soft: onDetentChange 0.5')
+    await page.waitForTimeout(100)
+  }
+  async function scrollContent(page: Page) {
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.clientHeight + 200
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await page.waitForTimeout(100)
+  }
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1.5)
+
+  test('"line" (the default) keeps the filled bars and no mask', async ({ page }) => {
+    await openSoft(page, '&edge=line')
+    const e = await edges(page)
+    expect(e.mask).toBe('none')
+    expect(e.headerBg).not.toBe('rgba(0, 0, 0, 0)')
+    // The library's defaults for "soft": behind both bars, a 48px fade.
+    const tokens = await page.evaluate(() => {
+      const cs = getComputedStyle(document.querySelector('[data-ybs-root]')!)
+      return ['--ybs-soft-fade', '--ybs-soft-behind-header', '--ybs-soft-behind-footer'].map((t) => cs.getPropertyValue(t).trim())
+    })
+    expect(tokens).toEqual(['48px', '1', '1'])
+  })
+
+  test('"soft" before the bars: no fill on them; nothing faded at the top at rest, a fade under the header once scrolled', async ({ page }) => {
+    await openSoft(page, '&behindHeader=0&behind=0&fade=24')
+    let e = await edges(page)
+    expect(e.headerBg).toBe('rgba(0, 0, 0, 0)')
+    expect(e.footerBg).toBe('rgba(0, 0, 0, 0)')
+    const [t0, t1, b0, b1] = e.lines
+    near(t0!, 0)
+    near(t1!, 0) // nothing under the header yet: no fade
+    // At the half detent most of the list is below the footer: the fade ends at the footer's top, 24px long.
+    near(b1!, e.footerTop)
+    near(b1! - b0!, 24)
+
+    await scrollContent(page)
+    e = await edges(page)
+    near(e.lines[0]!, e.headerBottom)
+    near(e.lines[1]! - e.lines[0]!, 24)
+    // No corner clip on the scroller: it would cut off a backdrop-filter (blur) on the sheet in Chrome.
+    expect(e.viewClip).toBe('none')
+  })
+
+  test('behind the bars (the default): the fade runs under them; --ybs-soft-fade sets its length', async ({ page }) => {
+    await openSoft(page, '&fade=40')
+    await scrollContent(page)
+    const e = await edges(page)
+    const [t0, t1, b0, b1] = e.lines
+    near(t1!, e.headerBottom)
+    near(t0!, Math.max(e.headerTop + e.radius, e.headerBottom - 40)) // never into the rounded corners
+    near(b0!, e.footerTop)
+    near(b1!, Math.min(e.footerBottom, e.footerTop + 40))
+  })
+
+  test('the fade stays on the header during a header drag while scrolled (the sheet moves by transform)', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'mouse drag is the desktop path')
+    await openSoft(page, '&behindHeader=0&behind=0&fade=24')
+    await scrollContent(page)
+    const p = await headerPoint(page)
+    await page.mouse.move(p.x, p.y)
+    await page.mouse.down()
+    for (let i = 1; i <= 10; i++) await page.mouse.move(p.x, p.y + i * 8)
+    const drop = await page.evaluate(
+      () => new DOMMatrix(getComputedStyle(document.querySelector('[data-ybs-scroller]')!).transform).m42,
+    )
+    expect(drop).toBeGreaterThan(60)
+    const e = await edges(page)
+    near(e.lines[0]!, e.headerBottom)
+    near(e.lines[1]! - e.lines[0]!, 24)
+    await page.mouse.up()
+  })
+
+  test('in the dialog presentation too', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'needs a desktop pointer')
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/?n=1&modal=1&behindHeader=0&behind=0&fade=24#/soft-edge')
+    await waitForEvent(page, 'soft: dialog shown')
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+    let e = await edges(page)
+    expect(e.headerBg).toBe('rgba(0, 0, 0, 0)')
+    near(e.lines[1]!, 0)
+    await page.evaluate(() => {
+      document.querySelector('[data-ybs-sheet]')!.scrollTop = 300
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await page.waitForTimeout(100)
+    e = await edges(page)
+    near(e.lines[0]!, e.headerBottom)
+    near(e.lines[1]! - e.lines[0]!, 24)
+    near(e.lines[3]!, e.footerTop)
+  })
+})
