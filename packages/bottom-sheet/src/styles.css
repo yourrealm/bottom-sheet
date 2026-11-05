@@ -3,6 +3,7 @@
  * Tailwind:  @import "@yourrealm/bottom-sheet/styles.css";  (or styled.css, which includes it).
  * Everything is in the `ybs` cascade layer, ordered between Tailwind v4's `base` and `components`, so preflight
  * can't reset it and your utilities and unlayered CSS win. The order statement only counts if this comes first.
+ * `ybs-defaults` comes before everything: fallbacks any app style beats, even one in Tailwind's `base` (styled.css).
  */
 /*
  * Structural CSS only: the mechanics that make the single-scroller sheet work.
@@ -19,7 +20,7 @@
  *   --ybs-inset     gap above the sheet at the full detent (default: safe area + 10px; 0 with fullscreen)
  *   --ybs-sheet-bg  colour of the bleed, should match the sheet
  */
-@layer theme, base, ybs, components, utilities;
+@layer ybs-defaults, theme, base, ybs, components, utilities;
 @layer ybs {
 /* Marker: tells the library this file is loaded (it logs an error when a sheet opens without it). */
 :root { --ybs-css-core: 1; }

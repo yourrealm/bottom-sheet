@@ -10,7 +10,7 @@ import { logged, log } from '../debug'
  * `?late=1` (a headless sheet with no header whose content arrives after opening; with `&container=1` it is
  * portalled into an element of the page), `?untitled=1` (a sheet named by aria-label, no visible title),
  * `?float=1` (floating, a header peek and a footer), `?nodialog=1` (opts out of the app-wide dialog),
- * `?dismissible=0`, `?confirm=1` (a confirm sheet: title, description, footer, no body).
+ * `?dismissible=0`. The confirm sheet moved to its own demo, `#/confirm`.
  */
 export function Lab({ autoOpen }: { autoOpen: boolean }) {
   const params = new URLSearchParams(location.search)
@@ -19,7 +19,6 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
   if (params.get('late') === '1') return <LateLab />
   if (params.get('untitled') === '1') return <UntitledLab />
   if (params.get('float') === '1') return <FloatLab />
-  if (params.get('confirm') === '1') return <ConfirmLab />
 
   return (
     <div className="lab">
@@ -136,18 +135,3 @@ function FloatLab() {
 }
 
 
-/** A confirm sheet: a question and two buttons, no body. The buttons sit one gap under the text. */
-function ConfirmLab() {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="lab">
-      <button className="primary" onClick={() => setOpen(true)}>Move item</button>
-      <BottomSheet {...logged('confirm')} open={open} onOpenChange={setOpen} title="Move Tomatoes to Fruit?"
-        description="Sam will see Tomatoes too."
-        footer={<>
-          <BottomSheet.Close className="secondary">Cancel</BottomSheet.Close>
-          <button className="primary" onClick={() => setOpen(false)}>Move</button>
-        </>} />
-    </div>
-  )
-}

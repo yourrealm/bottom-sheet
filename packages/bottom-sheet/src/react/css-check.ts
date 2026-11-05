@@ -14,3 +14,25 @@ export function checkCss(id: 'core' | 'styled', file: string) {
       `  @import "@yourrealm/bottom-sheet/${file}";`,
   )
 }
+
+/**
+ * `/styled` colours come from light-dark(). A build that lowers it (Lightning CSS, other PostCSS plugins) relies on
+ * switches that `color-scheme` sets; when they're missing the token is two colours side by side, not a colour, and
+ * the sheet is transparent. styled.css defaults Lightning CSS's switches; this catches the rest. Once, on open.
+ */
+let tokensReported = false
+
+export function checkTokens() {
+  if (tokensReported || typeof document === 'undefined' || typeof CSS === 'undefined') return
+  const root = document.querySelector('[data-ybs-root]')
+  if (!root) return
+  const bg = getComputedStyle(root).getPropertyValue('--ybs-sheet-bg').trim()
+  if (!bg || CSS.supports('color', bg)) return
+  tokensReported = true
+  console.error(
+    `@yourrealm/bottom-sheet: --ybs-sheet-bg is "${bg}", which isn't a colour, so the sheet is transparent. ` +
+      `Your build probably lowered light-dark() and nothing sets color-scheme. Set it on :root, e.g. ` +
+      `:root { color-scheme: light dark }, or raise the CSS target to browsers with light-dark() ` +
+      `(Chrome 123, Firefox 120, Safari 17.5).`,
+  )
+}

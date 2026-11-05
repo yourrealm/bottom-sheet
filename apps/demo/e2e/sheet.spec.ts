@@ -130,13 +130,34 @@ test('close buttons: a visible ✕ when asked, otherwise one only screen readers
 })
 
 test('a confirm sheet (no children) has one gap between its text and its buttons', async ({ page }) => {
-  await page.goto('/?confirm=1#/lab')
+  await page.goto('/?open=1#/confirm')
   await waitForEvent(page, 'confirm: onDetentChange full')
   await expect(page.locator('.ybs-body')).toHaveCount(0)
   const gap = await page.evaluate(() =>
     document.querySelector('.ybs-footer button')!.getBoundingClientRect().top - document.querySelector('.ybs-description')!.getBoundingClientRect().bottom)
   expect(gap).toBeGreaterThan(14)
   expect(gap).toBeLessThan(18)
+})
+
+// contentProps is how an app sets the role (README "Confirm prompts"): it must keep overriding Content's default.
+test('a confirm sheet can be an alertdialog (contentProps role), named by its title, focus on Cancel', async ({ page }) => {
+  await page.goto('/?open=1#/confirm')
+  await waitForEvent(page, 'confirm: onDetentChange full')
+  const sheet = page.locator('[data-ybs-sheet]')
+  await expect(sheet).toHaveAttribute('role', 'alertdialog')
+  await expect(page.getByRole('alertdialog', { name: 'Move Tomatoes to Fruit?' })).toHaveAccessibleDescription('Sam will see Tomatoes too.')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused()
+})
+
+// A build that lowers light-dark() with no color-scheme anywhere left the token as "#fff #2c2c2e" (transparent sheet).
+test('a /styled token that is not a colour logs an error naming color-scheme', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
+  await page.goto('/#/lab')
+  await page.addStyleTag({ content: '[data-ybs-root] { --ybs-sheet-bg: #fff #2c2c2e !important }' })
+  await page.locator('#open-lab').click()
+  await expect.poll(() => errors.find((e) => e.includes('--ybs-sheet-bg'))).toContain('color-scheme')
 })
 
 test('eyebrow: a label above the title, read with it', async ({ page }) => {

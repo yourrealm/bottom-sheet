@@ -27,7 +27,7 @@ The peer dependency is React >= 19 (parts use ref-as-prop).
 **CSS is a file the app imports**, `@yourrealm/bottom-sheet/styles.css` (headless) or `styled.css` (preset, imports
 styles.css), before Tailwind. It's a plain stylesheet, so a strict CSP (no `style-src 'unsafe-inline'`) works; the
 build copies `src/*.css` to `dist/` (`scripts/build-css.mjs`), and `sideEffects: ["*.css"]` keeps bundlers from dropping
-the import. Everything is in `@layer ybs`, ordered by `@layer theme, base, ybs, components, utilities;` (Tailwind v4's
+the import. Everything is in `@layer ybs`, ordered by `@layer ybs-defaults, theme, base, ybs, components, utilities;` (Tailwind v4's
 names): unlayered consumer CSS and Tailwind utilities win, and preflight (in `base`) can't wipe the preset. The order
 statement only counts if the file comes first. Each file sets a marker on :root (`--ybs-css-core` / `--ybs-css-styled`);
 opening a sheet without it logs a console error naming the import (`src/react/css-check.ts`). Tests: "Tailwind v4
@@ -386,7 +386,7 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   iOS 26 sim (iPhone 17 Pro): footer line, header peek, edge, close button, eyebrow, floating peek + footer, Comments + keyboard.
 - **0.2.1 feedback round** (2026-11-02): dapuzzler's "'header' drops out of the stops" was Vite's dep pre-bundle
   serving 0.1.0 (it can't read deno.lock, so it never re-bundled); not our bug. From shopping: no `.ybs-body` without
-  children and `.ybs-header + .ybs-footer` trims to one 16px gap (confirm sheet, demo `#/lab?confirm=1`); dark sheet
+  children and `.ybs-header + .ybs-footer` trims to one 16px gap (confirm sheet, demo `#/confirm`); dark sheet
   `#2c2c2e` and a 60% dark backdrop (the dark difference lives in `--ybs-backdrop`'s alpha, max 0.6), since dark app
   pages dimmed 40% came out at the old sheet colour; no font-family (the app's font); eyebrow all caps 12px.
 - **README for agents** (2026-11-02, from shopping's feedback): three-way table under "Use" (BottomSheet first),

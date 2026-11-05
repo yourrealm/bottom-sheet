@@ -214,6 +214,20 @@ const SCENES: Record<string, () => ReactNode> = {
       </Sheet>
     </>
   ),
+  confirm: () => (
+    <>
+      <rect className="pv-map" width={W} height={H} />
+      {[0, 1, 2, 3].map((i) => (
+        <Line key={i} x={12} y={10 + i * 11} w={60 + ((i * 31) % 50)} h={3} />
+      ))}
+      <Sheet y={56}>
+        <Line x={12} y={66} w={70} />
+        <Line x={12} y={75} w={96} h={3} />
+        <rect className="pv-ink pv-dim" x={70} y={84} width={36} height={10} rx={5} />
+        <rect className="pv-accent" x={112} y={84} width={36} height={10} rx={5} />
+      </Sheet>
+    </>
+  ),
   lab: () => (
     <>
       <rect className="pv-map" width={W} height={H} />

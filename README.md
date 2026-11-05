@@ -130,7 +130,8 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 - `floating`: iOS 26 style, inset from the screen edges with large corners at lower detents, attaching as it reaches
   full. Its side spacing includes the gap, so text keeps its distance from the visible edge.
 - `initialFocus`: see Options.
-- `className` / `contentProps`: go on the sheet element (`<section role="dialog">`).
+- `className` / `contentProps`: go on the sheet element (`<section role="dialog">`). Props there override the
+  defaults, the role too (see "Confirm prompts" below).
 - Plus every option below.
 
 ### Options (on `BottomSheet` and `Sheet.Root`)
@@ -210,11 +211,32 @@ function useConfirm() {
 `onOpenChange` fires for what the user does (a trigger click, a swipe, Escape, back, a tap outside, a close button),
 never when you change `open` yourself, so `onOpenChange={(o) => !o && onClose()}` can't loop.
 
+**Confirm prompts** ("Delete event?") are alert dialogs to a screen reader. Give the sheet that role with
+`contentProps`, and start focus on the safe action:
+
+```tsx
+<BottomSheet
+  title="Delete event?"
+  description="This can't be undone."
+  contentProps={{ role: 'alertdialog' }}
+  initialFocus={cancelRef}
+  footer={<>
+    <BottomSheet.Close ref={cancelRef}>Cancel</BottomSheet.Close>
+    <button onClick={remove}>Delete</button>
+  </>}
+/>
+```
+
+`aria-labelledby` and `aria-describedby` already point at `title` and `description`. It can stay dismissible (a swipe,
+Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the role by itself.
+
 ### Styling
 
 - Light and dark follow your app's `color-scheme` (inherited from `<html>`), so a theme switch that sets it gets a
   matching sheet. Set `html { color-scheme: light dark }` to follow the phone's setting; with no `color-scheme` at all
-  the sheet stays light. One sheet in a fixed theme: `className="[color-scheme:dark]"` or
+  the sheet stays light. That also holds after a production build lowers `light-dark()` for older browsers (Lightning
+  CSS, used by Vite and Tailwind v4, does): `styled.css` defaults its switches to light. Other tools that lower it
+  need a `color-scheme` on `:root`; if `--ybs-sheet-bg` isn't a colour when a sheet opens, the console says so. One sheet in a fixed theme: `className="[color-scheme:dark]"` or
   `contentProps={{ style: { colorScheme: 'dark' } }}`.
 - The sheet uses your app's font (it sets none of its own).
 - Tokens. Set them on `[data-ybs-root]`, and point them at your own variables to match your theme (dark mode then
@@ -301,7 +323,8 @@ Provider. Providers nest: an inner one overrides what it sets and keeps the rest
 - A dismissible `BottomSheet` gets a visible ✕ (it has nothing to swipe) unless it has `leading`/`trailing`, which
   carry its own way out (Cancel / Done). `variant="page"` becomes a larger dialog (48rem); to change that width, set
   `--ybs-dialog-width` on the sheet itself (`className`), not on `[data-ybs-root]`.
-- `dismissible={false}` makes it behave like an alert dialog (the role stays `dialog`): Escape, back and an outside
+- `dismissible={false}` makes it behave like an alert dialog (the role stays `dialog`; set it with
+  `contentProps={{ role: 'alertdialog' }}`, see "Confirm prompts"): Escape, back and an outside
   press do nothing and there's no ✕, so give it a button that closes it.
 - Popovers rendered inside the dialog are clipped by its edges, also `position: fixed` ones (the dialog scrolls its
   own content, and the `/styled` sheet is a size container). Popover libraries that detect clipping (Floating UI, used

@@ -9,6 +9,7 @@ import { Floating } from './scenarios/floating'
 import { Lightbox } from './scenarios/lightbox'
 import { Comments } from './scenarios/comments'
 import { Product } from './scenarios/product'
+import { Confirm } from './scenarios/confirm'
 import { Share } from './scenarios/share'
 import { Filters } from './scenarios/filters'
 import { Playlist } from './scenarios/playlist'
@@ -38,6 +39,7 @@ const SCENARIOS: Scenario[] = [
   { id: 'floating', title: 'Floating (iOS 26)', blurb: 'A search panel floating over a map: header peek, half, full. Never closes.', hue: 190, modeless: true, Component: Floating },
   { id: 'comments', title: 'Comments', blurb: 'Long thread with a pinned composer. Try the keyboard.', hue: 220, Component: Comments },
   { id: 'product', title: 'Product options', blurb: 'Short sheet that fits its content.', hue: 25, Component: Product },
+  { id: 'confirm', title: 'Confirm prompts', blurb: 'Delete, move, clear: an alert dialog that asks first and starts on Cancel.', hue: 0, Component: Confirm },
   { id: 'share', title: 'Share', blurb: 'Horizontal rows inside a vertical sheet.', hue: 285, Component: Share },
   { id: 'lightbox', title: 'Photo lightbox', blurb: 'Tap a photo: fullscreen on a phone (swipe down to close), a large dialog on desktop.', hue: 340, Component: Lightbox },
   { id: 'filters', title: 'Filters', blurb: 'Form controls, a slider and a sticky footer.', hue: 45, Component: Filters },

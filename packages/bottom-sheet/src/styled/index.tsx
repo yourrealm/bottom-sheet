@@ -2,7 +2,7 @@ import type { ComponentPropsWithRef, ReactElement, ReactNode } from 'react'
 import * as Base from '../react/sheet'
 import { useContext, useEffect } from 'react'
 import { DefaultsContext } from '../react/defaults'
-import { checkCss } from '../react/css-check'
+import { checkCss, checkTokens } from '../react/css-check'
 
 import type { Detent } from '../core/math'
 export type { Detent }
@@ -42,7 +42,10 @@ export const StyledSheet = {
   Backdrop: withClass(Base.Backdrop, 'ybs-backdrop'),
   View: (p: Base.ViewProps) => {
     // Rendered only while a sheet is open: the moment to check the preset's CSS is loaded.
-    useEffect(() => checkCss('styled', 'styled.css'), [])
+    useEffect(() => {
+      checkCss('styled', 'styled.css')
+      checkTokens()
+    }, [])
     return <Base.View {...p} className={cx('ybs-view', p.className)} bleedClassName={cx('ybs-bleed', p.bleedClassName)} />
   },
   Content: withClass(Base.Content, 'ybs-sheet'),

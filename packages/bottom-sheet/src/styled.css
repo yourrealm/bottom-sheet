@@ -8,6 +8,17 @@
  * Light/dark follow the app's `color-scheme` (inherited from <html>), via light-dark(): an app with its own theme
  * switch that sets `color-scheme` gets a matching sheet; `html { color-scheme: light dark }` follows the OS.
  */
+/*
+ * Builds that lower light-dark() for older targets (Lightning CSS: Vite's production build, Tailwind v4) turn it into
+ * `var(--lightningcss-light, A) var(--lightningcss-dark, B)` and set those two switches wherever the app's CSS sets
+ * `color-scheme`. An app that sets none (or only `dark`, in a media query) left both unset: the tokens became "A B",
+ * not a colour, and the sheet went transparent. Default the switches to light in the lowest layer, so any
+ * `color-scheme` the app writes (unlayered or in any layer) still wins. Natively these variables are unused, and
+ * `color-scheme` itself is left alone (a <meta name="color-scheme"> keeps working).
+ */
+@layer ybs-defaults {
+:root { --lightningcss-light: initial; --lightningcss-dark: ; }
+}
 @layer ybs {
 :root { --ybs-css-styled: 1; }
 [data-ybs-root] {
