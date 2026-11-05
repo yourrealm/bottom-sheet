@@ -54,6 +54,15 @@
   border-radius: var(--ybs-radius);
 }
 [data-ybs-root][data-ybs-covered] .ybs-bleed { opacity: 0; }
+/* Content scrolled: the sticky header sits at the top of the screen with rounded corners, and the content scrolling
+   under it showed through the corner cut-outs (seen on Firefox Android: a light card in the top-right corner). Clip
+   the scroller itself, which doesn't move, to those corners: no scroll offset involved, so it holds during a fling.
+   A card-width sheet is clipped to its column. Not for fullscreen (square at the top) or the dialog. */
+[data-ybs-root][data-ybs-scrolled]:not([data-ybs-dialog], [data-ybs-fullscreen]) .ybs-view {
+  --ybs-clip-x: calc((100% - min(100%, var(--ybs-max-width))) / 2);
+  clip-path: inset(0 var(--ybs-clip-x) 0 round var(--ybs-radius) var(--ybs-radius) 0 0);
+}
+[data-ybs-root][data-ybs-scrolled] .ybs-view:has(.ybs-sheet-full) { --ybs-clip-x: 0px; }
 .ybs-sheet {
   background: var(--ybs-sheet-bg);
   color: var(--ybs-sheet-fg);

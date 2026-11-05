@@ -111,6 +111,13 @@ const GLIDE_UP_MS = 400
 const GLIDE_DOWN_MS = 280
 /** A wheel scroll in the content landing at its top (see onWheel): short, easing out. */
 const LAND_MS = 180
+/** After a finger lifts below the floor of a sheet that can't close: how long the browser gets to snap back itself. */
+const BELOW_FLOOR_WAIT_MS = 150
+/**
+ * A swiped-down sheet resting this close to closed (Firefox Android stops at 4-8px) is closed at once: animating the
+ * last pixels, or waiting for the finger, kept the page blocked behind an invisible sliver and ate the taps on it.
+ */
+const SLIVER_PX = 16
 
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
 // the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
@@ -171,6 +178,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let current: Detent | null = null // resting detent
   /** Last scroll event the user caused (finger, momentum, wheel): not ours, not the momentum lock's pin. */
   let lastUserScroll = -Infinity
+  /**
+   * The scrollTop our own code last set (a glide frame, a re-pin). A scroll event that lands exactly there is ours
+   * even when it arrives after `programmatic` was cleared (the glide's last frame is reported a frame after it
+   * settled), so it isn't taken for the user's (a tap right after a sheet settled was dropped as fling-stopping).
+   */
+  let ourTop = NaN
   let emitted: Detent | null = null // last detent reported to onDetentChange
   let retries = 0
   let lock: number | null = null
@@ -272,6 +285,11 @@ export function createSheetController(els: SheetElements, options: SheetControll
       m.toggleAttribute('data-ybs-catch', isPeek(p.detent))
       m.hidden = !stops.some((s) => s.detent === p.detent)
     }
+    // The paint state (data-ybs-scrolled, data-ybs-more, progress) depends on `full` too, not only on scrollTop.
+    // Content that grows while at full (a chat getting a reply) is scrolled by the browser first and measured here
+    // after: that scroll event, painted against the old `full`, set data-ybs-scrolled (493 > 393), the header got
+    // touch-action: none, and with no further scroll nothing cleared it, so the header ignored every swipe.
+    if (isOpen && !detached) paint(scroller.scrollTop)
   }
 
   function scrollToDetent(d: Detent) {
@@ -317,6 +335,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
       t0 ??= now
       const k = Math.min((now - t0) / ms, 1)
       scroller.scrollTop = from + (pos(target) - from) * ease(k)
+      ourTop = scroller.scrollTop
+      // Paint in this frame: the scroll event comes a frame later, and a footer placed from --ybs-visible (a short
+      // sheet opening, a confirm prompt) trailed the sheet by a frame's travel, a visible wobble as it was revealed.
+      paint(scroller.scrollTop)
       if (k < 1) glideRaf = requestAnimationFrame(step)
       else {
         stopGlide()
@@ -404,8 +426,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   function onScroll() {
     const st = scroller.scrollTop
-    lastScrollAt = performance.now()
-    if (!programmatic && lock == null) lastUserScroll = performance.now()
+    if (!programmatic && lock == null && !(Math.abs(st - ourTop) < 0.5)) lastUserScroll = performance.now()
     if (!detached) paint(st)
 
     if (lock != null && !touching) {
@@ -474,7 +495,38 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (isOpen && belowFloor(st)) {
       if (touching) dbg(`at closed, waiting for the finger to lift (st=${st.toFixed(2)})`)
       else settleAtClosed()
+      return
     }
+    settleBetween('scrollend')
+  }
+
+  /**
+   * Firefox Android can leave a swipe resting between closed and the lowest detent (8px, 4px over 0 on a stacked
+   * Language sheet): not closed, not at a detent, an on-screen sliver with the page still inert. Each later touch only
+   * nudged it a pixel, and its scrollend came while that finger was down, so it's checked on scrollend and again when
+   * the finger lifts. Finishes the snap to the nearer of the two. Closing still needs the user (see STRAY_MS): a stray
+   * scroll that rests there goes back up instead.
+   */
+  function settleBetween(from: string) {
+    if (!isOpen || closing || !closable()) return
+    const st = scroller.scrollTop
+    if (belowFloor(st) || st >= pos(floor()) - 2 || stopAt(st, stops)) return
+    const userClose = performance.now() - lastInputAt <= STRAY_MS
+    // A sliver after the user's swipe: already closed to the eye. Close now, even under a finger (a tap on the page).
+    if (userClose && st <= SLIVER_PX && !gliding && !programmatic) {
+      dbg(`a ${st.toFixed(2)}px sliver on ${from}: closed`)
+      stopGlide()
+      scroller.scrollTop = 0
+      finishClose()
+      return
+    }
+    if (touching || gliding || programmatic) {
+      dbg(`between closed and ${String(floor())} on ${from} (st=${st.toFixed(2)}), not now: touching=${touching} gliding=${gliding} prog=${programmatic}`)
+      return
+    }
+    const to = userClose && st < pos(floor()) / 2 ? 'closed' : floor()
+    dbg(`resting between closed and ${String(floor())} on ${from} (st=${st.toFixed(2)}): to ${String(to)}`)
+    scrollToDetent(to)
   }
 
   /**
@@ -503,7 +555,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
   //   (touch-action: none) Chrome Android spends the next tap stopping an invisible fling and sends no click.
   // In each case the click that follows is dropped. The closing layer keeps taking pointer events, so that click
   // lands here instead of on what's underneath (a row of the sheet below).
-  let lastScrollAt = -Infinity
   /** Last touch, wheel, pointer or key input on the sheet: scrolls after it are the user's (see STRAY_MS). */
   let lastInputAt = -Infinity
   const onInput = () => (lastInputAt = performance.now())
@@ -519,7 +570,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (!touch) endDrag?.()
     if (!touch && e.button !== 0) return void (press = null) // right/middle click: not a tap
     const now = performance.now()
-    press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastScrollAt < MOVING_MS, outside: isOutside(e.target), dragged: false }
+    // Moving = the user's own fling (a tap on it only stops it). Not our glide: a tap on the backdrop while the sheet
+    // is still opening was dropped as "stopped the scroll" and did nothing.
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastUserScroll < MOVING_MS, outside: isOutside(e.target), dragged: false }
   }
   function onPressMove(e: PointerEvent) {
     if (press?.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) press.dragged = true
@@ -576,8 +629,28 @@ export function createSheetController(els: SheetElements, options: SheetControll
         dbg('finger lifted while closing: carry on')
         scrollToDetent('closed')
       } else if (!programmatic && belowFloor(scroller.scrollTop)) {
-        dbg('finger lifted at closed')
-        settleAtClosed()
+        if (closable()) {
+          dbg('finger lifted at closed')
+          settleAtClosed()
+          return
+        }
+        // Below the floor of a sheet that can't be dismissed. Chrome snaps back to the floor natively, and gliding there
+        // at the same moment made two animations fight (janky). Give the browser a moment: if it's moving, its
+        // scrollend settles; if nothing moves (Firefox leaves it there), glide back ourselves.
+        dbg('finger lifted below the floor: waiting for the browser to snap')
+        setTimeout(() => {
+          if (touching || gliding || !isOpen || destroyed || !belowFloor(scroller.scrollTop)) return
+          if (performance.now() - lastUserScroll < MOVING_MS) return // still snapping: scrollend takes it from here
+          settleAtClosed()
+        }, BELOW_FLOOR_WAIT_MS)
+      } else if (!programmatic) {
+        // Resting between closed and the lowest detent when the finger lifts (its scrollend came while it was down).
+        // A sliver closes now; otherwise the same wait: a fling or the browser's snap still moving gets its own scrollend.
+        if (scroller.scrollTop <= SLIVER_PX) return settleBetween('lift')
+        setTimeout(() => {
+          if (destroyed || performance.now() - lastUserScroll < MOVING_MS) return
+          settleBetween('lift')
+        }, BELOW_FLOOR_WAIT_MS)
       }
     })
   }
@@ -934,6 +1007,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (d == null) return
     if (gliding) return // the glide aims at the target's current position every frame
     scroller.scrollTop = pos(d)
+    ourTop = scroller.scrollTop
     // Paint now, not on the scroll event a frame later: a footer that grew a line (a 'header+footer' peek) would sit
     // off the header for that frame.
     if (!detached) paint(scroller.scrollTop)

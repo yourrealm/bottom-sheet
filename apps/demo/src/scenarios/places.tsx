@@ -7,14 +7,15 @@ import { reviews } from '../data'
 import { MapView, type Pin } from '../map'
 
 const REVIEWS = reviews(14)
-// Around Strandvägen, Stockholm.
+// Around Strandvägen, Stockholm. The map isn't centred on the café on a narrow phone (it sits left of centre), so the
+// pins stay within ~0.004° of it (a phone shows about ±0.007° across, measured on a 1080px-wide Android).
 const CAFE: [number, number] = [18.0812, 59.3329]
 const PINS: Pin[] = [
   { at: [18.079, 59.3358], x: 22, y: 30, label: 'Bakery' },
-  { at: [18.073, 59.3388], x: 64, y: 22, label: 'Library' },
+  { at: [18.0852, 59.3352], x: 64, y: 22, label: 'Library' },
   { at: CAFE, x: 48, y: 46, label: 'Hallonbacken Café', main: true },
   { at: [18.0775, 59.3318], x: 78, y: 58, label: 'Ferry' },
-  { at: [18.0715, 59.3312], x: 30, y: 66, label: 'Park' },
+  { at: [18.0858, 59.3314], x: 30, y: 66, label: 'Park' },
 ]
 
 /** A peek over the map on a phone, opening on load. As a dialog it would cover the map, so there it waits for the café pin. */

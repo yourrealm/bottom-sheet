@@ -235,6 +235,28 @@ test.describe("'header+footer' detent (chat over a page)", () => {
     expect(Math.abs(after.footerTop - after.headerBottom)).toBeLessThan(2)
   })
 
+  // Content growing while the sheet rests at full (a reply arriving) used to leave data-ybs-scrolled set from a
+  // scroll event painted against the old height: the header then had touch-action: none and swallowed every swipe
+  // (found on the phone). The paint state must follow the new layout.
+  test('a reply that grows the sheet at full leaves the header draggable', async ({ page }) => {
+    await page.goto('/?open=1#/assistant')
+    await waitForEvent(page, 'assistant: onDetentChange full')
+    for (const ask of ['Make it a summer party', 'Move it to Saturday evening']) {
+      await page.getByRole('button', { name: ask }).click()
+      await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled()
+      await page.waitForTimeout(1300) // the reply (900ms) and the re-measure
+    }
+    const state = await page.evaluate(() => {
+      const r = document.querySelector('[data-ybs-root]')!
+      const s = r.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      const sheet = r.querySelector<HTMLElement>('[data-ybs-sheet]')!
+      const full = Math.min(s.clientHeight, sheet.offsetHeight)
+      return { scrolled: r.hasAttribute('data-ybs-scrolled'), contentScrolled: s.scrollTop > full + 1, touchAction: getComputedStyle(r.querySelector('[data-ybs-header]')!).touchAction }
+    })
+    expect(state.scrolled).toBe(state.contentScrolled)
+    if (!state.contentScrolled) expect(state.touchAction).not.toBe('none')
+  })
+
   test('expanded, the composer sits at the bottom with the chat above it', async ({ page }) => {
     await page.goto('/?open=1#/assistant')
     await waitForEvent(page, 'assistant: onDetentChange full')
@@ -1059,6 +1081,46 @@ test('a touch tap on the dimmed area closes once (pointer path, the following cl
   expect((await events(page)).filter((e) => e === 'lab: onOpenChange false')).toHaveLength(1)
 })
 
+// A tap on the backdrop while the sheet is still gliding open closes it: the "a tap on a moving list only stops it"
+// rule is for the user's own flings, not our animation (found on the phone: tapping early did nothing).
+test('a touch tap on the dimmed area while the sheet is still opening closes it', async ({ page, browserName }) => {
+  test.skip(browserName === 'firefox', 'touch emulation: mobile projects only')
+  await page.goto('/#/lab')
+  await page.locator('#open-lab').tap()
+  await page.waitForTimeout(120) // mid-glide (~400ms)
+  await page.touchscreen.tap(40, 120)
+  await waitForEvent(page, 'lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+})
+
+// Firefox Android left a swiped-down stacked sheet resting at 8px: not closed (> 2px), not at a detent, a sliver on
+// screen with the page inert. Resting between closed and the lowest detent now finishes the snap: to closed after user
+// input, back to the detent otherwise (only the user closes by scrolling).
+test.describe('resting between closed and the lowest detent', () => {
+  async function restAt(page: Page, top: number, input: boolean) {
+    await openLab(page)
+    await clearEvents(page)
+    await page.evaluate(([top, input]) => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      if (input) s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 2 }))
+      s.style.scrollSnapType = 'none' // as Firefox did: no snap to finish it
+      s.scrollTop = top as number
+    }, [top, input] as const)
+  }
+  test('after a swipe it closes', async ({ page }) => {
+    await restAt(page, 8, true)
+    await waitForEvent(page, 'lab: onOpenChange false')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+  test('without user input it goes back to the detent', async ({ page }) => {
+    await restAt(page, 8, false)
+    await waitForEvent(page, /resting between closed and 0\.5/)
+    await page.evaluate(() => document.querySelector<HTMLElement>('[data-ybs-scroller]')!.style.removeProperty('scroll-snap-type'))
+    await expect.poll(async () => { const g = await geometry(page); return Math.abs(g.st - g.H * 0.5) }).toBeLessThan(3)
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  })
+})
+
 // A touch tap closes on pointerup, before the browser's click. That click must land on the closing sheet's own
 // overlay, not fall through to a row of the sheet below (reported on the stacked "1000 rows" demo).
 test('a tap on the overlay of a stacked sheet closes it without pressing the row underneath', async ({ page, browserName }) => {
@@ -1091,13 +1153,26 @@ test('a tap on a still-moving list stops it without pressing the row; a tap at r
   await waitForEvent(page, /orders: onDetentChange/)
   const row = (await page.locator('[data-order="2"]').boundingBox())!
   const at = { x: row.x + row.width / 2, y: row.y + row.height / 2 }
-  // "Moving": scroll events right before the touch.
+  // "Moving": the user's scroll events right before the touch. Moved off the resting position (snap off for it), as a
+  // fling does: a scroll event that lands where the library itself put the sheet counts as the library's.
+  // A fling sends scroll events the whole time, so keep sending them while the tap happens (one event left the
+  // tap racing a 100ms window, which WebKit's emulated tap sometimes lost).
   await page.evaluate(() => {
     const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
-    s.scrollTop += 1
-    s.dispatchEvent(new Event('scroll'))
+    s.style.scrollSnapType = 'none'
+    const base = s.scrollTop + 30
+    let i = 0
+    ;(window as unknown as { __fling: number }).__fling = window.setInterval(() => {
+      s.scrollTop = base + (i++ % 2)
+      s.dispatchEvent(new Event('scroll'))
+    }, 20)
   })
+  await page.waitForTimeout(80) // the fling is under way (the first event comes after 20ms)
   await page.touchscreen.tap(at.x, at.y)
+  await page.evaluate(() => {
+    clearInterval((window as unknown as { __fling: number }).__fling)
+    document.querySelector<HTMLElement>('[data-ybs-scroller]')!.style.scrollSnapType = ''
+  })
   await page.waitForTimeout(500)
   await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
   await waitForEvent(page, 'orders: tap stopped the scroll: click dropped')

@@ -39,6 +39,7 @@ export function Assistant({ autoOpen }: { autoOpen: boolean }) {
   ])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [going, setGoing] = useState(false)
   const [detent, setDetent] = useState<'header+footer' | 'full'>(autoOpen ? 'full' : 'header+footer')
   const next = EDITS[messages.filter((m) => m.from === 'you').length % EDITS.length]!
 
@@ -64,7 +65,16 @@ export function Assistant({ autoOpen }: { autoOpen: boolean }) {
           <h2>{event.title}</h2>
           <p className="event-meta">{event.when}<br />{event.where}</p>
           <p>{event.about}</p>
-          <button className="primary wide" onClick={() => log('assistant: RSVP tapped')}>I'm going</button>
+          <button
+            className={going ? 'secondary wide' : 'primary wide'}
+            aria-pressed={going}
+            onClick={() => {
+              log('assistant: RSVP tapped')
+              setGoing((g) => !g)
+            }}
+          >
+            {going ? "You're going ✓" : "I'm going"}
+          </button>
           <p className="muted small">The page stays usable under the chat: tap the button above with the chat minimised.</p>
         </div>
       </article>
