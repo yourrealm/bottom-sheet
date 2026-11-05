@@ -2173,7 +2173,8 @@ test.describe('replaceable (a sheet opening over it takes its place)', () => {
     const frames = await samples(page)
     const start = pageDark(frames[0]!)
     const both = frames.filter((f) => f.length === 2)
-    expect(both.length).toBeGreaterThan(3) // they really moved at the same time
+    // They really moved at the same time. Frames, not time: CI's WebKit drew only 3 in the 280ms close.
+    expect(both.length).toBeGreaterThanOrEqual(2)
     expect(both.some((f) => f[0]!.covered)).toBe(true) // the place sheet recedes, like a sheet going behind another
     expect(both.every((f) => !f[1]!.covered)).toBe(true)
     // The new backdrop starts from nothing (no instant grey over the leaving sheet) ...
