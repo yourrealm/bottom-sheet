@@ -109,6 +109,8 @@ const INPUT_EVENTS = ['touchstart', 'touchend', 'wheel', 'pointerdown', 'pointer
  */
 const GLIDE_UP_MS = 400
 const GLIDE_DOWN_MS = 280
+/** A wheel scroll in the content landing at its top (see onWheel): short, easing out. */
+const LAND_MS = 180
 
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
 // the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
@@ -295,12 +297,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // layout change mid-way (keyboard, URL bar, content) is followed. A touch, wheel or mouse drag stops it.
   let gliding = false
   let glideRaf = 0
-  function glide() {
+  function glide(landing = false) {
     stopGlide()
     if (target == null) return
     const from = scroller.scrollTop
-    const up = pos(target) > from
-    const ms = reducedMotion() ? 0 : up ? GLIDE_UP_MS : GLIDE_DOWN_MS
+    const up = pos(target) > from || landing
+    const ms = reducedMotion() ? 0 : landing ? LAND_MS : up ? GLIDE_UP_MS : GLIDE_DOWN_MS
     if (ms === 0) {
       scroller.scrollTop = pos(target)
       requestAnimationFrame(onScrollEnd)
@@ -410,9 +412,13 @@ export function createSheetController(els: SheetElements, options: SheetControll
       if (Math.abs(st - lock) > 0.5) scroller.scrollTop = lock
       armUnlock()
     } else if (!touching && !programmatic && anchor != null) {
+      // A gesture that started exactly at full belongs to the side it goes to first. Without this, a wheel gesture
+      // from full into the content and back up (one motion) was on neither side: nothing stopped it at full, it ran
+      // down the detents and Chrome's smooth-scroll animation closed the sheet.
+      if (Math.abs(anchor - full) <= 2 && Math.abs(st - full) > 2) anchor = st
       // scroll-snap-stop normally stops momentum at full natively; this only catches a real overshoot
       // (2px tolerance: snap-stop lands on full with sub-pixel rounding).
-      if ((anchor > full + 2 && st < full - 2) || (anchor < full - 2 && st > full + 2)) clamp(full)
+      else if ((anchor > full + 2 && st < full - 2) || (anchor < full - 2 && st > full + 2)) clamp(full)
     }
 
     if (!('onscrollend' in window)) {
@@ -580,6 +586,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // sheet is below full, or at full and scrolling up, each wheel *gesture* steps one detent. At full
   // and scrolling down (or inside the content), the wheel scrolls the content natively.
   let wheelStepped = false
+  /** Per wheel gesture: where the browser's scroll is heading (clamped like the browser does), whether it scrolled the content. */
+  let wheelAim = 0
+  let wheelInContent = false
+  let wheelLanded = false
   function onWheel(e: WheelEvent) {
     if (e.ctrlKey) return // pinch-zoom
     // Shift+wheel scrolls sideways (a photo strip). Chrome on Windows/Linux reports it as deltaY with shiftKey and
@@ -599,10 +609,30 @@ export function createSheetController(els: SheetElements, options: SheetControll
       anchor = st
       programmatic = false
       wheelStepped = false
+      wheelAim = st
+      wheelInContent = false
+      wheelLanded = false
+    }
+    // Landing at the content top. Browsers animate wheel scrolling, so by the time the content reaches its top the
+    // animation is already carrying it past full; the guard then pinned it back (a visible snap back up) and held
+    // it for 800ms, swallowing the next notches. Instead: follow where this gesture is heading, and when an event
+    // would take it past full, cancel it and slide to full ourselves. The rest of the gesture is swallowed; the
+    // next gesture moves the sheet.
+    wheelAim = Math.min(Math.max(wheelAim + wheelPx(e), 0), scroller.scrollHeight - scroller.clientHeight)
+    if (st > full + 1) wheelInContent = true
+    if (wheelLanded) return void e.preventDefault()
+    if (wheelInContent && dy < 0 && st > full + 1 && wheelAim < full) {
+      e.preventDefault()
+      wheelLanded = true
+      dbg(`wheel lands at the content top @${Math.round(st)}`)
+      target = 'full'
+      programmatic = true
+      anchor = null
+      return glide(true)
     }
     // A gesture that started inside the content stops at the content top (native snap-stop / guard);
     // it never goes on to move the sheet.
-    const startedInContent = anchor != null && anchor > full + 1
+    const startedInContent = wheelInContent || (anchor != null && anchor > full + 1)
     if (!inSheetTravel || dy === 0 || Math.abs(e.deltaX) > Math.abs(dy)) return
     e.preventDefault()
     if (startedInContent) return // reached the content top: stop here, don't move the sheet

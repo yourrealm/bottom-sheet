@@ -318,6 +318,26 @@ test('wheel steps detents, then scrolls content, and stops at the content top', 
   await waitForEvent(page, 'lab: onOpenChange false')
 })
 
+// A gesture that starts exactly at full, goes into the content and comes back up (one continuous wheel motion) used
+// to count as neither "in the content" nor "below full", so nothing stopped it at full: it ran down the detents and
+// closed (seen in Chrome on the soft-edge demo).
+test('one wheel gesture from full into the content and back stops at full', async ({ page }, info) => {
+  test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
+  await openLab(page)
+  const p = await headerPoint(page)
+  await page.mouse.move(p.x, p.y + 120)
+  await page.mouse.wheel(0, 100)
+  await waitForEvent(page, 'lab: onDetentChange full')
+  await page.waitForTimeout(400) // a new gesture, starting at full
+  const { full } = await geometry(page)
+  await page.mouse.wheel(0, 300)
+  await expect.poll(async () => (await geometry(page)).st).toBeGreaterThan(full + 100)
+  await page.mouse.wheel(0, -3000) // same gesture (< 250ms later): back up, far past full
+  await page.waitForTimeout(900)
+  expect(Math.abs((await geometry(page)).st - full)).toBeLessThan(3)
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+})
+
 test('wheel friction: a trackpad nudge never closes a single-detent sheet, a long swipe does', async ({ page }, info) => {
   test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
   await page.goto('/?open=1&dialog=0#/product') // detents [] : the only step below full is closed

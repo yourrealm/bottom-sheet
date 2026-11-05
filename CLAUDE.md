@@ -83,6 +83,15 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   each wheel *gesture* (events < 250ms apart) is `preventDefault`ed and steps exactly one detent. At full scrolling down, or
   inside the content, the wheel scrolls natively. A gesture that started in the content stops at the content top and never
   moves the sheet. Touch never produces wheel events.
+- **A wheel scroll lands at the content top** (2026-11-05, maintainer in Chrome: "just when I expect it to move to the
+  next detent it snaps back up"). Browsers animate wheel scrolling, so the content overshot full by ~30px, the guard
+  pinned it back (visible snap) and its 800ms hold swallowed the next notches. Now `onWheel` tracks where the
+  gesture's native scroll is heading (`wheelAim`, clamped to the scroll range); when an event would take it past
+  full, it's cancelled and `glide(true)` slides to full (`LAND_MS` 180, decelerate, snap off). The rest of that
+  gesture is swallowed; the next one steps the sheet. The guard stays as the fallback (touch, other scrollers).
+  Also fixed: a gesture anchored exactly at full belonged to neither side, so full -> content -> back up in one
+  motion ran down the detents and closed (the guard now re-anchors it on the side it moves to first). Test:
+  "one wheel gesture from full into the content and back stops at full".
 - **Closing by wheel has friction** (issue #3, 2026-11-05): a step that would close instead starts a "pull" (snap off
   via `data-ybs-drag`): the sheet follows a damped share of the scroll (at most 56px) and closes on the third
   notch-sized event (two felt too easy on the maintainer's mouse) (>= 15px, or a line/page delta) or 150px added up (a trackpad swipe); with no wheel for 400ms
