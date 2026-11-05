@@ -1,6 +1,6 @@
 {
   "name": "@yourrealm/bottom-sheet",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Native-feeling bottom sheet for the web. One native scroller for sheet travel and content.",
   "license": "MIT",
   "repository": {
