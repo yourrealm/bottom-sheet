@@ -1939,3 +1939,178 @@ test.describe('soft scroll edges (scrollEdge="soft")', () => {
     near(e.lines[3]!, e.footerTop)
   })
 })
+
+test.describe('tokens: --ybs-* overrides from app CSS', () => {
+  // Every token in the README's table, set the documented way: plain (unlayered) app CSS on [data-ybs-root], or on
+  // the sheet for --ybs-dialog-width. Injected before the page loads, like an app's own stylesheet.
+  async function withCss(page: Page, css: string) {
+    await page.addInitScript((text) => {
+      addEventListener('DOMContentLoaded', () => {
+        const s = document.createElement('style')
+        s.textContent = text
+        document.head.append(s)
+      })
+    }, css)
+  }
+  const style = (page: Page, sel: string, prop: string, pseudo?: string) =>
+    page.evaluate(
+      ([sel, prop, pseudo]) => getComputedStyle(document.querySelector(sel!)!, pseudo ?? null).getPropertyValue(prop!),
+      [sel, prop, pseudo] as const,
+    )
+  const rect = (page: Page, sel: string) =>
+    page.evaluate((sel) => document.querySelector(sel)!.getBoundingClientRect().toJSON() as DOMRect, sel)
+
+  test('colours: sheet background and text, muted, handle, divider', async ({ page }) => {
+    await withCss(page, `[data-ybs-root] {
+      --ybs-sheet-bg: rgb(1, 2, 3); --ybs-sheet-fg: rgb(4, 5, 6); --ybs-muted: rgb(7, 8, 9);
+      --ybs-handle: rgb(10, 11, 12); --ybs-divider: rgb(13, 14, 15);
+    }`)
+    await openLab(page)
+    expect(await style(page, '.ybs-sheet', 'background-color')).toBe('rgb(1, 2, 3)')
+    expect(await style(page, '.ybs-header', 'background-color')).toBe('rgb(1, 2, 3)')
+    expect(await style(page, '.ybs-sheet', 'color')).toBe('rgb(4, 5, 6)')
+    expect(await style(page, '.ybs-description', 'color')).toBe('rgb(7, 8, 9)')
+    expect(await style(page, '.ybs-handle', 'background-color')).toBe('rgb(10, 11, 12)')
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.clientHeight + 300
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await expect.poll(() => style(page, '.ybs-header', 'border-bottom-color')).toBe('rgb(13, 14, 15)')
+  })
+
+  test('backdrop colour and how dark it gets', async ({ page }) => {
+    await withCss(page, '[data-ybs-root] { --ybs-backdrop: rgb(200, 0, 0); --ybs-backdrop-max: 0.5; }')
+    await openLab(page)
+    expect(await style(page, '.ybs-backdrop', 'background-color')).toBe('rgb(200, 0, 0)')
+    const progress = Number(await style(page, '[data-ybs-root]', '--ybs-progress'))
+    expect(progress).toBeGreaterThan(0.3)
+    expect(Number(await style(page, '.ybs-backdrop', 'opacity'))).toBeCloseTo(progress * 0.5, 2)
+  })
+
+  test('sizes: corner radius, title size, card width', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen')
+    await withCss(page, `[data-ybs-root] { --ybs-radius: 22px; --ybs-title-size: 25px; --ybs-max-width: 300px; }`)
+    await openLab(page)
+    expect(await style(page, '.ybs-sheet', 'border-top-left-radius')).toBe('22px')
+    expect(await style(page, '.ybs-title', 'font-size')).toBe('25px')
+    expect(Math.round((await rect(page, '.ybs-sheet')).width)).toBe(300)
+  })
+
+  test('body padding (--ybs-body-padding)', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen')
+    await withCss(page, '[data-ybs-root] { --ybs-body-padding: 30px; }')
+    await page.goto('/?open=1&float=1#/lab') // the main lab sheet sets its own (0, edge to edge), which wins
+    await waitForEvent(page, 'float: onDetentChange header')
+    expect(parseFloat(await style(page, '.ybs-body', 'padding-left'))).toBe(30 + 8) // + the floating gap
+  })
+
+  test('the gap above the sheet at full (--ybs-inset)', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen')
+    await withCss(page, '[data-ybs-root] { --ybs-inset: 70px; }')
+    await openLab(page)
+    expect(Math.round((await rect(page, '[data-ybs-scroller]')).top)).toBe(70)
+  })
+
+  test('content column of a full-width sheet (--ybs-content-width)', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen')
+    await withCss(page, '[data-ybs-root] { --ybs-content-width: 200px; }')
+    await page.goto('/?open=1#/notes')
+    await expect(page.locator('.ybs-sheet-full')).toBeVisible()
+    const width = (await rect(page, '.ybs-sheet')).width
+    expect(parseFloat(await style(page, '.ybs-header', 'padding-left'))).toBeCloseTo((width - 200) / 2, 0)
+  })
+
+  test('floating: the gap to the screen edges (--ybs-float-gap)', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen')
+    await withCss(page, '[data-ybs-root] { --ybs-float-gap: 20px; }')
+    await page.goto('/?open=1&float=1#/lab')
+    await waitForEvent(page, 'float: onDetentChange header')
+    expect(await style(page, '.ybs-header', 'padding-left')).toBe('36px') // 16px + the gap
+  })
+
+  test('soft edges: fade length and position from [data-ybs-root]', async ({ page }) => {
+    await withCss(page, `[data-ybs-root] {
+      --ybs-soft-fade: 30px; --ybs-soft-behind-header: 0; --ybs-soft-behind-footer: 0;
+    }`)
+    // The demo sets its own values on the sheet from its switches; drop them so the root's apply.
+    await page.goto('/?n=1#/soft-edge')
+    await waitForEvent(page, 'soft: onDetentChange 0.5')
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-sheet]')!
+      for (const t of ['--ybs-soft-fade', '--ybs-soft-behind-header', '--ybs-soft-behind-footer']) s.style.removeProperty(t)
+      const sc = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      sc.scrollTop = sc.clientHeight + 200
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await page.waitForTimeout(100)
+    const { lines, headerBottom } = await page.evaluate(() => {
+      const body = document.querySelector('[data-ybs-body]')!
+      const b = body.getBoundingClientRect()
+      return {
+        lines: [...getComputedStyle(body).maskImage.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1])),
+        headerBottom: document.querySelector('[data-ybs-header]')!.getBoundingClientRect().bottom - b.top,
+      }
+    })
+    expect(Math.abs(lines[0]! - headerBottom)).toBeLessThan(1.5) // before the header
+    expect(Math.abs(lines[1]! - lines[0]! - 30)).toBeLessThan(1.5)
+  })
+
+  test.describe('dialog', () => {
+    test.beforeEach(async ({ page }, info) => {
+      test.skip(info.project.name !== 'firefox-desktop', 'needs a desktop pointer')
+      await page.setViewportSize({ width: 1440, height: 900 })
+    })
+    const sheetBox = (page: Page) => rect(page, '[data-ybs-sheet]')
+    const shadow = (page: Page) =>
+      page.evaluate(() => {
+        const cs = getComputedStyle(document.querySelector('[data-ybs-track]')!, '::before')
+        return { w: parseFloat(cs.width), h: parseFloat(cs.height), radius: cs.borderTopLeftRadius }
+      })
+
+    for (const [name, route, width] of [['a sheet', 'lab', 480], ['a page sheet', 'notes', 600]] as const) {
+      test(`--ybs-dialog-width on ${name} sizes the dialog and its shadow (issue #8)`, async ({ page }) => {
+        await withCss(page, `[data-ybs-sheet] { --ybs-dialog-width: ${width}px; }`)
+        await page.goto(`/?open=1#/${route}`)
+        await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+        await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-fade') // fully in: no scale
+        await expect.poll(async () => Math.round((await sheetBox(page)).width)).toBe(width)
+        const s = await shadow(page)
+        expect(Math.round(s.w)).toBe(width)
+        expect(Math.round(s.h)).toBe(Math.round((await sheetBox(page)).height))
+      })
+    }
+
+    test('a percentage --ybs-dialog-width is of the space around the dialog', async ({ page }) => {
+      await withCss(page, '[data-ybs-sheet] { --ybs-dialog-width: min(1100px, 50%); }')
+      await page.goto('/?open=1#/lab')
+      await expect.poll(async () => Math.round((await sheetBox(page)).width)).toBe((1440 - 48) / 2)
+    })
+
+    test('gap around it and corner radius (--ybs-dialog-gap, --ybs-dialog-radius)', async ({ page }) => {
+      await withCss(page, '[data-ybs-root] { --ybs-dialog-gap: 60px; --ybs-dialog-radius: 6px; }')
+      await page.goto('/?open=1#/lab') // the lab dialog is taller than the screen: it fills it, minus the gap
+      await waitForEvent(page, 'lab: dialog shown')
+      const box = await sheetBox(page)
+      expect(Math.round(box.top)).toBe(60)
+      expect(Math.round(box.height)).toBe(900 - 120)
+      expect(await style(page, '[data-ybs-sheet]', 'border-top-left-radius')).toBe('6px')
+      expect((await shadow(page)).radius).toBe('6px')
+    })
+
+    test("nothing above the sheet cuts off a backdrop-filter on it (the dialog's shadow)", async ({ page }) => {
+      await page.goto('/?open=1#/lab')
+      await waitForEvent(page, 'lab: dialog shown')
+      const culprits = await page.evaluate(() => {
+        const out: string[] = []
+        for (let el = document.querySelector('[data-ybs-sheet]')!.parentElement; el; el = el.parentElement) {
+          const cs = getComputedStyle(el)
+          if (cs.filter !== 'none' || cs.clipPath !== 'none' || cs.maskImage !== 'none' || cs.opacity !== '1')
+            out.push(`${el.tagName}.${el.className}: ${cs.filter} ${cs.clipPath} ${cs.maskImage} ${cs.opacity}`)
+        }
+        return out
+      })
+      expect(culprits).toEqual([])
+    })
+  })
+})

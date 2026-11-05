@@ -454,10 +454,14 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   (a context of defaults; the sheet's own prop wins). The demo wraps the app in it (`?dialog=0` or the home switch
   turns it off; `#/lab?nodialog=1` opts one sheet out). Classic scrollbars: the dialog is clipped with
   `clip-path: inset(0 round var(--ybs-dialog-radius))` (Chrome/Safari don't round a scroller's own scrollbar), so its
-  shadow is a `box-shadow` on `[data-ybs-track]` (a flex box the size of the dialog in `/styled`; it also takes the
-  open animation's scale so the shadow follows). It used to be a `drop-shadow` filter on the overlay, but a filter,
-  clip-path, opacity or mask on an ancestor cuts off what a `backdrop-filter` on the sheet sees (a blurred dialog
-  showed the page sharp). Same reason the scrolled-header corner clip skips `scrollEdge="soft"` sheets. Demo `#/floating`: Maps-style non-modal floating panel.
+  shadow is a layer of its own: `[data-ybs-track]::before` (the track is `display: contents` there, so it's an
+  absolutely placed box of the overlay, centred like the dialog), sized by `--ybs-dialog-box-w/-h`, which
+  `dialog.ts` sets from the sheet's layout size (open + ResizeObserver). Ruled out: a `drop-shadow` filter on the
+  overlay (0.3.0; a filter, clip-path, opacity or mask on an ancestor cuts off what a `backdrop-filter` on the sheet
+  sees, so a blurred dialog showed the page sharp), and the track as a box around the sheet (0.4.0; it can't read
+  the `--ybs-dialog-width` an app sets on the sheet, issue #8, and fitting it around the sheet collapses a
+  percentage width to 0). Same backdrop-filter reason: the scrolled-header corner clip skips `scrollEdge="soft"`.
+  Tests: "tokens: --ybs-* overrides from app CSS" (every README token, the dialog ones included). Demo `#/floating`: Maps-style non-modal floating panel.
   Device suite with all of it (2026-11-03): 3/3 Chrome + 3/3 Firefox Android PASS. Demo lesson: the hash router must
   `scrollTo(0, 0)` on route change; a scroll kept from the overview left Firefox Android's toolbar hidden on a page one
   screen tall (100dvh grew past the layout viewport) and fixed elements below the screen. Sheets were unaffected. Tests: "dialog on desktop (dialog prop)", firefox-desktop at 1280x800.

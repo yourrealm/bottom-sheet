@@ -72,6 +72,12 @@ export function createDialogController(els: SheetElements, options: SheetControl
   // ---- lines: header divider while content is scrolled under it, footer line while more is below ----
   let scrolled = false
   let more = false
+  /** The sheet's layout size (no transform) for a shadow layer behind it (/styled's dialog shadow). */
+  function syncBox() {
+    root.style.setProperty('--ybs-dialog-box-w', `${sheet.offsetWidth}px`)
+    root.style.setProperty('--ybs-dialog-box-h', `${sheet.offsetHeight}px`)
+  }
+
   function syncLines() {
     softEdge(root, sheet, sheet.getBoundingClientRect().bottom)
     const s = sheet.scrollTop > 1
@@ -106,7 +112,11 @@ export function createDialogController(els: SheetElements, options: SheetControl
 
   // The sheet's own box stops changing once it reaches its max-height, so watch its parts too (content growing or
   // shrinking inside a full-height dialog changes whether there is more below), and parts added later.
-  const ro = new ResizeObserver(() => isOpen && syncLines())
+  const ro = new ResizeObserver(() => {
+    if (!isOpen) return
+    syncBox()
+    syncLines()
+  })
   const observeParts = () => {
     for (const el of Array.from(sheet.children)) ro.observe(el)
   }
@@ -145,6 +155,7 @@ export function createDialogController(els: SheetElements, options: SheetControl
         }
         syncViewport()
         paint(0)
+        syncBox()
         syncLines()
       }
       dbg('dialog open')

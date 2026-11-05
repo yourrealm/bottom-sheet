@@ -230,25 +230,23 @@
   scrollbar-color: color-mix(in srgb, var(--ybs-muted) 45%, transparent) transparent;
   --ybs-body-inset: var(--ybs-body-padding);
 }
-/* The shadow: the track (display: contents in the structural CSS) becomes a box the size of the dialog and draws it.
-   Not a filter: drop-shadow() on the overlay, which was simpler, because a filter (or clip-path, opacity, mask) on an
-   ancestor cuts off what a backdrop-filter on the sheet can see: a blurred translucent dialog lost its blur.
-   While it fades in, the scale moves to the track (a transform doesn't do that) so the shadow scales with the dialog,
-   and the shadow fades with --ybs-progress. */
-[data-ybs-dialog] [data-ybs-track]:has(> .ybs-sheet) {
-  display: flex; flex-direction: column; min-height: 0; max-height: 100%;
-  width: min(100%, var(--ybs-dialog-width, 32rem));
+/* The shadow is a layer of its own behind the dialog: the track's ::before (the track is display: contents here, so
+   it's a box of the overlay, absolutely placed and centred like the dialog). The dialog controller sets its size
+   (--ybs-dialog-box-w/-h, the sheet's layout size). Not a filter: drop-shadow() on the overlay, which was simpler,
+   because a filter (or clip-path, opacity, mask) on an ancestor cuts off what a backdrop-filter on the sheet can see
+   (a blurred translucent dialog lost its blur). Not a box the sheet sits in either: it can't be sized by the sheet's
+   --ybs-dialog-width (custom properties don't inherit up; issue #8), nor fit around it (a percentage width collapses).
+   It scales and fades with the dialog while it opens and closes. */
+[data-ybs-dialog] [data-ybs-track]:has(> .ybs-sheet)::before {
+  content: ''; position: absolute; inset: 0; margin: auto; pointer-events: none;
+  width: var(--ybs-dialog-box-w, 0px); height: var(--ybs-dialog-box-h, 0px);
   border-radius: var(--ybs-dialog-radius);
-  box-shadow:
-    0 0 0 0.5px color-mix(in srgb, var(--ybs-divider) calc(100% * var(--ybs-progress, 1)), transparent),
-    0 16px 40px rgb(0 0 0 / calc(0.22 * var(--ybs-progress, 1)));
+  box-shadow: 0 0 0 0.5px var(--ybs-divider), 0 16px 40px rgb(0 0 0 / 0.22);
 }
-[data-ybs-dialog] [data-ybs-track]:has(> .ybs-sheet-page) { --ybs-dialog-width: 48rem; }
-[data-ybs-dialog] [data-ybs-track] > .ybs-sheet.ybs-sheet { width: 100%; }
-[data-ybs-root][data-ybs-dialog][data-ybs-fade] [data-ybs-track]:has(> .ybs-sheet) {
+[data-ybs-root][data-ybs-dialog][data-ybs-fade] [data-ybs-track]:has(> .ybs-sheet)::before {
+  opacity: var(--ybs-progress, 0);
   transform: scale(calc(0.96 + 0.04 * var(--ybs-progress, 0)));
 }
-[data-ybs-root][data-ybs-dialog][data-ybs-fade] [data-ybs-track] > .ybs-sheet { transform: none; }
 [data-ybs-dialog] .ybs-sheet.ybs-sheet-full { --ybs-body-inset: max(var(--ybs-body-padding), (100cqw - var(--ybs-content-width)) / 2); }
 [data-ybs-dialog] .ybs-sheet.ybs-sheet-page { --ybs-dialog-width: 48rem; min-height: min(100%, 36rem); }
 [data-ybs-dialog] .ybs-sheet > .ybs-header.ybs-header {

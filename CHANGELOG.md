@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `--ybs-dialog-width` set on the sheet (the documented place, through `className`) was ignored in the dialog
+  presentation in 0.4.0, for `variant="page"` too (#8). The dialog's shadow is now a layer behind it instead of a box
+  around it, so the blur fix from 0.4.0 stays.
+
 ## 0.4.0 (2026-11-05)
 
 ### Added
