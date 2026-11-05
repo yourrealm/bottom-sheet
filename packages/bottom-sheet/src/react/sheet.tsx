@@ -28,6 +28,7 @@ import {
   pushSheet,
   releaseInert,
   removeSheet,
+  unreplaceSheet,
   reportProgress,
   type StackEntry,
   takesEscape,
@@ -37,7 +38,7 @@ import { checkCss } from './css-check'
 import { DefaultsContext } from './defaults'
 
 /** Why the sheet is asking to open or close. */
-export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'
+export type OpenChangeReason = 'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe' | 'replace'
 
 export interface OpenChangeDetails {
   reason: OpenChangeReason
@@ -56,6 +57,7 @@ interface SheetContextValue {
   closeOnBack: boolean
   fullscreen: boolean
   recede: boolean
+  replaceable: boolean
   detents: readonly Detent[]
   initialDetent: Detent | undefined
   detent: Detent | undefined
@@ -86,6 +88,12 @@ const SheetContext = createContext<SheetContextValue | null>(null)
  * Its own context (not SheetContext), so nested closed sheets re-render only when it changes.
  */
 const HoldNestedContext = createContext(false)
+/**
+ * The portal roots of the sheet this context is under and of the sheets around it (a stable getter, so nested
+ * closed sheets don't re-render when a parent changes). A sheet can't replace one it's rendered inside: it would
+ * close with it.
+ */
+const SheetRootsContext = createContext<() => HTMLElement[]>(() => [])
 
 function useSheet(part: string) {
   const ctx = useContext(SheetContext)
@@ -185,6 +193,14 @@ export interface RootProps {
    * While receding, `position: fixed` elements inside the wrapper are positioned against it.
    */
   recede?: boolean
+  /**
+   * A sheet that opens over this one replaces it instead of stacking on it: this one closes
+   * (`onOpenChange(false, { reason: 'replace' })`) while the new one opens, both at once, the page staying evenly
+   * dimmed, and focus later returns to whatever opened this one. For a step in a flow (a place sheet whose Share
+   * opens a separate share sheet). A sheet rendered inside this one still stacks on it (it can't replace its own
+   * parent: it would close with it), so render the next step beside this sheet, not in it.
+   */
+  replaceable?: boolean
   /** Detent to open at. Default: the smallest usable partial detent, else `full`. */
   initialDetent?: Detent
   /** Controlled resting detent. Changing it moves the sheet. */
@@ -267,9 +283,11 @@ export function Root(props: RootProps) {
     dismissible = true,
     fullscreen = false,
     recede = false,
+    replaceable = false,
     debug,
     onExitComplete,
   } = props
+  const outerRoots = useContext(SheetRootsContext)
   const defaults = useContext(DefaultsContext)
   const dialogProp = props.dialog ?? defaults.dialog
   const [openState, setOpenState] = useState(defaultOpen)
@@ -293,6 +311,7 @@ export function Root(props: RootProps) {
   const closeOnBack = props.closeOnBack ?? modal
   const controller = useRef<SheetController | null>(null)
   const rootEl = useRef<HTMLDivElement | null>(null)
+  const sheetRoots = useCallback(() => (rootEl.current ? [rootEl.current, ...outerRoots()] : outerRoots()), [outerRoots])
   const sheetEl = useRef<HTMLElement | null>(null)
   const initialFocus = useRef<InitialFocus | undefined>(undefined)
   useEffect(trackInteraction, [])
@@ -373,6 +392,7 @@ export function Root(props: RootProps) {
       closeOnBack,
       fullscreen,
       recede,
+      replaceable,
       detents,
       initialDetent,
       detent,
@@ -392,12 +412,14 @@ export function Root(props: RootProps) {
       setHasDescription,
       setStacked,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dialog, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
+    [open, mounted, setOpen, requestDismiss, modal, dialog, dismissible, closeOnBack, fullscreen, recede, replaceable, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
   )
 
   return (
     <SheetContext.Provider value={value}>
-      <HoldNestedContext.Provider value={holdNested}>{children}</HoldNestedContext.Provider>
+      <HoldNestedContext.Provider value={holdNested}>
+        <SheetRootsContext.Provider value={sheetRoots}>{children}</SheetRootsContext.Provider>
+      </HoldNestedContext.Provider>
     </SheetContext.Provider>
   )
 }
@@ -464,6 +486,7 @@ export interface PortalProps {
 /** Fixed layer. Mounted while open or animating closed. A modal sheet makes the rest of the page inert. */
 export function Portal({ children, container }: PortalProps) {
   const ctx = useSheet('Portal')
+  const sheetRoots = useContext(SheetRootsContext)
   useEffect(() => {
     if (ctx.mounted) checkCss('core', 'styles.css')
   }, [ctx.mounted])
@@ -479,10 +502,21 @@ export function Portal({ children, container }: PortalProps) {
     const root = ctx.rootEl.current
     if (!ctx.mounted || !root) return
     // Stack: Escape goes to the top sheet only; the sheet below can recede.
-    const { recede, modal } = ctxRef.current
-    const entry: StackEntry = { root, close: () => dismissRef.current('escape'), recede: recede && modal, modal }
+    const { recede, modal, replaceable } = ctxRef.current
+    const entry: StackEntry = {
+      root,
+      close: () => dismissRef.current('escape'),
+      recede: recede && modal,
+      modal,
+      replaceable,
+      ancestors: sheetRoots().filter((r) => r !== root),
+      returnFocus: ctxRef.current.returnFocus,
+      closeForReplace: () => ctxRef.current.setOpen(false, 'replace'),
+    }
     entryRef.current = entry
-    pushSheet(entry)
+    const replaced = pushSheet(entry)
+    // Focus was on a control in the replaced sheet (its Share button), which is going away: return to what opened that one.
+    if (replaced?.returnFocus) ctxRef.current.returnFocus.current = replaced.returnFocus.current
     ctxRef.current.setStacked(true) // a sheet nested inside may mount now (see Root)
     return () => {
       removeSheet(entry)
@@ -491,8 +525,8 @@ export function Portal({ children, container }: PortalProps) {
     }
   }, [ctx.mounted, ctx.rootEl])
   useEffect(() => {
-    if (entryRef.current) updateSheet(entryRef.current, { recede: ctx.recede && ctx.modal, modal: ctx.modal })
-  }, [ctx.recede, ctx.modal])
+    if (entryRef.current) updateSheet(entryRef.current, { recede: ctx.recede && ctx.modal, modal: ctx.modal, replaceable: ctx.replaceable })
+  }, [ctx.recede, ctx.modal, ctx.replaceable])
 
   // The page is inert only while the sheet is open, not while it animates closed: as soon as it starts
   // closing, the page (or the sheet below) takes input and focus again, like a native dialog. Otherwise
@@ -507,6 +541,11 @@ export function Portal({ children, container }: PortalProps) {
     return () => {
       releaseInert(held)
       dbg(`portal unmount: released ${held.length}`)
+      // Focus already moved into another sheet (the one replacing this, or one that opened in the same render: it
+      // focuses in a layout effect, before this cleanup): don't pull it back to the page. A non-modal replacement
+      // doesn't take focus, so focus, still on our Share button, goes back to what opened this sheet as usual.
+      const active = document.activeElement
+      if (active && !root.contains(active) && active.closest('[data-ybs-root]')) return
       // Restore focus only after lifting inert: while the page is inert, focus() is a no-op.
       // Kept (not cleared): reopened during the close animation, the sheet gives focus back here again later.
       const back = ctx.returnFocus.current
@@ -526,7 +565,11 @@ export function Portal({ children, container }: PortalProps) {
   const [rearm, setRearm] = useState(0)
   const listenForBack = ctx.mounted && ctx.open && ctx.closeOnBack
   useEffect(() => {
-    if (entryRef.current) entryRef.current.closing = !ctx.open
+    const entry = entryRef.current
+    if (!entry) return
+    entry.closing = !ctx.open
+    // Opened again while it was being replaced (reversing its close): an ordinary sheet in the stack again.
+    if (ctx.open) unreplaceSheet(entry)
   }, [ctx.open, ctx.mounted])
   useEffect(() => {
     const Watcher = closeWatcher()

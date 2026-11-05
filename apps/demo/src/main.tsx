@@ -12,6 +12,7 @@ import { Product } from './scenarios/product'
 import { Confirm } from './scenarios/confirm'
 import { Assistant } from './scenarios/assistant'
 import { SoftEdge } from './scenarios/soft-edge'
+import { Replace } from './scenarios/replace'
 import { Share } from './scenarios/share'
 import { Filters } from './scenarios/filters'
 import { Playlist } from './scenarios/playlist'
@@ -47,6 +48,7 @@ const SCENARIOS: Scenario[] = [
   { id: 'lightbox', title: 'Photo lightbox', blurb: 'Tap a photo: fullscreen on a phone (swipe down to close), a large dialog on desktop.', hue: 340, Component: Lightbox },
   { id: 'filters', title: 'Filters', blurb: 'Form controls, a slider and a sticky footer.', hue: 45, Component: Filters },
   { id: 'playlist', title: 'Playlist', blurb: 'Built from the headless parts, fully custom look.', hue: 320, Component: Playlist },
+  { id: 'replace', title: 'Replace, not stack', blurb: 'Share takes the place sheet\'s spot instead of stacking on it: a replaceable sheet.', hue: 170, Component: Replace },
   { id: 'settings', title: 'Stacked settings', blurb: 'Sheets on sheets, three levels deep. The one below recedes.', hue: 200, Component: Settings },
   { id: 'thousand', title: '1000 sheets', blurb: 'A list of 1000 rows where every row owns its own sheet.', hue: 100, Component: Thousand },
   { id: 'persistent', title: 'Persistent (non-modal)', blurb: 'Never closes, peeks at 76px; the page behind stays usable.', hue: 260, modeless: true, Component: Persistent },

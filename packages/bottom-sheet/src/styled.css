@@ -59,6 +59,11 @@
   border-radius: var(--ybs-radius);
 }
 [data-ybs-root][data-ybs-covered] .ybs-bleed { opacity: 0; }
+/* Replaced (`replaceable`): its backdrop fades out as the new sheet's fades in (the stack sets the handoff), and with
+   its own close too, whichever is lower (a new sheet resting part-way up would otherwise leave it on until it's gone). */
+[data-ybs-root][data-ybs-replaced] .ybs-backdrop {
+  opacity: calc(min(var(--ybs-progress, 0), var(--ybs-backdrop-handoff, 0)) * var(--ybs-backdrop-max));
+}
 /* Content scrolled: the sticky header sits at the top of the screen with rounded corners, and the content scrolling
    under it showed through the corner cut-outs (seen on Firefox Android: a light card in the top-right corner). Clip
    the scroller itself, which doesn't move, to those corners: no scroll offset involved, so it holds during a fling.

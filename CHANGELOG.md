@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `replaceable` (on `BottomSheet` and `Sheet.Root`): a sheet that opens over this one replaces it instead of
+  stacking on it, both moving at once, for a step in a flow (a place sheet whose Share opens a separate share sheet).
+  The replaced sheet gets `onOpenChange(false, { reason: 'replace' })` (a new reason) and recedes behind the new one
+  as it leaves; the backdrops cross-fade (no darker flash), a receded page stays receded, and focus returns to what
+  opened it. Sheets opened together in one render stack. A sheet rendered inside it still stacks.
+  See "Replacing a sheet" in the README.
+
 ### Fixed
 
 - `--ybs-dialog-width` set on the sheet (the documented place, through `className`) was ignored in the dialog

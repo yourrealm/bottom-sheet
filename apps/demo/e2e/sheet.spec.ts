@@ -2114,3 +2114,197 @@ test.describe('tokens: --ybs-* overrides from app CSS', () => {
     })
   })
 })
+
+test.describe('replaceable (a sheet opening over it takes its place)', () => {
+  interface Frame {
+    title: string
+    /** Backdrop opacity. */
+    dim: number
+    /** Backdrop colour alpha times opacity: how much it darkens. */
+    dark: number
+    progress: number
+    covered: boolean
+    recede: boolean
+  }
+  /** Each animation frame from now on: per open sheet, its title, backdrop, progress, covered state, page recede. */
+  const sample = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as { samples: Frame[][] }
+      w.samples = []
+      const tick = () => {
+        w.samples.push(
+          [...document.querySelectorAll('[data-ybs-root]')].map((r) => {
+            const cs = getComputedStyle(r.querySelector('.ybs-backdrop')!)
+            const alpha = Number(/rgba?\([^)]*?([\d.]+)\)$/.exec(cs.backgroundColor.replace(/rgb\(([^,]+),([^,]+),([^,)]+)\)/, 'rgba($1,$2,$3,1)'))?.[1] ?? 1)
+            const dim = Number(cs.opacity)
+            return {
+              title: r.querySelector('.ybs-title')!.textContent!,
+              dim,
+              dark: dim * alpha,
+              progress: Number(getComputedStyle(r).getPropertyValue('--ybs-progress')),
+              covered: r.hasAttribute('data-ybs-covered'),
+              recede: document.documentElement.hasAttribute('data-ybs-recede'),
+            }
+          }),
+        )
+        if (w.samples.length < 60) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
+  const samples = (page: Page) => page.evaluate(() => (window as unknown as { samples: Frame[][] }).samples)
+  /** How dark the page looks under all the backdrops: they composite, they don't add up. */
+  const pageDark = (f: Frame[]) => 1 - f.reduce((m, x) => m * (1 - x.dark), 1)
+  const shown = (page: Page, title: string) => expect(page.locator('[data-ybs-root] .ybs-title')).toHaveText(new RegExp(title))
+
+  async function openPlace(page: Page, query = '') {
+    await page.goto(`/?n=1${query}#/replace`)
+    await page.getByRole('button', { name: 'Show Café Mollan' }).click()
+    await waitForEvent(page, /replace-place: (onDetentChange|dialog shown)/)
+    await page.waitForTimeout(150)
+  }
+
+  test('a sheet opening over it closes it (reason "replace"): it recedes behind the new one, the page evenly dimmed', async ({ page }) => {
+    await openPlace(page)
+    await sample(page)
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await shown(page, 'Share')
+    const frames = await samples(page)
+    const start = pageDark(frames[0]!)
+    const both = frames.filter((f) => f.length === 2)
+    expect(both.length).toBeGreaterThan(3) // they really moved at the same time
+    expect(both.some((f) => f[0]!.covered)).toBe(true) // the place sheet recedes, like a sheet going behind another
+    expect(both.every((f) => !f[1]!.covered)).toBe(true)
+    // The new backdrop starts from nothing (no instant grey over the leaving sheet) ...
+    expect(both[0]![1]!.dim).toBeLessThan(0.3)
+    // ... and the two cross-fade: never darker than one sheet's dim (no flash), at most a slight dip.
+    for (const f of [...frames]) {
+      expect(pageDark(f)).toBeLessThanOrEqual(start + 0.01)
+      expect(pageDark(f)).toBeGreaterThan(start * 0.8)
+    }
+  })
+
+  test('focus moves into the new sheet; closing it returns focus to what opened the first one', async ({ page }, info) => {
+    test.skip(info.project.name === 'webkit-mobile', "WebKit doesn't focus a tapped button: there's nothing to return to")
+    await openPlace(page)
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.closest('[data-ybs-root]')?.querySelector('.ybs-title')?.textContent))
+      .toMatch(/Share/)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Show Café Mollan' })).toBeFocused()
+  })
+
+  test('a sheet rendered inside the replaceable one stacks on it instead (it would close with its parent)', async ({ page }) => {
+    await openPlace(page)
+    await page.getByRole('button', { name: 'Directions' }).click()
+    await waitForEvent(page, /replace-directions: (onDetentChange|dialog shown)/)
+    const roots = page.locator('[data-ybs-root]')
+    await expect(roots).toHaveCount(2)
+    await expect(roots.nth(0)).toHaveAttribute('data-ybs-covered', '')
+    await expect(roots.nth(0)).not.toHaveAttribute('data-ybs-replaced')
+    expect(await events(page)).not.toContain('replace-place: onOpenChange false replace')
+    await page.keyboard.press('Escape')
+    await expect(roots).toHaveCount(1)
+    await shown(page, 'Café Mollan')
+  })
+
+  test('over a sheet that is not replaceable, a sheet stacks as usual', async ({ page }) => {
+    await openPlace(page)
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await page.getByRole('button', { name: 'More', exact: true }).click()
+    await waitForEvent(page, /replace-more: (onDetentChange|dialog shown)/)
+    const roots = page.locator('[data-ybs-root]')
+    await expect(roots).toHaveCount(2)
+    await expect(roots.nth(0)).toHaveAttribute('data-ybs-covered', '') // Share recedes behind More
+    await expect(roots.nth(0)).not.toHaveAttribute('data-ybs-replaced')
+    await expect(roots.nth(1).locator('.ybs-title')).toHaveText('More apps')
+    await page.keyboard.press('Escape')
+    await expect(roots).toHaveCount(1)
+    await shown(page, 'Share')
+    await expect(roots.nth(0)).not.toHaveAttribute('data-ybs-covered')
+  })
+
+  test('the app keeps it open (ignores the "replace" close): it stays a stacked sheet and closes normally later', async ({ page }, info) => {
+    test.skip(info.project.name === 'webkit-mobile', "WebKit doesn't focus a tapped button: there's nothing to return to")
+    await openPlace(page, '&keep=1')
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    const roots = page.locator('[data-ybs-root]')
+    await expect(roots).toHaveCount(2)
+    await page.keyboard.press('Escape') // closes Share
+    await expect(roots).toHaveCount(1)
+    await expect(roots).not.toHaveAttribute('data-ybs-replaced')
+    // Its dim is its own again, not a stale hand-off.
+    const { dim, progress } = await page.evaluate(() => ({
+      dim: Number(getComputedStyle(document.querySelector('.ybs-backdrop')!).opacity),
+      progress: Number(getComputedStyle(document.querySelector('[data-ybs-root]')!).getPropertyValue('--ybs-progress')),
+    }))
+    expect(dim).toBeGreaterThan(progress * 0.5)
+    await page.keyboard.press('Escape')
+    await expect(roots).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Show Café Mollan' })).toBeFocused()
+  })
+
+  test('page sheets: the page behind stays receded through the swap', async ({ page }, info) => {
+    test.skip(info.project.name === 'firefox-desktop', 'a sheet on a phone-sized screen (recede)')
+    await openPlace(page, '&page=1')
+    await expect(page.locator('html')).toHaveAttribute('data-ybs-recede', '')
+    await sample(page)
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await page.waitForTimeout(300)
+    const frames = await samples(page)
+    expect(frames.every((f) => f.every((x) => x.recede))).toBe(true)
+    await expect(page.locator('html')).toHaveAttribute('data-ybs-recede', '')
+  })
+
+  test('a new sheet resting part-way up: the leaving backdrop fades with its own close too', async ({ page }) => {
+    await openPlace(page, '&half=1')
+    await sample(page)
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    const frames = await samples(page)
+    const max = 0.6 // --ybs-backdrop-max
+    for (const f of frames.filter((f) => f.length === 2)) expect(f[0]!.dim).toBeLessThanOrEqual(f[0]!.progress * max + 0.01)
+  })
+
+  test('a non-modal new sheet: focus goes back to what opened the replaced one, not to the page body', async ({ page }, info) => {
+    test.skip(info.project.name === 'webkit-mobile', "WebKit doesn't focus a tapped button: there's nothing to return to")
+    await openPlace(page, '&modeless=1')
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await expect(page.getByRole('button', { name: 'Show Café Mollan' })).toBeFocused()
+  })
+
+  test('opened together in one render (a deep link): they stack, whatever their order', async ({ page }) => {
+    await page.goto('/?n=1&both=1#/replace')
+    const roots = page.locator('[data-ybs-root]')
+    await expect(roots).toHaveCount(2)
+    await waitForEvent(page, /replace-share: (onDetentChange|dialog shown)/)
+    await page.waitForTimeout(300)
+    await expect(roots).toHaveCount(2)
+    await expect(roots.nth(0)).not.toHaveAttribute('data-ybs-replaced')
+    expect((await events(page)).some((e) => e.includes('onOpenChange false replace'))).toBe(false)
+  })
+
+  test('as dialogs on desktop', async ({ page }, info) => {
+    test.skip(info.project.name !== 'firefox-desktop', 'needs a desktop pointer')
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await openPlace(page)
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+    await page.getByRole('button', { name: 'Share…' }).click()
+    await waitForEvent(page, 'replace-place: onOpenChange false replace')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+    await shown(page, 'Share')
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-covered')
+  })
+})

@@ -228,6 +228,22 @@ const SCENES: Record<string, () => ReactNode> = {
       </Sheet>
     </>
   ),
+  replace: () => (
+    <>
+      <g opacity={0.45}>
+        <Sheet y={58} inset={4}>
+          <Line x={12} y={70} w={50} />
+        </Sheet>
+      </g>
+      <path className="pv-ink" d="M84 50 l 8 -8 m -8 8 l 8 8" opacity={0.5} />
+      <Sheet y={34} inset={30}>
+        <Line x={42} y={45} w={40} />
+        {[0, 1, 2].map((i) => (
+          <rect key={i} className="pv-accent" opacity={0.5} x={42 + i * 26} y={56} width={18} height={18} rx={5} />
+        ))}
+      </Sheet>
+    </>
+  ),
   'soft-edge': () => (
     <>
       {[0, 1, 2, 3, 4, 5].map((i) => (

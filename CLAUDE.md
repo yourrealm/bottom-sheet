@@ -233,6 +233,27 @@ reopened on Space). Test: "the page takes focus and input back as soon as the sh
   change, on load). Reviewed by a fresh agent: three levels at once, headless child outside the Portal, non-modal
   parent, StrictMode all fine. Left as is: on load (no user activation) the browser groups the two CloseWatchers, so
   one Escape/back closes both (not a regression; re-arming would fight the anti-trap rule; README says so).
+- **`replaceable`** (2026-11-05, maintainer: a step in a flow of separate sheets; first built as `replace` on the
+  opening sheet, then moved to the sheet being replaced at their request: no Back button, and the next sheet stays a
+  generic component that stacks elsewhere). When a sheet is pushed and the top (non-replaced) entry is `replaceable`
+  and isn't one of the new sheet's ancestors (`ancestorRoots()` from the parent SheetContext chain: a nested sheet
+  would unmount with its parent), that entry closes (`closeForReplace` -> `setOpen(false, 'replace')`) while the new
+  one opens, both at once (preferred over one-after-the-other on the phone), the new one in front. The old entry is
+  marked `replaced` and stays covered by the new one (it recedes as it leaves: the maintainer liked that it reads as
+  the new sheet opening in front; raising the old sheet above instead, undimmed, felt like the new one came from
+  behind). Backdrops cross-fade: the old one's opacity is `--ybs-backdrop-handoff` = its progress at the swap x
+  (1 - the new sheet's progress), and `/styled` takes min() with its own progress (a new sheet resting part-way
+  up left it on until unmount). Composited (measured), the page dims 0.40 -> 0.36 -> 0.40 and never flashes darker. (First version:
+  hide the old backdrop and floor the new one at the old dim; that greyed the leaving sheet in one frame.) A
+  replaced sheet's own progress covers nothing below it. Review fixes (fresh agent): `replaced` is undone
+  (`unreplaceSheet`) when the sheet reopens or when its replacer leaves while it's still open (the app ignored the
+  close; StrictMode's effect re-run); recede is driven by the lowest non-replaced receding sheet, with max() of the
+  two covers during the swap; only a `settled` sheet (on the stack since an earlier task, set in a microtask) can be
+  replaced, so two sheets opened in one render stack whatever their JSX order; the ancestor check reads its own
+  stable context (`SheetRootsContext`), so closed nested sheets don't re-render on parent changes. Focus: the new sheet inherits the old one's `returnFocus` (the old one's own button is going away), and a
+  closing sheet doesn't pull focus back to the page when focus is already in another sheet (a sheet focuses in a
+  layout effect, before the other's passive cleanup); with a non-modal replacement (no focus move) it restores as usual. Demo `#/replace` (Directions inside the place
+  sheet stacks; More inside Share stacks). Tests: "replaceable (a sheet opening over it takes its place)".
 - Demo: Stacked settings (three levels: Settings → Appearance → Accent colour, plus a controlled Language sheet;
   "Change language" / `?open=language` opens Settings and Language together).
 

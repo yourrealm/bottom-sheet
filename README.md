@@ -156,7 +156,7 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
   (`0.5`, `'76px'`, `'header'`, `'header+footer'`). Pass `detent` to control it (changing it moves the sheet). `onDetentChange` never
   reports `'closed'` (closing is `onOpenChange(false)`), so `detent={d} onDetentChange={setD}` round-trips.
 - `open` / `defaultOpen` / `onOpenChange(open, { reason })`: controlled or uncontrolled. The reason is
-  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe'`. Use `open` when a sheet has several
+  `'trigger' | 'close-button' | 'escape' | 'back' | 'outside-press' | 'swipe' | 'replace'`. Use `open` when a sheet has several
   openers, or opening runs your own logic.
 - `onExitComplete`: called once the sheet has finished closing and left the page. See "Closing animates".
 - `modal` (default `true`): `false` leaves the page usable around the sheet: no backdrop (`BottomSheet` drops it), no
@@ -180,6 +180,7 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 - `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
   `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
   positioned against it. Modal sheets only. On by default for `variant="page"`.
+- `replaceable`: a sheet that opens over this one replaces it instead of stacking on it. See "Replacing a sheet".
 - `dialog`: show it as a centred dialog on a wide screen used with a mouse. On by default for `BottomSheet`, off for
   `Sheet.Root`. See "Dialog on desktop".
 - `debug`: a function that receives the sheet's internal decision log, for testing gestures on a device.
@@ -308,6 +309,30 @@ Both can open at once (a deep link that sets both `open` states): the inner one 
 still lands on top, and closing it gives focus back inside the parent. One browser rule to know: sheets opened
 without a user action in between (both open on page load) share one back/Escape listener (`CloseWatcher`'s
 anti-trap grouping), so the first back or Escape closes both. Opened from a tap or click, they close one at a time.
+
+### Replacing a sheet
+
+For a step in a flow, where the next sheet takes the place of the current one instead of stacking on it (a place,
+then Share), make the current one `replaceable`:
+
+```tsx
+<BottomSheet replaceable open={place} onOpenChange={setPlace} title="Café Mollan">
+  <button onClick={() => setShare(true)}>Share…</button>
+</BottomSheet>
+<BottomSheet open={share} onOpenChange={setShare} title="Share">…</BottomSheet>
+```
+
+Opening Share is all the app does: the place sheet gets `onOpenChange(false, { reason: 'replace' })` and slides away
+behind Share as Share comes up in front, receding like a sheet going behind another (a replace closes it even with
+`dismissible={false}`). The two backdrops cross-fade, so the page never gets darker for a moment (it lightens slightly
+mid-swap), and a page that recedes behind them stays receded. Focus moves into the new sheet, and when it closes focus
+goes back to what opened the place sheet (a non-modal new sheet doesn't take focus: it goes back right away). If your
+`onOpenChange` keeps the place sheet open anyway, it simply stays, stacked under Share. The new sheet needs nothing, so a generic Share sheet still stacks wherever else it's used.
+A sheet rendered *inside* the replaceable one stacks on it as usual (a confirm prompt, Directions): it can't replace
+its own parent, it would close with it. So render the next step beside the replaceable sheet, in whatever component
+owns it. `replaceable` acts on a sheet that's already open: two sheets opened in the same render (a deep link that
+sets both) stack. Works the same as dialogs on desktop. Headless: give `[data-ybs-replaced] [data-ybs-backdrop]` the opacity
+`min(var(--ybs-progress), var(--ybs-backdrop-handoff))` (what's left of its dim) instead of `--ybs-progress`.
 
 ### Dialog on desktop
 
