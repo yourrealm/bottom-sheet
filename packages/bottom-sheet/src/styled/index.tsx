@@ -55,7 +55,7 @@ export const StyledSheet = {
   Description: withClass(Base.Description, 'ybs-description'),
   Footer: withClass(Base.Footer, 'ybs-footer'),
   /** The padded content area, after `Header`: the same side space as the header, so text lines up with the title. */
-  Body: ({ className, ...p }: ComponentPropsWithRef<'div'>) => <div {...p} className={cx('ybs-body', className)} />,
+  Body: ({ className, ...p }: ComponentPropsWithRef<'div'>) => <div data-ybs-body="" {...p} className={cx('ybs-body', className)} />,
   /**
    * Content that reaches the sheet's edges, inside the body: a sideways photo strip, a full-width tappable row, a
    * separator. Its contents stay lined up with the rest of the body. The inset is `--ybs-body-inset`.
@@ -102,6 +102,13 @@ interface BottomSheetBaseProps extends Omit<Base.RootProps, 'children'> {
    * content is hidden behind them.
    */
   footer?: ReactNode
+  /**
+   * How content scrolling under the header (and behind the footer) is shown:
+   * - `'line'` (default): the header and footer are filled with the sheet colour and a divider appears.
+   * - `'soft'`: the content fades out before it reaches them, and they have no fill or line (iOS 26's soft scroll
+   *   edge). Works with a translucent `--ybs-sheet-bg`. Prototype: not in the dialog presentation yet.
+   */
+  scrollEdge?: 'line' | 'soft'
   /**
    * A visible ✕ button in the header's top right that closes the sheet. Default: off for a sheet, on for a dismissible
    * sheet shown as a dialog (`dialog`), which has nothing to swipe, unless it has `leading`/`trailing` (Cancel/Done).
@@ -155,6 +162,7 @@ export function BottomSheet({
   trailing,
   headerExtra,
   footer,
+  scrollEdge = 'line',
   closeButton,
   closeLabel = 'Close',
   initialFocus,
@@ -196,6 +204,7 @@ export function BottomSheet({
             {...contentProps}
             aria-label={ariaLabel ?? contentProps?.['aria-label']}
             initialFocus={initialFocus}
+            data-ybs-soft-edge={scrollEdge === 'soft' ? '' : undefined}
             className={cx(width === 'full' && 'ybs-sheet-full', variant === 'page' && 'ybs-sheet-page', floating && 'ybs-sheet-floating', className, contentProps?.className)}
           >
             <SheetHeader

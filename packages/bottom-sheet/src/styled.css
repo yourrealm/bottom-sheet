@@ -39,6 +39,8 @@
   --ybs-content-width: 960px;
   --ybs-float-gap: 8px;
   --ybs-float-radius: 32px;
+  /* scrollEdge="soft": how long the fade at the header and footer is. */
+  --ybs-soft-fade: 24px;
   /* 1 within the last 10% of travel to full, else 0..: corners square off as a fullscreen sheet reaches the top. */
   --ybs-at-top: clamp(0, (var(--ybs-progress, 0) - 0.9) * 10, 1);
 }
@@ -174,6 +176,27 @@
 .ybs-sheet:has(> .ybs-footer) { padding-bottom: 0; }
 /* Footer right under the header (a confirm sheet, no body): one gap of 16px under the text, not two paddings. */
 .ybs-header + .ybs-footer { padding-top: 4px; }
+/*
+ * Soft scroll edges (scrollEdge="soft", prototype): no fill or line on the header and footer; the body fades out
+ * before it reaches them instead. The controller publishes the edges in the body's coordinates (see softEdge()).
+ * Everything above the header line and below the footer line is fully masked, so a translucent sheet colour shows
+ * the same everywhere. Not in the dialog presentation (its sheet scrolls itself; no edge vars there yet).
+ */
+[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet[data-ybs-soft-edge] > .ybs-header,
+[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet[data-ybs-soft-edge] > .ybs-footer {
+  background: none; box-shadow: none; border-color: transparent;
+}
+/* The four fade lines are variables, so a variant only moves them (fade across the header or footer instead).
+   --ybs-soft-fade is the length of each fade. A fade grows in from 0 as content goes under the edge (min() with how
+   much is hidden there), so a sheet at rest doesn't fade its first or last line. */
+[data-ybs-root]:not([data-ybs-dialog]) .ybs-sheet[data-ybs-soft-edge] > .ybs-body {
+  --ybs-mask-t0: var(--ybs-edge-top, 0px);
+  --ybs-mask-t1: calc(var(--ybs-edge-top, 0px) + min(var(--ybs-soft-fade), var(--ybs-edge-top, 0px)));
+  --ybs-mask-b0: calc(var(--ybs-edge-bottom, 100vh) - min(var(--ybs-soft-fade), var(--ybs-edge-below, 0px)));
+  --ybs-mask-b1: var(--ybs-edge-bottom, 100vh);
+  mask-image: linear-gradient(to bottom,
+    transparent var(--ybs-mask-t0), #000 var(--ybs-mask-t1), #000 var(--ybs-mask-b0), transparent var(--ybs-mask-b1));
+}
 /* Floating: the clip lifts the bottom edge by the gap at lower detents; the footer stays above it. */
 .ybs-sheet-floating > .ybs-footer { bottom: var(--ybs-g); }
 /* Floating: the visible edge is the clip, a gap in from the sheet's box, so the side space adds the gap (fixed, not

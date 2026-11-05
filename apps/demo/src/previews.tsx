@@ -228,6 +228,19 @@ const SCENES: Record<string, () => ReactNode> = {
       </Sheet>
     </>
   ),
+  'soft-edge': () => (
+    <>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <rect key={i} className="pv-accent" opacity={0.35 + (i % 3) * 0.2} x={8 + (i % 3) * 50} y={6 + Math.floor(i / 3) * 24} width={44} height={20} rx={5} />
+      ))}
+      <Sheet y={50}>
+        <Line x={12} y={60} w={50} />
+        {[0, 1, 2].map((i) => (
+          <Line key={i} x={12} y={70 + i * 8} w={110 - i * 20} h={3} />
+        ))}
+      </Sheet>
+    </>
+  ),
   confirm: () => (
     <>
       <rect className="pv-map" width={W} height={H} />
