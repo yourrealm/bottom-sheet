@@ -14,7 +14,6 @@ packages/bottom-sheet/          the library (tsdown → dist/, ESM only)
   src/react/sheet.tsx           headless compound parts: Root/Trigger/Close/Portal/Backdrop/View/Content/Header/Handle/Title/Description
   src/styled/                   preset parts (classes .ybs-*, tokens --ybs-*) + all-in-one <BottomSheet>
 apps/demo/                Vite app for device testing (port 5180), POSTs debug lines to .logs/device.log
-spikes/01-single-scroller/      the original plain-HTML spike (reference)
 scripts/android-suite.sh        on-device gesture suite (adb), prints PASS/CHECK per run
 ```
 Commands: `pnpm dev` (playground), `pnpm test`, `pnpm typecheck`, `pnpm build`.
@@ -101,7 +100,8 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   emulation also divides deltas by the dpr (tests multiply by `devicePixelRatio`). Any other move cancels a pull (`cancelPull` in
   `scrollToDetent`, touch, pointer, destroy). Tests: "wheel steps detents…", "wheel friction…".
 
-Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option toggles via URL query).
+Reference: the original plain-HTML spike (debug HUD, option toggles via URL query), removed from the repo on
+2026-11-05: `git show dec48f6:spikes/01-single-scroller/index.html`.
 
 ### Programmatic moves glide (our own animation, not smooth scroll)
 Open, close, snapTo, wheel steps and the keyboard move animate scrollTop per frame (`glide()` in the controller):
@@ -526,7 +526,7 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   `liberty`/`dark` by `prefers-color-scheme`), lazy-loaded from `apps/demo/src/real-map.tsx` (~290 KB gz + worker).
   Automated browsers (`navigator.webdriver`) and `?map=fake` get the drawn stand-in, so e2e needs no network/WebGL;
   `?map=real` forces the real one. Pins are DOM `.pin` buttons in MapLibre markers either way.
-- Playground: `pnpm dev` (port 5180). The spike can be served with `python3 -m http.server 5173 --bind 0.0.0.0` from `spikes/`.
+- Playground: `pnpm dev` (port 5180).
 - **Reading device behaviour as text:** pass `debug` to `Sheet.Root`/`BottomSheet`. The playground forwards those lines (plus
   onDetentChange/onOpenChange) to `apps/demo/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.
   Prefer this over screenshots. `scripts/android-suite.sh` runs the gesture suite and summarises it per run.
@@ -534,7 +534,7 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   `Runtime.evaluate` over `ws://localhost:9222/devtools/page/<id>` (list pages at `localhost:9222/json`). Firefox release builds
   don't forward console output to logcat.
 - Each `am start` opens a **new tab** on the phone, and stale tabs keep running (Vite reloads them). Mind that when reading logs.
-- Android (the maintainer's phone): `adb reverse tcp:5180 tcp:5180` (5173 for the spike), then
+- Android (the maintainer's phone): `adb reverse tcp:5180 tcp:5180`, then
   `adb shell am start -a android.intent.action.VIEW -p org.mozilla.firefox -d '<url>'` (or `com.android.chrome`).
   Drive gestures with `adb shell input swipe x1 y1 x2 y2 <ms>` (short ms = fling, long = drag) and read the HUD via
   `adb exec-out screencap -p`. The screen is 1080x2340 at about 2.6 dpr.
