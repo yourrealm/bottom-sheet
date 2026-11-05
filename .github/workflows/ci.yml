@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Start it by hand (gh workflow run ci.yml): GitHub once dropped a push event and no run started.
+  workflow_dispatch:
 
 jobs:
   test:
