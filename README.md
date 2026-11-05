@@ -285,6 +285,8 @@ Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the rol
   takes those. A vertical mouse wheel can't scroll a strip sideways (nowhere on the web), so with a mouse a strip that
   hides its scrollbar can't be scrolled at all: keep a thin one there, e.g.
   `@media (pointer: fine) { .strip { scrollbar-width: thin } }`.
+- A mouse wheel or trackpad moves between detents one step per gesture. Closing takes more: the sheet gives a little
+  on the first notches and springs back, and closes on the third notch or a longer trackpad swipe.
 - Once a sheet starts closing, it finishes: a touch, wheel or drag during the animation doesn't bring it back.
 - A sheet closes from a swipe, Escape, back, an outside press, a close button or `open={false}`, never from a scroll
   nobody asked for: one that lands at closed (the browser revealing a focused field, say) is undone.

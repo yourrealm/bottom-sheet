@@ -297,13 +297,44 @@ test('wheel steps detents, then scrolls content, and stops at the content top', 
   await page.waitForTimeout(700)
   expect(Math.abs((await geometry(page)).st - full)).toBeLessThan(3)
 
-  // A new upward gesture at full steps down a detent, then another closes.
+  // A new upward gesture at full steps down a detent (one notch is enough between detents).
   await gap()
   await page.mouse.wheel(0, -100)
   await waitForEvent(page, /lab: onDetentChange 0\.5$/)
+  // Closing has friction (issue #3): one notch pulls the sheet down a little and springs back...
   await gap()
-  await page.mouse.wheel(0, -100)
+  const half = (await geometry(page)).st
+  // Chromium's mobile emulation divides wheel deltas by the device pixel ratio; scale up to a real 100px notch.
+  const dpr = await page.evaluate(() => devicePixelRatio)
+  await page.mouse.wheel(0, -100 * dpr)
+  await expect.poll(async () => (await geometry(page)).st).toBeLessThan(half - 10) // visible resistance
+  await expect.poll(async () => Math.abs((await geometry(page)).st - half)).toBeLessThan(3) // springs back
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+  // ...three notches close.
+  await gap()
+  await page.mouse.wheel(0, -100 * dpr)
+  await page.mouse.wheel(0, -100 * dpr)
+  await page.mouse.wheel(0, -100 * dpr)
   await waitForEvent(page, 'lab: onOpenChange false')
+})
+
+test('wheel friction: a trackpad nudge never closes a single-detent sheet, a long swipe does', async ({ page }, info) => {
+  test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
+  await page.goto('/?open=1&dialog=0#/product') // detents [] : the only step below full is closed
+  await waitForEvent(page, /product: onDetentChange full/)
+  const box = (await page.locator('[data-ybs-header]').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height + 40)
+  const { full } = await geometry(page)
+  const dpr = await page.evaluate(() => devicePixelRatio) // Chromium's mobile emulation divides deltas by it
+  // A small trackpad stream (12 x -5px, well under the close distance): a little give, then back to full.
+  for (let i = 0; i < 12; i++) await page.mouse.wheel(0, -5 * dpr)
+  await page.waitForTimeout(900)
+  expect(Math.abs((await geometry(page)).st - full)).toBeLessThan(3)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  // A long swipe (30 x -8px = 240px) closes.
+  await page.waitForTimeout(400)
+  for (let i = 0; i < 30; i++) await page.mouse.wheel(0, -8 * dpr)
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
 })
 
 test('Shift+wheel over a sideways strip is left to the browser (scrolls the strip), not taken as a detent step', async ({ page }) => {

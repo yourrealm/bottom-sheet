@@ -68,6 +68,21 @@ const LOCK_QUIET_MS = 150
 /** A fling can outlive a short quiet window and resume when overflow is restored (seen on Chrome and Firefox Android). */
 const LOCK_MIN_MS = 800
 const WHEEL_GESTURE_GAP_MS = 250
+/**
+ * Wheel friction for closing (issue #3): a wheel step that would close the sheet pulls it down with resistance
+ * instead, and closes on the WHEEL_CLOSE_NOTCHES-th notch-sized event or once this much scroll has added up (a
+ * trackpad swipe).
+ * Short of that it springs back after WHEEL_PULL_RELEASE_MS without wheel events. Notches: Chrome/Edge on
+ * Windows/Linux 100-120px (smaller under browser zoom: 100px is 33 at 300%); Firefox on macOS 19px for a slow notch,
+ * 57-95 when scrolling faster (measured on the maintainer's mouse, 2026-11-05: 30 needed a fast third notch).
+ * A small trackpad nudge sends single-digit deltas, so it doesn't count as notches and springs back.
+ */
+const WHEEL_CLOSE_PX = 150
+const WHEEL_NOTCH_PX = 15
+/** Three: two closed too easily with a mouse (maintainer, 2026-11-05). */
+const WHEEL_CLOSE_NOTCHES = 3
+const WHEEL_PULL_MAX = 56
+const WHEEL_PULL_RELEASE_MS = 400
 const KEYBOARD_THRESHOLD = 120
 const MAX_RETARGETS = 3
 /** A resize this soon after a user scroll event is mid-gesture or mid-momentum: don't re-target. */
@@ -258,6 +273,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   function scrollToDetent(d: Detent) {
+    cancelPull()
     target = resolve(d).detent
     dbg(`scrollTo ${String(target)} (${Math.round(pos(target))})`)
     programmatic = true
@@ -406,7 +422,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   function onScrollEnd() {
-    if (destroyed || gliding) return // a glide settles itself when it ends
+    if (destroyed || gliding || pull) return // a glide settles itself when it ends; a wheel pull ends itself
     // Opened with no height yet (lazy content, no header): `full` is 0, so it "arrived" at closed. Wait for the
     // content; the ResizeObserver glides to the target once it has height.
     if (isOpen && !closing && full < 1 && programmatic) return
@@ -530,6 +546,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   function onTouchStart() {
+    cancelPull()
     touching = true
     anchor = null
     // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
@@ -569,6 +586,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // scrolls horizontally itself; stepping a detent here would cancel that and move the sheet instead.
     if (e.shiftKey) return
     if (closing) return void e.preventDefault() // closing on purpose: the wheel doesn't bring it back
+    if (pull) return pullMore(e)
     const t = performance.now()
     const newGesture = t - lastWheel > WHEEL_GESTURE_GAP_MS
     lastWheel = t
@@ -594,7 +612,64 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const i = stops.indexOf(here)
     const next = stops[Math.min(Math.max(i + (dy > 0 ? 1 : -1), 0), stops.length - 1)]!.detent
     dbg(`wheel step ${String(here.detent)} -> ${String(next)}`)
+    if (next === 'closed' && here.detent !== 'closed') return startPull(here.detent, e)
     if (next !== here.detent) scrollToDetent(next)
+  }
+
+  // A wheel pull towards closed (see WHEEL_CLOSE_PX): the sheet follows a damped share of the scroll, snap off.
+  let pull: { base: Detent; sum: number; notches: number; drop: number; raf: number; timer: ReturnType<typeof setTimeout> } | null = null
+  const wheelPx = (e: WheelEvent) => e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1)
+  function startPull(base: Detent, e: WheelEvent) {
+    stopGlide()
+    unlock()
+    target = null
+    programmatic = false
+    root.setAttribute('data-ybs-drag', 'active')
+    pull = { base, sum: 0, notches: 0, drop: 0, raf: 0, timer: setTimeout(() => {}) }
+    dbg(`wheel pull from ${String(base)}`)
+    pullMore(e)
+  }
+  function pullMore(e: WheelEvent) {
+    const p = pull!
+    e.preventDefault()
+    lastWheel = performance.now()
+    const px = -wheelPx(e) // towards closed: scrolling up moves the sheet down
+    p.sum = Math.max(p.sum + px, 0)
+    if (px > 0 && (e.deltaMode !== 0 || px >= WHEEL_NOTCH_PX)) p.notches++
+    clearTimeout(p.timer)
+    if (p.notches >= WHEEL_CLOSE_NOTCHES || p.sum >= WHEEL_CLOSE_PX) return endPull(true)
+    if (p.sum === 0) return endPull(false) // scrolled back up
+    p.timer = setTimeout(() => endPull(false), WHEEL_PULL_RELEASE_MS)
+    // Rubber band: the first notch shows about half the travel; it never goes past WHEEL_PULL_MAX.
+    p.drop = WHEEL_PULL_MAX * (1 - Math.exp(-p.sum / WHEEL_CLOSE_PX * 1.5))
+    if (!p.raf) {
+      const step = () => {
+        if (pull !== p || destroyed) return
+        const goal = pos(p.base) - p.drop
+        const st = scroller.scrollTop
+        scroller.scrollTop = Math.abs(goal - st) < 0.5 ? goal : st + (goal - st) * 0.35
+        p.raf = Math.abs(goal - st) < 0.5 ? 0 : requestAnimationFrame(step)
+      }
+      p.raf = requestAnimationFrame(step)
+    }
+  }
+  /** Drops a wheel pull without moving (another move takes over: close(), a glide, a touch or drag). */
+  function cancelPull() {
+    if (!pull) return
+    clearTimeout(pull.timer)
+    cancelAnimationFrame(pull.raf)
+    pull = null
+    if (root.getAttribute('data-ybs-drag') === 'active') root.removeAttribute('data-ybs-drag')
+  }
+  /** Ends a wheel pull: close, or spring back to where it started. */
+  function endPull(close: boolean) {
+    const p = pull
+    if (!p) return
+    cancelPull()
+    dbg(`wheel pull ${close ? 'closes' : 'springs back'}`)
+    if (!isOpen || touching || closing) return void root.removeAttribute('data-ybs-drag')
+    root.setAttribute('data-ybs-drag', 'settle')
+    scrollToDetent(close ? 'closed' : p.base)
   }
 
   // ---- detached drag: the header pulled down while the content is scrolled ----
@@ -707,6 +782,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   // Mouse drag on [data-ybs-drag]. Touch uses native scroll, except for the detached drag above.
   function onPointerDown(e: PointerEvent) {
+    cancelPull()
     if (e.button !== 0 || !isOpen || detached || closing) return
     const el = e.target as Element | null
     const handle = el?.closest<HTMLElement>('[data-ybs-drag]')
@@ -928,6 +1004,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     destroy() {
       destroyed = true
       isOpen = false
+      cancelPull()
       endDrag?.()
       releaseHtml()
       clearTimeout(unlockTimer)

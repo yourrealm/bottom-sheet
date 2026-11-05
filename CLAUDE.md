@@ -83,6 +83,14 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   each wheel *gesture* (events < 250ms apart) is `preventDefault`ed and steps exactly one detent. At full scrolling down, or
   inside the content, the wheel scrolls natively. A gesture that started in the content stops at the content top and never
   moves the sheet. Touch never produces wheel events.
+- **Closing by wheel has friction** (issue #3, 2026-11-05): a step that would close instead starts a "pull" (snap off
+  via `data-ybs-drag`): the sheet follows a damped share of the scroll (at most 56px) and closes on the third
+  notch-sized event (two felt too easy on the maintainer's mouse) (>= 15px, or a line/page delta) or 150px added up (a trackpad swipe); with no wheel for 400ms
+  it springs back. A single 1px nudge used to close a single-detent sheet. Steps between detents are unchanged.
+  Notch size 15px: Firefox on macOS sends a slow notch as one 19px event (57-95 faster; measured with the
+  maintainer's mouse, 30px took three notches), and Chrome's 100px shrinks under browser zoom. Chromium's mobile
+  emulation also divides deltas by the dpr (tests multiply by `devicePixelRatio`). Any other move cancels a pull (`cancelPull` in
+  `scrollToDetent`, touch, pointer, destroy). Tests: "wheel steps detents…", "wheel friction…".
 
 Reference: `spikes/01-single-scroller/index.html` (plain HTML, debug HUD, option toggles via URL query).
 
