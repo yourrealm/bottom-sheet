@@ -76,9 +76,16 @@ interface SheetContextValue {
   setHasTitle: (has: boolean) => void
   hasDescription: boolean
   setHasDescription: (has: boolean) => void
+  /** Portal reports the sheet joined (or left) the stack; a sheet nested inside waits for that (see Root). */
+  setStacked: (stacked: boolean) => void
 }
 
 const SheetContext = createContext<SheetContextValue | null>(null)
+/**
+ * True while this sheet is opening but not yet on the stack: a sheet nested inside holds its mount until it flips.
+ * Its own context (not SheetContext), so nested closed sheets re-render only when it changes.
+ */
+const HoldNestedContext = createContext(false)
 
 function useSheet(part: string) {
   const ctx = useContext(SheetContext)
@@ -266,7 +273,16 @@ export function Root(props: RootProps) {
   const dialogProp = props.dialog ?? defaults.dialog
   const [openState, setOpenState] = useState(defaultOpen)
   const open = openProp ?? openState
-  const [mounted, setMounted] = useState(open)
+  // A sheet rendered inside another one stacks on top of it. When both open in the same render, React runs the inner
+  // one's effects first, so it would join the stack, the DOM and take focus before its parent and end up under it.
+  // It waits until the parent is on the stack instead (the next render); a parent that isn't opening doesn't hold it.
+  // This orders mounting, not the stack: a headless child Root placed outside its parent's Portal and opened before
+  // the parent still ends up below it, and a parent that is open but renders no Portal holds its nested sheets.
+  // The child's returnFocus is then taken inside the parent sheet, so closing it hands focus back to the parent.
+  const parentReady = !useContext(HoldNestedContext)
+  const [mounted, setMounted] = useState(open && parentReady)
+  const [stacked, setStacked] = useState(false)
+  const holdNested = (open || mounted) && !stacked
   // `modal` is read when the sheet opens (the page lock, inert and focus are set up for one or the other).
   const [modalAtOpen, setModalAtOpen] = useState(modalProp)
   const modal = mounted ? modalAtOpen : modalProp
@@ -305,7 +321,7 @@ export function Root(props: RootProps) {
   debugRef.current = debug
   const returnFocus = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    if (open && !mounted) {
+    if (open && !mounted && parentReady) {
       // Non-modal sheets only use it if they took focus (initialFocus); see View.
       returnFocus.current = document.activeElement as HTMLElement | null
       setModalAtOpen(modalProp)
@@ -326,7 +342,7 @@ export function Root(props: RootProps) {
       else setMounted(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- detent is read when (re)opening, not followed here
-  }, [open, mounted])
+  }, [open, mounted, parentReady])
 
   // Finished closing: mounted went from true to false (the portal is gone by the time this effect runs).
   const exitRef = useRef(onExitComplete)
@@ -373,11 +389,16 @@ export function Root(props: RootProps) {
       setHasTitle,
       hasDescription,
       setHasDescription,
+      setStacked,
     }),
     [open, mounted, setOpen, requestDismiss, modal, dialog, dismissible, closeOnBack, fullscreen, recede, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
   )
 
-  return <SheetContext.Provider value={value}>{children}</SheetContext.Provider>
+  return (
+    <SheetContext.Provider value={value}>
+      <HoldNestedContext.Provider value={holdNested}>{children}</HoldNestedContext.Provider>
+    </SheetContext.Provider>
+  )
 }
 
 /**
@@ -461,9 +482,11 @@ export function Portal({ children, container }: PortalProps) {
     const entry: StackEntry = { root, close: () => dismissRef.current('escape'), recede: recede && modal, modal }
     entryRef.current = entry
     pushSheet(entry)
+    ctxRef.current.setStacked(true) // a sheet nested inside may mount now (see Root)
     return () => {
       removeSheet(entry)
       entryRef.current = null
+      ctxRef.current.setStacked(false)
     }
   }, [ctx.mounted, ctx.rootEl])
   useEffect(() => {

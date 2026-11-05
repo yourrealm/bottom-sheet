@@ -12,11 +12,16 @@ const ACCENTS = [
   ['Ocean', '#0a66ff'], ['Moss', '#2f9e44'], ['Ember', '#e8590c'], ['Orchid', '#ae3ec9'], ['Rose', '#e64980'], ['Slate', '#495057'],
 ] as const
 
-/** Stacked sheets, up to three levels: Settings → Appearance → Accent colour, and Settings → Language. */
+/**
+ * Stacked sheets, up to three levels: Settings → Appearance → Accent colour, and Settings → Language.
+ * "Change language" opens Settings and Language in one state change, like a deep link (`?open=language` does it on
+ * load): Language must still end up on top.
+ */
 export function Settings({ autoOpen }: { autoOpen: boolean }) {
-  const [open, setOpen] = useState(autoOpen)
+  const deepLink = new URLSearchParams(location.search).get('open') === 'language'
+  const [open, setOpen] = useState(autoOpen || deepLink)
   const [language, setLanguage] = useState('English (UK)')
-  const [langOpen, setLangOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(deepLink)
   const [accent, setAccent] = useState<string>(ACCENTS[0][1])
   const [dark, setDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
   const [notify, setNotify] = useState(true)
@@ -46,6 +51,17 @@ export function Settings({ autoOpen }: { autoOpen: boolean }) {
             </dd>
           </dl>
           <button className="primary wide" onClick={() => setOpen(true)}>Open settings</button>
+          <button
+            className="secondary wide"
+            id="deep-language"
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              setOpen(true)
+              setLangOpen(true)
+            }}
+          >
+            Change language
+          </button>
         </section>
         <section className="panel">
           <h3 className="section">Plan</h3>

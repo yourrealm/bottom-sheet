@@ -424,6 +424,36 @@ test.describe('stacked sheets', () => {
     await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
   })
 
+  // A deep link opens a sheet and one nested inside it in the same render: React runs the inner one's effects
+  // first, which used to put it under its parent (issue #4).
+  for (const how of ['in one state change', 'open on load'] as const) {
+    test(`a parent and a nested sheet opened together: the nested one is on top (${how})`, async ({ page }) => {
+      if (how === 'open on load') await page.goto('/?open=language#/settings')
+      else {
+        await page.goto('/#/settings')
+        await page.locator('#deep-language').click()
+      }
+      await waitForEvent(page, 'language: onDetentChange 0.6')
+      const roots = page.locator('[data-ybs-root]')
+      await expect(roots).toHaveCount(2)
+      // DOM order is paint order (same z-index): Settings first, Language last.
+      await expect(roots.nth(0).getByRole('heading', { name: 'Settings', includeHidden: true })).toHaveCount(1)
+      await expect(roots.nth(0)).toHaveAttribute('data-ybs-covered', '')
+      await expect(roots.nth(0)).toHaveAttribute('inert', '')
+      await expect(roots.nth(1)).not.toHaveAttribute('data-ybs-covered', '')
+      await expect(page.getByRole('dialog', { name: 'Language' })).toBeVisible()
+      expect(await page.evaluate(() => document.querySelectorAll('[data-ybs-root]')[1]!.contains(document.activeElement))).toBe(true)
+
+      // Closing goes top-down: a tap on the dimmed area closes Language, and Settings is the top sheet again.
+      // (Not Escape: watchers made without a user activation in between are grouped, so it may close both.)
+      await page.mouse.click(40, 80)
+      await expect(roots).toHaveCount(1)
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+      await expect(roots.nth(0)).not.toHaveAttribute('data-ybs-covered', '')
+      await expect(roots.nth(0)).not.toHaveAttribute('inert', '')
+    })
+  }
+
   test('tapping the dimmed area closes only the top sheet', async ({ page }) => {
     await page.goto('/?open=1#/settings')
     await waitForEvent(page, 'settings: onDetentChange')

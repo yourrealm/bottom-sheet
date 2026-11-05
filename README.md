@@ -291,6 +291,10 @@ Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the rol
 A sheet opened from inside another one stacks on top: with `/styled`, the one below recedes (scales back, like iOS)
 and comes forward again when the top one closes (parts: `data-ybs-covered`, see below). Escape, Android back and a tap on the dimmed area all close only the top sheet.
 The page stays inert until the last modal sheet closes. No setup: render the second `BottomSheet` inside the first.
+Both can open at once (a deep link that sets both `open` states): the inner one waits a render for its parent and
+still lands on top, and closing it gives focus back inside the parent. One browser rule to know: sheets opened
+without a user action in between (both open on page load) share one back/Escape listener (`CloseWatcher`'s
+anti-trap grouping), so the first back or Escape closes both. Opened from a tap or click, they close one at a time.
 
 ### Dialog on desktop
 

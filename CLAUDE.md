@@ -207,7 +207,17 @@ reopened on Space). Test: "the page takes focus and input back as soon as the sh
   sheet); the sheet directly below gets `data-ybs-covered` and `--ybs-covered` (0..1, following the upper sheet's progress)
   so `/styled` can scale it back like iOS; **only the top sheet reacts to the keyboard** (`isActive` option).
 - Don't toggle `overflow` on a covered sheet (Firefox re-snaps on overflow changes); `inert` already blocks it.
-- Demo: Stacked settings (three levels: Settings → Appearance → Accent colour, plus a controlled Language sheet).
+- **Opened together** (issue #4, 2026-11-05): a parent and a nested sheet opening in the same render ran the inner
+  one's effects first (React runs children first), so it joined the stack, the DOM (`<body>` order = paint order) and
+  took focus before its parent and ended up under it. `Root` reads the parent `SheetContext`; a sheet whose parent is
+  opening but not yet on the stack (`stacked`, set by the parent's Portal after `pushSheet`) doesn't mount until it is.
+  A parent that isn't open doesn't hold it. The hold is its own context (`HoldNestedContext`), so nested closed sheets
+  don't re-render on every parent context change. Tests: "a parent and a nested sheet opened together…" (state
+  change, on load). Reviewed by a fresh agent: three levels at once, headless child outside the Portal, non-modal
+  parent, StrictMode all fine. Left as is: on load (no user activation) the browser groups the two CloseWatchers, so
+  one Escape/back closes both (not a regression; re-arming would fight the anti-trap rule; README says so).
+- Demo: Stacked settings (three levels: Settings → Appearance → Accent colour, plus a controlled Language sheet;
+  "Change language" / `?open=language` opens Settings and Language together).
 
 ### Many sheets (performance)
 A closed sheet is cheap: `Root` is a context, and `Portal` renders `null` until it opens, so no controller, observers or
