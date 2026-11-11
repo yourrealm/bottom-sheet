@@ -47,13 +47,13 @@ test('opens at the first partial detent', async ({ page }) => {
   expect(Math.abs(g.st - g.H * 0.5)).toBeLessThan(3)
 })
 
-test('short content: full fits the content; 0.5 only if well below it', async ({ page }) => {
+test('short content: full fits the content; 0.5 only if below it', async ({ page }) => {
   await openLab(page, '&short=1')
   const g = await geometry(page)
   expect(g.full).toBeLessThan(g.H)
   await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-fit', '')
-  // A partial detent within 15% of full is dropped (it would be pointless).
-  const keepsMedium = g.H * 0.5 < g.full * 0.85
+  // A partial detent at (or within a few px of) a short sheet's full is the same place: dropped.
+  const keepsMedium = g.H * 0.5 < g.full - 8
   await waitForEvent(page, keepsMedium ? 'lab: onDetentChange 0.5' : 'lab: onDetentChange full')
   const expected = keepsMedium ? g.H * 0.5 : g.full
   expect(Math.abs((await geometry(page)).st - expected)).toBeLessThan(3)
@@ -265,6 +265,471 @@ test.describe("'header+footer' detent (chat over a page)", () => {
     expect(p.footerTop - p.headerBottom).toBeGreaterThan(100) // the body shows between them
     await page.getByRole('button', { name: 'Make it a summer party' }).click()
     await expect(page.getByRole('heading', { name: 'Midsummer on the roof' })).toBeVisible()
+  })
+
+  // Issue #13, with Venga's sheet as shipped (`?venga=1`). At the end of the transcript, a reply streams in and the
+  // app follows it (scrollTo the end per chunk). Chrome re-snapped the scroller to the sheet's snap position (full,
+  // the content top) when the content grew; the controller then took that for "resting at full" and pinned it there
+  // on every resize, so the reader landed at the top of the conversation and the app stopped following.
+  // Venga shows only the latest turn below full. Pulled down to 0.5, the content shrank so much that 0.5 was within 15%
+  // of the new full and was dropped (the old rule): the sheet went up to full, the transcript came back, at the top.
+  test('a sheet pulled down to 0.5 stays there when the app shows less content at 0.5', async ({ page }) => {
+    // The maintainer's phone (a 735px sheet): 0.5 is 368, the latest turn alone 413 tall. On a screen where 0.5 lies
+    // past the latest turn's height, it can't be a resting place at all.
+    await page.setViewportSize({ width: 412, height: 740 })
+    await page.goto('/?venga=1#/assistant')
+    await page.locator('[data-ybs-sheet]').waitFor()
+    await page.waitForTimeout(1000)
+    if (!(await events(page)).some((e) => e.includes('venga: onDetentChange full'))) {
+      await page.getByRole('button', { name: 'Show earlier' }).click()
+    }
+    await waitForEvent(page, 'venga: onDetentChange full')
+    await page.waitForTimeout(500)
+    // Down to 0.5, as a drag would leave it.
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.clientHeight * 0.5
+    })
+    await waitForEvent(page, 'venga: onDetentChange 0.5')
+    await page.waitForTimeout(800)
+    const changes = (await events(page)).filter((e) => e.includes('venga: onDetentChange'))
+    expect(changes.at(-1)).toContain('onDetentChange 0.5')
+    const g = await geometry(page)
+    expect(Math.abs(g.st - g.H * 0.5)).toBeLessThan(3)
+  })
+
+  // The other way: at the peek Venga shows the latest turn (413 tall), and 0.5 (368) was within 15% of that, so it
+  // wasn't a stop at all. A drag up to half landed at full, and Venga expanded to the whole transcript.
+  test('from the peek, a drag up to 0.5 stays at 0.5 (the stops do not move with the content)', async ({ page }) => {
+    await page.setViewportSize({ width: 412, height: 740 })
+    await page.goto('/?venga=1#/assistant')
+    await page.locator('[data-ybs-sheet]').waitFor()
+    await page.waitForTimeout(1000)
+    const to = (f: number) =>
+      page.evaluate((f) => {
+        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+        s.scrollTop = s.clientHeight * f
+      }, f)
+    await to(0.15) // down to the peek
+    await waitForEvent(page, 'venga: onDetentChange header+footer')
+    await page.waitForTimeout(500)
+    await clearEvents(page)
+    await to(0.5) // up to half
+    await waitForEvent(page, 'venga: onDetentChange 0.5')
+    await page.waitForTimeout(800)
+    const changes = (await events(page)).filter((e) => e.includes('venga: onDetentChange'))
+    expect(changes).toEqual(['venga: onDetentChange 0.5'])
+    const g = await geometry(page)
+    expect(Math.abs(g.st - g.H * 0.5)).toBeLessThan(3)
+  })
+
+  // And on up: released at the short sheet's full, Venga renders the whole transcript; the sheet has to follow it
+  // to the new full. It used to wait out the "still moving" window, the browser snapped it down to 0.5, Venga
+  // showed the latest turn again, and so on, every drag (a loop on the maintainer's phone, Firefox Android). Playwright
+  // doesn't reproduce that timing; this guards the outcome.
+  test('from 0.5, a drag up to full stays at full while the app renders more there', async ({ page }) => {
+    await page.setViewportSize({ width: 412, height: 740 })
+    await page.goto('/?venga=1#/assistant')
+    await page.locator('[data-ybs-sheet]').waitFor()
+    await page.waitForTimeout(1000)
+    const scrollTo = (top: number) =>
+      page.evaluate((top) => (document.querySelector<HTMLElement>('[data-ybs-scroller]')!.scrollTop = top), top)
+    const H = (await geometry(page)).H
+    await scrollTo(H * 0.15) // the peek
+    await waitForEvent(page, 'venga: onDetentChange header+footer')
+    await page.waitForTimeout(400)
+    await scrollTo(H * 0.5)
+    await waitForEvent(page, 'venga: onDetentChange 0.5')
+    await page.waitForTimeout(400)
+    await clearEvents(page)
+    await scrollTo((await geometry(page)).full) // up to the short sheet's full, as a release there leaves it
+    await waitForEvent(page, 'venga: onDetentChange full')
+    await page.waitForTimeout(1000)
+    const changes = (await events(page)).filter((e) => e.includes('venga: onDetentChange'))
+    expect(changes).toEqual(['venga: onDetentChange full'])
+    const g = await geometry(page)
+    expect(g.full).toBe(g.H) // the whole transcript
+    expect(g.st).toBeGreaterThan(g.full - 3) // at full or in its content (WebKit lands at the end), not back at 0.5
+  })
+
+  // fit={false} (Venga with `&tall=1`): the sheet stays a screen tall when the app shows less, so full doesn't move.
+  test('fit={false}: full stays the top of the screen when the content shrinks at 0.5', async ({ page }) => {
+    await page.setViewportSize({ width: 412, height: 740 })
+    for (const [q, fits] of [['', true], ['&tall=1', false]] as const) {
+      await page.goto(`/?venga=1${q}#/assistant`)
+      await page.locator('[data-ybs-sheet]').waitFor()
+      await page.waitForTimeout(1000)
+      await waitForEvent(page, 'venga: onDetentChange 0.5')
+      await expect(page.getByRole('button', { name: 'Show earlier' })).toBeVisible() // only the latest turn
+      const g = await geometry(page)
+      if (fits) expect(g.full).toBeLessThan(g.H - 100) // fitted: full is the short content's top
+      else {
+        await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-no-fit', '')
+        expect(g.full).toBeGreaterThan(g.H - 40) // a screen tall, less the gap above
+      }
+    }
+  })
+
+  // BottomSheet.Chat (Venga with `&chat=1`): the messages in their own area pinned to the composer.
+  test.describe('BottomSheet.Chat', () => {
+    const chat = (page: Page) =>
+      page.evaluate(() => {
+        const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+        const footer = document.querySelector('[data-ybs-footer]')!.getBoundingClientRect()
+        const sheet = document.querySelector('[data-ybs-sheet]')!.getBoundingClientRect()
+        const bubbles = [...document.querySelectorAll('[data-ybs-chat] .bubble')].map((b) => b.getBoundingClientRect())
+        return {
+          lastBottom: bubbles.at(-1)!.bottom,
+          footerTop: footer.top,
+          sheetTop: sheet.top,
+          count: bubbles.length,
+          // The first message whose bottom shows below the header.
+          firstVisible: bubbles.findIndex((b) => b.bottom > header.bottom + 2),
+        }
+      })
+    const to = (page: Page, f: number) =>
+      page.evaluate((f) => {
+        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+        s.scrollTop = f < 0 ? s.scrollHeight : s.clientHeight * f
+      }, f)
+
+    test.beforeEach(async ({ page }) => {
+      await page.setViewportSize({ width: 412, height: 740 })
+      await page.goto('/?venga=1&chat=1#/assistant')
+      await waitForEvent(page, 'venga: onDetentChange 0.5')
+      await page.waitForTimeout(300)
+    })
+
+    test('the newest messages stay on the composer at every detent; sliding up reveals older ones above', async ({ page }) => {
+      const half = await chat(page)
+      expect(half.footerTop - half.lastBottom).toBeGreaterThan(0)
+      expect(half.footerTop - half.lastBottom).toBeLessThan(20)
+      expect(half.firstVisible).toBeGreaterThan(half.count - 4) // the latest question and reply
+      await to(page, -1)
+      await waitForEvent(page, 'venga: onDetentChange full')
+      await page.waitForTimeout(300)
+      const full = await chat(page)
+      expect(Math.abs(full.lastBottom - half.lastBottom)).toBeLessThan(2) // the newest didn't move
+      expect(full.firstVisible).toBeLessThan(half.firstVisible) // older messages above
+      await to(page, 0.15)
+      await waitForEvent(page, 'venga: onDetentChange header+footer')
+      await page.waitForTimeout(300)
+      expect(Math.abs((await chat(page)).lastBottom - half.lastBottom)).toBeLessThan(2)
+    })
+
+    test('the sheet is a screen tall and nothing of the chat shows above its top edge', async ({ page }) => {
+      const g = await geometry(page)
+      expect(g.full).toBeGreaterThan(g.H - 40) // not fitted to the messages
+      const { sheetTop } = await chat(page)
+      const above = await page.evaluate((y) => document.elementFromPoint(200, y)?.closest('[data-ybs-chat]') != null, sheetTop - 20)
+      expect(above).toBe(false)
+    })
+
+    test('a reply streaming in stays in view at the bottom', async ({ page }) => {
+      const before = await chat(page)
+      await page.getByRole('button', { name: 'Send a message' }).click()
+      await waitForEvent(page, 'venga: reply done', 15000)
+      await page.waitForTimeout(300)
+      const after = await chat(page)
+      expect(after.count).toBe(before.count + 2)
+      expect(after.footerTop - after.lastBottom).toBeGreaterThan(0)
+      expect(after.footerTop - after.lastBottom).toBeLessThan(20)
+    })
+
+    // Who owns the swipe: below full the sheet (the messages can't scroll and show the newest), at full the messages.
+    const list = (page: Page) => page.evaluate(() => document.querySelector<HTMLElement>('[data-ybs-chat-scroll]')!.scrollTop)
+    const setList = (page: Page, v: number) =>
+      page.evaluate((v) => (document.querySelector<HTMLElement>('[data-ybs-chat-scroll]')!.scrollTop = v), v)
+    const listPoint = (page: Page) =>
+      page.evaluate(() => {
+        const r = document.querySelector('[data-ybs-chat-scroll]')!.getBoundingClientRect()
+        const sheet = document.querySelector('[data-ybs-sheet]')!.getBoundingClientRect()
+        const footer = document.querySelector('[data-ybs-footer]')!.getBoundingClientRect()
+        // The middle of the part of the list on screen (between the sheet's top, or the list's, and the composer).
+        const top = Math.max(r.top, sheet.top + 80)
+        return { x: Math.round(r.x + r.width / 2), y: Math.round((top + footer.top) / 2) }
+      })
+    const toFull = async (page: Page) => {
+      await to(page, -1)
+      await waitForEvent(page, 'venga: onDetentChange full')
+      await page.waitForTimeout(300)
+    }
+
+    test('the messages scroll at every detent (the header and footer move the sheet)', async ({ page }) => {
+      await expect(page.locator('[data-ybs-chat-scroll]')).toHaveCSS('overflow-y', 'auto')
+      await toFull(page)
+      await expect(page.locator('[data-ybs-chat-scroll]')).toHaveCSS('overflow-y', 'auto')
+    })
+
+    // The highest/lowest the sheet got during a swipe (released short of a stop, it snaps back).
+    const trackSheet = (page: Page) =>
+      page.evaluate(() => {
+        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+        const w = window as unknown as { __max: number; __min: number }
+        w.__max = w.__min = s.scrollTop
+        s.addEventListener('scroll', () => {
+          w.__max = Math.max(w.__max, s.scrollTop)
+          w.__min = Math.min(w.__min, s.scrollTop)
+        })
+      })
+    const sheetRange = (page: Page) =>
+      page.evaluate(() => {
+        const w = window as unknown as { __max: number; __min: number }
+        return { __max: w.__max, __min: w.__min }
+      })
+    const swipe = async (page: Page, yDistance: number) => {
+      const p = await listPoint(page)
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Input.synthesizeScrollGesture', { ...p, yDistance, speed: 600, gestureSourceType: 'touch', preventFling: true })
+      await page.waitForTimeout(600)
+    }
+
+    test('at half, a swipe down on the messages reads back through the history and the sheet stays', async ({ page, browserName }) => {
+      test.skip(browserName !== 'chromium', 'CDP touch')
+      const before = (await geometry(page)).st
+      await trackSheet(page)
+      await swipe(page, 150)
+      const { __min: min } = await sheetRange(page)
+      test.skip((await list(page)) === 0 && min > before - 5, 'synthesized touch scrolling is not supported in this environment')
+      expect(await list(page)).toBeLessThan(-60)
+      expect(min).toBeGreaterThan(before - 3) // the sheet didn't move
+    })
+
+    test('at half, scrolled all the way back, the oldest message shows under the header', async ({ page }) => {
+      await setList(page, -100000)
+      await page.waitForTimeout(300)
+      const r = await page.evaluate(() => {
+        const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+        const first = document.querySelector('[data-ybs-chat] .bubble')!.getBoundingClientRect()
+        return { gap: first.top - header.bottom }
+      })
+      expect(r.gap).toBeGreaterThan(-2) // not hidden above the sheet's top edge
+      expect(r.gap).toBeLessThan(40)
+    })
+
+    test('at half at the newest message, a swipe up on the messages hands over to the sheet', async ({ page, browserName }) => {
+      test.skip(browserName !== 'chromium', 'CDP touch')
+      const before = (await geometry(page)).st
+      await trackSheet(page)
+      await swipe(page, -150)
+      const { __max: max } = await sheetRange(page)
+      test.skip(max < before + 5, 'synthesized touch scrolling is not supported in this environment')
+      expect(max).toBeGreaterThan(before + 60)
+    })
+
+    test('at full, a swipe down on the messages reads back through the history and the sheet stays', async ({ page, browserName }) => {
+      test.skip(browserName !== 'chromium', 'CDP touch')
+      await toFull(page)
+      const g = await geometry(page)
+      const p = await listPoint(page)
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Input.synthesizeScrollGesture', { ...p, yDistance: 200, speed: 600, gestureSourceType: 'touch', preventFling: true })
+      await page.waitForTimeout(600)
+      test.skip((await list(page)) === 0 && (await geometry(page)).st === g.st, 'synthesized touch scrolling is not supported in this environment')
+      expect(await list(page)).toBeLessThan(-100)
+      expect(Math.abs((await geometry(page)).st - g.full)).toBeLessThan(2)
+    })
+
+    test('a non-modal sheet locks the page only while it covers it at full', async ({ page }) => {
+      // Firefox Android gave a swipe nothing took (up at the newest message) to the page: its toolbar slid away and
+      // resized the sheet under the finger.
+      const overflow = () => page.evaluate(() => document.documentElement.style.overflow)
+      expect(await overflow()).toBe('')
+      await toFull(page)
+      expect(await overflow()).toBe('hidden')
+      await to(page, 0.5)
+      await waitForEvent(page, 'venga: onDetentChange 0.5')
+      expect(await overflow()).toBe('')
+    })
+
+    test('at full with the history scrolled back, a header drag moves the whole sheet with its messages', async ({ page }) => {
+      await toFull(page)
+      await setList(page, -400)
+      await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-chat-back', '')
+      const bubbleY = () =>
+        page.evaluate(() => {
+          const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+          const b = [...document.querySelectorAll('[data-ybs-chat] .bubble')].find((x) => x.getBoundingClientRect().top > header.bottom + 40)!
+          return b.getBoundingClientRect().top
+        })
+      const p = await page.evaluate(() => {
+        const r = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+      })
+      const marked = await page.evaluate(() => {
+        const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+        const all = [...document.querySelectorAll('[data-ybs-chat] .bubble')]
+        return all.findIndex((x) => x.getBoundingClientRect().top > header.bottom + 40)
+      })
+      const y0 = await bubbleY()
+      await page.mouse.move(p.x, p.y)
+      await page.mouse.down()
+      for (let i = 1; i <= 10; i++) await page.mouse.move(p.x, p.y + i * 12)
+      const moved = (await page.evaluate((i) => document.querySelectorAll('[data-ybs-chat] .bubble')[i]!.getBoundingClientRect().top, marked)) - y0
+      expect(moved).toBeGreaterThan(90) // the messages came down with the finger (not covered by the header)
+      await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-pin-end', '')
+      // On down to 0.5 and let go there: it lands at 0.5 and the reader stays in the history.
+      for (let i = 11; i <= 32; i++) await page.mouse.move(p.x, p.y + i * 12)
+      await page.waitForTimeout(150)
+      await page.mouse.up()
+      await waitForEvent(page, 'venga: onDetentChange 0.5')
+      await page.waitForTimeout(500)
+      expect(await list(page)).toBeLessThan(-100)
+    })
+
+    test('at full at the newest message, a header drag shortens the sheet and the newest stay on the composer', async ({ page }) => {
+      await toFull(page)
+      await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-chat-back', '')
+      const before = await chat(page)
+      const p = await page.evaluate(() => {
+        const r = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+      })
+      await page.mouse.move(p.x, p.y)
+      await page.mouse.down()
+      for (let i = 1; i <= 10; i++) await page.mouse.move(p.x, p.y + i * 12)
+      expect(Math.abs((await chat(page)).lastBottom - before.lastBottom)).toBeLessThan(2)
+      await page.mouse.up()
+    })
+
+    test('in the dialog (modal, desktop), it opens at the newest message and follows a reply', async ({ page }, info) => {
+      test.skip(info.project.name !== 'firefox-desktop', 'the dialog is the desktop presentation')
+      await page.setViewportSize({ width: 1280, height: 800 })
+      await page.goto('/?venga=1&chat=1&modal=1#/assistant')
+      await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-dialog', '')
+      const gap = () =>
+        page.evaluate(() => {
+          const s = document.querySelector<HTMLElement>('[data-ybs-sheet]')!
+          return s.scrollHeight - s.clientHeight - s.scrollTop
+        })
+      await expect.poll(gap).toBeLessThan(2)
+      await page.getByRole('button', { name: 'Send a message' }).click()
+      await waitForEvent(page, 'venga: reply done', 15000)
+      await page.waitForTimeout(300)
+      expect(await gap()).toBeLessThan(2)
+    })
+
+    test('the wheel over the messages scrolls the history, not the sheet (at half and at full)', async ({ page }, info) => {
+      test.skip(info.project.name === 'webkit-mobile', 'no wheel on mobile WebKit')
+      const dpr0 = await page.evaluate(() => devicePixelRatio)
+      const half = (await geometry(page)).st
+      const p0 = await listPoint(page)
+      await page.mouse.move(p0.x, p0.y)
+      await page.mouse.wheel(0, -200 * dpr0)
+      await page.waitForTimeout(800)
+      expect(await list(page)).toBeLessThan(-60)
+      expect(Math.abs((await geometry(page)).st - half)).toBeLessThan(2)
+      await setList(page, 0)
+      await page.waitForTimeout(400) // a new wheel gesture
+      await toFull(page)
+      const dpr = await page.evaluate(() => devicePixelRatio)
+      const p = await listPoint(page)
+      await page.mouse.move(p.x, p.y)
+      await page.mouse.wheel(0, -300 * dpr)
+      await page.waitForTimeout(800)
+      expect(await list(page)).toBeLessThan(-100)
+      const g = await geometry(page)
+      expect(Math.abs(g.st - g.full)).toBeLessThan(2) // the sheet didn't step down
+    })
+
+    test('reading back through the history, a new reply does not pull the reader to the end', async ({ page }) => {
+      await to(page, -1)
+      await waitForEvent(page, 'venga: onDetentChange full')
+      await page.evaluate(() => (document.querySelector<HTMLElement>('[data-ybs-chat-scroll]')!.scrollTop = -400))
+      await page.waitForTimeout(300)
+      const reading = await page.evaluate(() => {
+        const header = document.querySelector('[data-ybs-header]')!.getBoundingClientRect()
+        const b = [...document.querySelectorAll('[data-ybs-chat] .bubble')]
+        const i = b.findIndex((x) => x.getBoundingClientRect().bottom > header.bottom + 2)
+        return { i, top: b[i]!.getBoundingClientRect().top }
+      })
+      await page.getByRole('button', { name: 'Send a message' }).click()
+      await waitForEvent(page, 'venga: reply done', 15000)
+      await page.waitForTimeout(300)
+      const top = await page.evaluate((i) => document.querySelectorAll('[data-ybs-chat] .bubble')[i]!.getBoundingClientRect().top, reading.i)
+      expect(Math.abs(top - reading.top)).toBeLessThan(2) // what the reader was looking at stayed put
+    })
+  })
+
+  test('every position in the last screen of a long sheet stays where it is put (no snap near the end)', async ({ page }) => {
+  await page.goto('/?open=1&full=1#/lab')
+  await waitForEvent(page, /lab: onDetentChange/)
+  await page.waitForTimeout(300)
+  const max = await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    return s.scrollHeight - s.clientHeight
+  })
+  for (const v of [max - 600, max - 300, max - 100]) {
+    await page.evaluate((v) => (document.querySelector<HTMLElement>('[data-ybs-scroller]')!.scrollTop = v), v)
+    await page.waitForTimeout(400)
+    expect(Math.abs((await geometry(page)).st - v)).toBeLessThan(2)
+  }
+})
+
+test('touch swipes through a long sheet reach its very end', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP touch')
+  await page.goto('/?open=1&full=1#/lab')
+  await waitForEvent(page, /lab: onDetentChange/)
+  await page.waitForTimeout(300)
+  const cdp = await page.context().newCDPSession(page)
+  const start = (await geometry(page)).st
+  for (let i = 0; i < 14; i++) {
+    await cdp.send('Input.synthesizeScrollGesture', { x: 200, y: 600, yDistance: -300, speed: 1200, gestureSourceType: 'touch', preventFling: true })
+    await page.waitForTimeout(150)
+  }
+  await page.waitForTimeout(400)
+  const st = (await geometry(page)).st
+  test.skip(Math.abs(st - start) < 5, 'synthesized touch scrolling is not supported in this environment')
+  const max = await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    return s.scrollHeight - s.clientHeight
+  })
+  expect(Math.abs(st - max)).toBeLessThan(2) // not stuck a screen short of it
+})
+
+test('content growing at full causes no layout loop', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await page.goto('/?open=1&grow=1&short=1&full=1&pin=1#/lab')
+  await page.evaluate(() => {
+    const w = window as unknown as { __roErrors: number }
+    w.__roErrors = 0
+    addEventListener('error', (e) => {
+      if (String(e.message).includes('ResizeObserver')) w.__roErrors++
+    })
+  })
+  await page.waitForTimeout(6000) // the content grows past the screen and on
+  expect(await page.evaluate(() => (window as unknown as { __roErrors: number }).__roErrors)).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test('a streamed reply at the end of the transcript is followed, not reset to the top', async ({ page }) => {
+    await page.goto('/?venga=1#/assistant')
+    // To full (the whole transcript). On a short screen the latest turn alone is close to full height, so 0.5 is
+    // dropped and the sheet opens at full by itself.
+    await page.locator('[data-ybs-sheet]').waitFor()
+    await page.waitForTimeout(800)
+    if (!(await page.evaluate(() => (window as any).__ybs.events.some((e: string) => e.includes('venga: onDetentChange full'))))) {
+      await page.getByRole('button', { name: 'Show earlier' }).click()
+    }
+    await waitForEvent(page, 'venga: onDetentChange full')
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.scrollHeight // read to the end
+    })
+    await page.waitForTimeout(400)
+    const before = await geometry(page)
+    expect(before.st).toBeGreaterThan(before.full + 500)
+    await page.getByRole('button', { name: 'Send a message' }).click()
+    const samples: number[] = []
+    for (let i = 0; i < 12; i++) {
+      await page.waitForTimeout(120)
+      samples.push(await page.evaluate(() => {
+        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+        return s.scrollHeight - s.clientHeight - s.scrollTop // distance from the end
+      }))
+    }
+    expect(samples.every((d) => d < 100), `distance from the end while streaming: ${samples.join(' ')}`).toBe(true)
   })
 })
 
@@ -702,6 +1167,12 @@ test.describe('persistent (non-modal) sheet', () => {
     await waitForEvent(page, 'solved: onDetentChange full')
   }
 
+  test('resting at full but short (fit-content), it leaves the page scrollable', async ({ page }) => {
+    await openSolved(page)
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-at-full', '')
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('')
+  })
+
   test('no backdrop, the page stays usable, and taps reach it', async ({ page }) => {
     await openSolved(page)
     await expect(page.locator('[data-ybs-backdrop]')).toHaveCount(0)
@@ -894,6 +1365,64 @@ test('content that changes height mid-scroll does not yank the sheet back to its
   await expect.poll(async () => (await geometry(page)).st, { timeout: 3000 }).toBeGreaterThan(full + 500)
 })
 
+// Issue #13: the resize re-snap only moves the sheet between detents. Past full it keeps the content where it is.
+test('content that grows while scrolled past full keeps its scroll offset', async ({ page }) => {
+  await openLab(page)
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    const sheet = document.querySelector<HTMLElement>('[data-ybs-sheet]')!
+    s.scrollTo({ top: Math.min(s.clientHeight, sheet.offsetHeight) }) // rest at full
+  })
+  await waitForEvent(page, 'lab: onDetentChange full')
+  await page.waitForTimeout(200)
+  const full = (await geometry(page)).full
+  // Read the content 800px down, then stop (well past USER_SCROLL_QUIET)…
+  await page.evaluate((top) => (document.querySelector<HTMLElement>('[data-ybs-scroller]')!.scrollTop = top), full + 800)
+  await page.waitForTimeout(400)
+  expect(Math.abs((await geometry(page)).st - (full + 800))).toBeLessThan(3)
+  // …and the content grows below (a chat line streaming in, an image loading).
+  await page.evaluate(() => {
+    const extra = document.createElement('div')
+    extra.style.height = '400px'
+    document.querySelector('[data-ybs-sheet]')!.append(extra)
+  })
+  await page.waitForTimeout(400)
+  expect(Math.abs((await geometry(page)).st - (full + 800))).toBeLessThan(3)
+})
+
+// Issue #13, as seen on Firefox Android: the momentum guard kept the anchor of the last finger release. The content
+// then grew (full moved down past it), and the app's scroll to the end (a chat following new text) read as momentum
+// crossing full: the guard clamped to the content top and held it there.
+test('a chat that grows past the screen can scroll to its end after a touch at full', async ({ page }, info) => {
+  test.skip(info.project.name === 'firefox-desktop', 'needs touch (the anchor is set on finger release)')
+  await openLab(page, '&short=1')
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTo({ top: s.scrollHeight }) // short content: full is its end
+  })
+  await waitForEvent(page, 'lab: onDetentChange full')
+  await page.waitForTimeout(200)
+  // A finger lifts at full (a tap on the title).
+  const title = (await page.locator('.ybs-title').boundingBox())!
+  await page.touchscreen.tap(title.x + 10, title.y + title.height / 2)
+  await page.waitForTimeout(200)
+  // A reply streams in: the content grows past the screen, and after the render (the controller has measured the new
+  // `full` by then, as in React: layout, ResizeObserver, then the app's effect) the app keeps the reader at the end.
+  const end = await page.evaluate(async () => {
+    const extra = document.createElement('div')
+    extra.style.height = '1200px'
+    document.querySelector('[data-ybs-sheet]')!.append(extra)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.scrollTo({ top: s.scrollHeight })
+    return s.scrollHeight - s.clientHeight
+  })
+  await page.waitForTimeout(400)
+  const g = await geometry(page)
+  expect(g.st).toBeGreaterThan(g.full + 500) // not clamped to the content top
+  expect(Math.abs(g.st - end)).toBeLessThan(3)
+})
+
 test.describe('page sheet and fullscreen', () => {
   test('a page sheet opens straight to full and fills the screen, even with short content', async ({ page }) => {
     await page.goto('/?open=1#/notes')
@@ -1008,6 +1537,46 @@ test.describe('header drag while the content is scrolled', () => {
     await expect.poll(() => drop(page)).toBe(0)
     expect(Math.abs((await geometry(page)).st - st)).toBeLessThan(2)
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  })
+
+  // A chat at its latest message: pulling the header down shortens the sheet from the top and the last line stays
+  // on the bottom edge (in the middle of the content, the whole sheet moves, above).
+  test('at the end of the content, a drag keeps the last row on the bottom edge', async ({ page }) => {
+    await openLab(page)
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.scrollTop = s.scrollHeight
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-scrolled', '')
+    await page.waitForTimeout(300)
+    const lastRow = page.locator('.row').last()
+    const before = (await lastRow.boundingBox())!
+    const p = await headerPoint(page)
+    await page.mouse.move(p.x, p.y)
+    await page.mouse.down()
+    for (let i = 1; i <= 10; i++) await page.mouse.move(p.x, p.y + i * 12)
+    expect(await drop(page)).toBeGreaterThan(90)
+    await expect(page.locator('[data-ybs-root]')).toHaveAttribute('data-ybs-pin-end', '')
+    const during = (await lastRow.boundingBox())!
+    expect(Math.abs(during.y - before.y)).toBeLessThan(1.5)
+    // The header came down with the sheet's top.
+    expect((await headerPoint(page)).y - p.y).toBeGreaterThan(90)
+    await page.waitForTimeout(150)
+    await page.mouse.up()
+    await expect.poll(() => drop(page)).toBe(0)
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-pin-end', '')
+    expect(Math.abs((await lastRow.boundingBox())!.y - before.y)).toBeLessThan(1.5) // sprang back to full, still at the end
+  })
+
+  test('in the middle of the content, the pin is off (the whole sheet moves)', async ({ page }) => {
+    await scrolledLab(page)
+    const p = await headerPoint(page)
+    await page.mouse.move(p.x, p.y)
+    await page.mouse.down()
+    for (let i = 1; i <= 10; i++) await page.mouse.move(p.x, p.y + i * 8)
+    expect(await drop(page)).toBeGreaterThan(60)
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-pin-end', '')
+    await page.mouse.up()
   })
 
   test('a flick down closes the sheet', async ({ page }) => {

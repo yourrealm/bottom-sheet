@@ -30,7 +30,9 @@
 }
 [data-ybs-root][data-ybs-fullscreen] { --ybs-inset: 0px; }
 /* Fullscreen means the full detent covers the screen, even with short content. */
-[data-ybs-root][data-ybs-fullscreen] [data-ybs-sheet] { min-height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset)); }
+[data-ybs-root][data-ybs-fullscreen] [data-ybs-sheet],
+/* fit={false}: the same, keeping the gap above: full stays the top of the screen whatever the content is. */
+[data-ybs-root][data-ybs-no-fit]:not([data-ybs-dialog]) [data-ybs-sheet] { min-height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset)); }
 [data-ybs-backdrop] {
   position: fixed; left: 0; right: 0; top: var(--ybs-vv-top, 0px); height: 200lvh;
   pointer-events: auto;
@@ -69,6 +71,28 @@
 [data-ybs-sheet] { position: relative; scroll-snap-align: start; scroll-snap-stop: always; outline: none; }
 [data-ybs-root][data-ybs-fit] [data-ybs-sheet] { scroll-snap-align: end; }
 [data-ybs-header] { position: sticky; top: 0; z-index: 1; }
+/* Sheet.Chat: the messages in a scroll area of their own, pinned to the bottom of the screen on the footer, so the
+   newest stay put at any detent and sliding up reveals older ones above. The sheet is always a screen tall (its
+   height can't follow the messages) and clips at its own edge (the area reaches above the sheet's top at partial
+   detents). A sticky element can't leave its containing block, so [data-ybs-chat] reaches a screen above itself
+   (net height 0). column-reverse: the area starts at the newest message and stays there as messages arrive. */
+[data-ybs-root]:not([data-ybs-dialog]) [data-ybs-sheet]:has([data-ybs-chat]) {
+  overflow: clip; min-height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset));
+}
+[data-ybs-root]:not([data-ybs-dialog]) [data-ybs-chat] { margin-top: calc(-1 * var(--ybs-h, 100dvh)); }
+[data-ybs-root]:not([data-ybs-dialog]) [data-ybs-chat]::before { content: ''; display: block; height: var(--ybs-h, 100dvh); }
+[data-ybs-root]:not([data-ybs-dialog]) [data-ybs-chat-scroll] {
+  position: sticky; bottom: var(--ybs-footer-h, 0px);
+  height: calc(var(--ybs-vv-h, 100dvh) - var(--ybs-inset) - var(--ybs-header-h, 0px) - var(--ybs-footer-h, 0px));
+  overflow-y: auto; overscroll-behavior-y: auto;
+  display: flex; flex-direction: column-reverse;
+}
+/* Below full the top of the area sits above the sheet's top edge (it's a screen tall, pinned to the composer). Pad the
+   messages by that much, so the oldest one scrolls into view under the header at any detent. The padding sits in the
+   hidden part, and the area is anchored at its end, so a change doesn't move what's on screen. */
+[data-ybs-root]:not([data-ybs-dialog]) [data-ybs-chat-content] {
+  padding-top: max(0px, var(--ybs-vv-h, 100dvh) - var(--ybs-inset) - var(--ybs-visible, 100dvh));
+}
 [data-ybs-footer] {
   position: sticky; bottom: 0; z-index: 1;
   /* At a peek lower than header + footer, pinning the footer to the screen bottom would cover the header. Push it
@@ -77,7 +101,12 @@
 }
 /* Content scrolled: a drag on the header moves the whole sheet (JS, "detached drag"), like native, instead of
    scrolling the content back first. */
-[data-ybs-root][data-ybs-scrolled] [data-ybs-drag] { touch-action: none; }
+[data-ybs-root][data-ybs-scrolled] [data-ybs-drag],
+[data-ybs-root][data-ybs-at-full][data-ybs-chat-back] [data-ybs-drag] { touch-action: none; }
+/* That drag started at the content's end: everything but the header moves back up by the drop, so the content (and
+   the footer) stays on the bottom edge while the sheet shortens from the top. `translate`, not `transform`, so an
+   app's own transform on those elements is left alone. */
+[data-ybs-root][data-ybs-pin-end] [data-ybs-sheet] > :not([data-ybs-header]) { translate: 0 calc(-1 * var(--ybs-drop, 0px)); }
 /* Non-modal: the layer lets taps, clicks and wheel through to the page; only the sheet takes them. A drag on
    the sheet still scrolls the scroller (its scroll container), which is how the sheet moves. */
 [data-ybs-root][data-ybs-modeless] [data-ybs-scroller] { pointer-events: none; }
@@ -87,13 +116,15 @@
    scroller (overflow-y stays clipped to its own height, so sticky headers keep sticking to the scroller); the
    vertical drag then chains to the sheet scroller. WebKit touch only. */
 @supports (-webkit-touch-callout: none) {
-  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > * {
+  /* Not around a Sheet.Chat: a scroll container there would capture its sticky message area (and the area is a
+     scroll container under the finger already). */
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-chat], :has([data-ybs-chat])) {
     overflow-x: scroll; overflow-y: hidden; overscroll-behavior-x: none; scrollbar-width: none;
   }
   [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *::-webkit-scrollbar { display: none; }
   /* 1px of horizontal overflow, measured from the padding box so side padding can't absorb it. */
-  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-header], [data-ybs-footer]) { position: relative; }
-  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *::after {
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-header], [data-ybs-footer], [data-ybs-chat], :has([data-ybs-chat])) { position: relative; }
+  [data-ybs-root][data-ybs-modeless] [data-ybs-sheet] > *:not([data-ybs-chat], :has([data-ybs-chat]))::after {
     content: ''; position: absolute; top: 0; left: 0; width: calc(100% + 1px); height: 1px; pointer-events: none;
   }
 }

@@ -743,3 +743,6 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(20p
 .orders.virtual { position: relative; box-sizing: content-box; }
 .orders.virtual > li { position: absolute; top: 0; inset-inline: 8px; height: 58px; display: flex; align-items: center; }
 .orders.virtual > li > .ybs-trigger { flex: 1; }
+
+/* #/assistant?venga=1&chat=1: BottomSheet.Chat pads the messages itself. */
+.ybs-chat .chat { padding-bottom: 0; }

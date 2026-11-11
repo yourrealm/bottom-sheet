@@ -88,6 +88,8 @@ const KEYBOARD_THRESHOLD = 120
 const MAX_RETARGETS = 3
 /** A resize this soon after a user scroll event is mid-gesture or mid-momentum: don't re-target. */
 const USER_SCROLL_QUIET = 100
+/** A resting detent that a layout change moves further than this (px) is glided to, not jumped to. */
+const RESIZE_GLIDE_PX = 80
 const VELOCITY_WINDOW_MS = 80
 /** A touch that starts this soon after a scroll event lands on moving content: it only stops the scroll. */
 const MOVING_MS = 100
@@ -163,6 +165,28 @@ export function createSheetController(els: SheetElements, options: SheetControll
   const closedMarker = makeMarker()
   closedMarker.style.top = '0px'
   markerHost.append(closedMarker)
+  /**
+   * The end of the content as a snap position. At the end, a sheet's bottom can sit a fraction of a pixel above the
+   * screen's (a 1857.97px sheet in a range that ends at 1858), and Chromium treats a scroll past the end
+   * (`scrollTo({ top: scrollHeight })`, the usual "scroll to the bottom") as aiming beyond the sheet: either way the
+   * end wasn't a valid snap position and the browser snapped to the sheet's start, the content top (a chat following
+   * new text jumped to the top, #13). The marker's box is the content's last pixel, aligned by its end: its snap
+   * position is the end, but the box is inside the screen only there. (A start-aligned marker, its box a screen above
+   * the end, sat inside the screen for the whole last screen, and Chromium let no scroll rest there. Topping the sheet
+   * up to a whole pixel came a frame too late and looped in 1/64px layout units.) Firefox lets no scroll rest between
+   * two snap positions less than a screen apart, so there it's only for content more than a screen past full; it
+   * doesn't need it closer (a scroll past the end lands on the end there, as in WebKit).
+   */
+  const endMarker = makeMarker()
+  endMarker.setAttribute('data-ybs-end', '')
+  endMarker.hidden = true
+  endMarker.style.scrollSnapAlign = 'end'
+  markerHost.append(endMarker)
+  const gecko = typeof CSS !== 'undefined' && CSS.supports('-moz-appearance', 'none')
+  function syncEndMarker() {
+    endMarker.hidden = sheetH <= H + 1 || (gecko && sheetH - full <= H + 1)
+    endMarker.style.top = `${sheetH + H - 1}px`
+  }
   // Resolves CSS-length detents ('76px', '40dvh', 'min(...)') to pixels.
   const probe = document.createElement('div')
   probe.setAttribute('aria-hidden', 'true')
@@ -179,6 +203,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let current: Detent | null = null // resting detent
   /** Last scroll event the user caused (finger, momentum, wheel): not ours, not the momentum lock's pin. */
   let lastUserScroll = -Infinity
+  /** When scrollend last settled the sheet: a user scroll after it means it's moving again. */
+  let settledAt = -Infinity
   /**
    * The scrollTop our own code last set (a glide frame, a re-pin). A scroll event that lands exactly there is ours
    * even when it arrives after `programmatic` was cleared (the glide's last frame is reported a frame after it
@@ -252,14 +278,21 @@ export function createSheetController(els: SheetElements, options: SheetControll
   }
 
   function layout() {
+    const oldFull = full
     H = scroller.clientHeight
     sheetH = sheet.offsetHeight
     full = Math.min(H, sheetH)
+    // A finger released at full (or a wheel gesture that started there) belongs to full wherever it moves: content
+    // growing from fit-content pushes full down, and an anchor left at the old line made the guard take the app's
+    // next scroll into the content (a chat following new text) for momentum crossing full, and clamp it (#13).
+    if (anchor != null && full !== oldFull && Math.abs(anchor - oldFull) <= 2) anchor = full
     const partials = requested.filter((d) => d !== 'closed' && d !== 'full').map((d) => ({ detent: d, top: rawTop(d) }))
     stops = buildStops(partials, full, closable())
     root.style.setProperty('--ybs-h', `${H}px`)
     // How far the header reaches into the sheet: the footer stays tucked under it while the sheet is too low to show both.
     root.style.setProperty('--ybs-header-h', `${headerBottom()}px`)
+    // The footer's height, for parts that sit on it (Sheet.Chat's message area).
+    root.style.setProperty('--ybs-footer-h', `${footerHeight()}px`)
     // The bleed (the sheet's colour behind the keyboard) is a sibling of the sheet, so a color-scheme set on the sheet
     // alone (one sheet forced dark) wouldn't reach it. Copy it over.
     const bleed = root.querySelector<HTMLElement>('[data-ybs-bleed]')
@@ -291,6 +324,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // after: that scroll event, painted against the old `full`, set data-ybs-scrolled (493 > 393), the header got
     // touch-action: none, and with no further scroll nothing cleared it, so the header ignored every swipe.
     if (isOpen && !detached) paint(scroller.scrollTop)
+    syncEndMarker()
   }
 
   function scrollToDetent(d: Detent) {
@@ -400,6 +434,16 @@ export function createSheetController(els: SheetElements, options: SheetControll
    */
   let scrolled = false
   let more = false
+  let atFull = false
+  /** A Chat's list scrolled back from its newest message (column-reverse: scrollTop < 0). */
+  let chatBack: HTMLElement | null = null
+  function onInnerScroll(e: Event) {
+    const el = e.target
+    if (!(el instanceof HTMLElement) || !el.hasAttribute('data-ybs-chat-scroll')) return
+    const back = el.scrollTop < -1 ? el : null
+    if ((back != null) !== (chatBack != null)) root.toggleAttribute('data-ybs-chat-back', back != null)
+    chatBack = back
+  }
   function paint(st: number, drop = 0) {
     softEdge(root, sheet, scroller.getBoundingClientRect().bottom)
     const shown = Math.max(Math.min(st, full) - drop, 0)
@@ -414,6 +458,20 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (s !== scrolled) {
       scrolled = s
       root.toggleAttribute('data-ybs-scrolled', s)
+    }
+    // At (or past) full: a header drag on a Chat scrolled back moves the whole sheet (and the page lock below).
+    const f = full > 0 && st >= full - 2
+    if (f !== atFull) {
+      atFull = f
+      root.toggleAttribute('data-ybs-at-full', f)
+      // A non-modal sheet at full that covers the screen (not a short fit-content one): lock the page there too. Firefox Android otherwise hands a swipe that
+      // nothing takes (up at the end of the content, a Chat at its newest message) to the page, whose toolbar then
+      // slides away, resizing the sheet under the finger (overscroll-behavior doesn't stop it). Modal sheets lock
+      // the page from open.
+      if (!modal && isOpen && f && sheetH >= H - 1 && !htmlLocked) {
+        lockHtml()
+        htmlLocked = true
+      } else if (!modal && !f) releaseHtml()
     }
     // Content hidden below the screen (behind a sticky footer): the sheet is taller than the screen and not scrolled
     // to its end. A sheet that fits never sets it, so a short sheet doesn't flash a footer line while it glides open.
@@ -490,6 +548,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     programmatic = false
     target = null
     current = now
+    settledAt = performance.now()
     if (now != null && now !== 'closed' && now !== emitted && isOpen) {
       emitted = now
       options.onDetentChange?.(now)
@@ -688,6 +747,16 @@ export function createSheetController(els: SheetElements, options: SheetControll
       wheelInContent = false
       wheelLanded = false
     }
+    // A Chat's messages scroll natively, at any detent, while they can go that way (column-reverse: 0 is the newest,
+    // negative the history). A gesture that scrolled them stops at their ends; it doesn't go on to move the sheet.
+    const chatArea = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-ybs-chat-scroll]') : null
+    if (chatArea) {
+      const canGo = dy < 0 ? chatArea.scrollTop > chatArea.clientHeight - chatArea.scrollHeight + 1 : chatArea.scrollTop < -1
+      if (canGo && dy !== 0) {
+        wheelInContent = true
+        return
+      }
+    }
     // Landing at the content top. Browsers animate wheel scrolling, so by the time the content reaches its top the
     // animation is already carrying it past full; the guard then pinned it back (a visible snap back up) and held
     // it for 800ms, swallowing the next notches. Instead: follow where this gesture is heading, and when an event
@@ -799,11 +868,23 @@ export function createSheetController(els: SheetElements, options: SheetControll
     touching = true
     programmatic = false
     anchor = null
-    dbg(`detached drag start @${Math.round(st0)}`)
+    // Scrolled to the end (a chat at its latest message): the content stays put and the sheet shortens from the top,
+    // so the last line stays on the bottom edge. Its children (not the header) move back up by the drop
+    // (`--ybs-drop` under [data-ybs-pin-end]); the scroller clips what rises above its own, moving, top edge.
+    // A Chat scrolled back: the whole sheet moves with its list as it is (the outer scroller is at its end at full,
+    // but that end isn't the chat's newest message).
+    const chat = st0 <= full + 1 ? chatBack : null
+    const pinEnd = !chat && st0 >= scroller.scrollHeight - scroller.clientHeight - 2
+    dbg(`detached drag start @${Math.round(st0)}${pinEnd ? ' (at the end: bottom stays)' : chat ? ' (chat in its history)' : ''}`)
 
     const setDrop = (d: number) => {
       drop = d
       scroller.style.transform = d > 0 ? `translate3d(0, ${d}px, 0)` : ''
+      if (pinEnd) {
+        root.toggleAttribute('data-ybs-pin-end', d > 0)
+        if (d > 0) root.style.setProperty('--ybs-drop', `${d}px`)
+        else root.style.removeProperty('--ybs-drop')
+      }
       paint(st0, d)
     }
     const id = e.pointerId
@@ -843,7 +924,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       dbg(`detached drag release drop=${Math.round(drop)} v=${Math.round(down)} -> ${String(to)}`)
       const end = to === 'full' ? 0 : full - pos(to)
       animateDrop(drop, end, setDrop, () => {
-        scroller.style.transform = ''
+        setDrop(0)
         detached = false
         if (closing) return scrollToDetent('closed') // close() ran during the drag
         if (to === 'full') {
@@ -854,6 +935,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
         // content returns to its top (invisible when closing; a partial detent shows the top of the content).
         target = to
         programmatic = true
+        // A Chat's list sits on the composer, so handing back moves its box up by the drop: scroll it back by as much,
+        // and the messages stay where the finger left them.
+        if (chat?.isConnected) chat.scrollTop = Math.max(chat.scrollTop - end, chat.clientHeight - chat.scrollHeight)
         scroller.scrollTop = pos(to)
         paint(scroller.scrollTop)
         if (to === 'closed' || belowFloor(scroller.scrollTop)) settleAtClosed()
@@ -866,7 +950,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     endDrag = () => {
       stop()
       if (!started) return
-      scroller.style.transform = ''
+      setDrop(0)
       detached = false
       paint(scroller.scrollTop)
     }
@@ -892,7 +976,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const el = e.target as Element | null
     const handle = el?.closest<HTMLElement>('[data-ybs-drag]')
     if (!handle) return
-    if (scroller.scrollTop > full + 1) return detachedDrag(e, handle)
+    // Content scrolled, or a Chat at full scrolled back into its history: the header moves the whole sheet.
+    if (scroller.scrollTop > full + 1 || (atFull && chatBack)) return detachedDrag(e, handle)
     if (el?.closest('input, textarea, select, button, a, [contenteditable]')) return
     if (e.pointerType !== 'mouse') return
     e.preventDefault()
@@ -1004,10 +1089,20 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (touching) return
     // Momentum still running (a fling, or content scrolling): `current` is where it last rested, not where it
     // is. Pinning to it would yank the sheet back mid-fling; scrollend settles it instead.
-    if (!programmatic && performance.now() - lastUserScroll < USER_SCROLL_QUIET) return
+    // Only while it's still moving (no scrollend since that scroll): a sheet that has settled follows the layout at
+    // once. Released at a short sheet's full, an app that renders more there (a chat's whole transcript) grew the
+    // content within those 100ms; skipping let the browser snap the sheet down to the next stop, where the app
+    // rendered less again, and back: a loop the finger couldn't leave (#13).
+    if (!programmatic && lastUserScroll > settledAt && performance.now() - lastUserScroll < USER_SCROLL_QUIET) return
     const d = programmatic ? target : current
     if (d == null) return
     if (gliding) return // the glide aims at the target's current position every frame
+    // A big move (content that grew under a resting sheet: an app rendering more at full) glides there; jumping
+    // 300px in one frame looked like a glitch. Small ones (URL bar, a footer line) stay instant.
+    if (!programmatic && Math.abs(pos(d) - scroller.scrollTop) > RESIZE_GLIDE_PX) {
+      dbg(`resize: ${String(d)} moved ${Math.round(pos(d) - scroller.scrollTop)}px, glide there`)
+      return scrollToDetent(d)
+    }
     scroller.scrollTop = pos(d)
     ourTop = scroller.scrollTop
     // Paint now, not on the scroll event a frame later: a footer that grew a line (a 'header+footer' peek) would sit
@@ -1031,6 +1126,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('scrollend', onScrollEnd)
   scroller.addEventListener('touchstart', onTouchStart, passive)
   scroller.addEventListener('pointerdown', onPressStart, true)
+  sheet.addEventListener('scroll', onInnerScroll, { capture: true, passive: true })
   for (const t of INPUT_EVENTS) scroller.addEventListener(t, onInput, { capture: true, passive: true })
   scroller.addEventListener('pointermove', onPressMove, true)
   scroller.addEventListener('pointerup', onPressEnd, true)
@@ -1123,6 +1219,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('scrollend', onScrollEnd)
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('pointerdown', onPressStart, true)
+      sheet.removeEventListener('scroll', onInnerScroll, true)
       for (const t of INPUT_EVENTS) scroller.removeEventListener(t, onInput, true)
       scroller.removeEventListener('pointermove', onPressMove, true)
       scroller.removeEventListener('pointerup', onPressEnd, true)
@@ -1137,6 +1234,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       window.visualViewport?.removeEventListener('scroll', syncViewport)
       window.removeEventListener('scroll', onWindowScroll)
       closedMarker.remove()
+      endMarker.remove()
       probe.remove()
       for (const m of markers.values()) m.remove()
       markers.clear()

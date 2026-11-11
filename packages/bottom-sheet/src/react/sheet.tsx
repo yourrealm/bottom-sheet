@@ -57,6 +57,7 @@ interface SheetContextValue {
   dismissible: boolean
   closeOnBack: boolean
   fullscreen: boolean
+  fit: boolean
   recede: boolean
   replaceable: boolean
   detents: readonly Detent[]
@@ -188,6 +189,13 @@ export interface RootProps {
    */
   fullscreen?: boolean
   /**
+   * `false`: the sheet is always at least a screen tall, so the full detent is the top of the screen even with
+   * short content (it doesn't shrink to fit it). For content that changes with the detent, like a chat that shows
+   * only its latest turn below full: with a fitted sheet, full (and with it the other stops) moved every time the
+   * content changed, under the finger. Sets `data-ybs-no-fit` on the root. Default `true`.
+   */
+  fit?: boolean
+  /**
    * The page behind recedes while this modal sheet is open, like iOS. Mark your app's wrapper with
    * `data-ybs-background`; `/styled` scales it back and rounds its top corners. Headless: style
    * `html[data-ybs-recede] [data-ybs-background]` with `--ybs-recede` (0..1) and `--ybs-scroll-y`.
@@ -283,6 +291,7 @@ export function Root(props: RootProps) {
     modal: modalProp = true,
     dismissible = true,
     fullscreen = false,
+    fit = true,
     recede = false,
     replaceable = false,
     debug,
@@ -392,6 +401,7 @@ export function Root(props: RootProps) {
       dismissible,
       closeOnBack,
       fullscreen,
+      fit,
       recede,
       replaceable,
       detents,
@@ -413,7 +423,7 @@ export function Root(props: RootProps) {
       setHasDescription,
       setStacked,
     }),
-    [open, mounted, setOpen, requestDismiss, modal, dialog, dismissible, closeOnBack, fullscreen, recede, replaceable, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
+    [open, mounted, setOpen, requestDismiss, modal, dialog, dismissible, closeOnBack, fullscreen, fit, recede, replaceable, detents, initialDetent, detent, onDetentChange, debug, onClosed, id, hasTitle, hasDescription],
   )
 
   return (
@@ -623,6 +633,7 @@ export function Portal({ children, container, ...rootProps }: PortalProps) {
       data-ybs-modeless={ctx.modal ? undefined : ''}
       data-ybs-dialog={ctx.dialog ? '' : undefined}
       data-ybs-fullscreen={ctx.fullscreen ? '' : undefined}
+      data-ybs-no-fit={ctx.fit ? undefined : ''}
       ref={ctx.rootEl}
     >
       {children}
@@ -783,6 +794,66 @@ export function Header(props: ComponentPropsWithRef<'div'>) {
  */
 export function Footer(props: ComponentPropsWithRef<'div'>) {
   return <div data-ybs-footer="" {...props} />
+}
+
+/**
+ * A chat's messages, newest at the bottom, in their own scroll area pinned to the bottom of the screen (on the
+ * footer, your composer). At a partial detent you see the latest messages; sliding the sheet up reveals older ones
+ * above while the newest stay put; at full you scroll back through the history here. It starts at, and while there
+ * stays at, the newest message (a reply streaming in stays in view). Render the whole conversation in it, whatever
+ * the detent.
+ *
+ * A sheet with a Chat is always a screen tall (like `fit={false}`): its height can't follow the messages.
+ * A swipe on the messages scrolls them at every detent; the header and footer move the sheet. At the newest message a
+ * swipe up hands over to the sheet (it grows), at the oldest a swipe down does (it shrinks).
+ * Props (and `ref`) go to the scroll area. In the dialog presentation it's a plain block in the dialog's scrolling body,
+ * which opens at the newest message and follows new ones the same way.
+ */
+export function Chat({ children, ref, ...props }: ComponentPropsWithRef<'div'>) {
+  const ctx = useSheet('Chat')
+  const area = useRef<HTMLDivElement>(null)
+  const content = useRef<HTMLDivElement>(null)
+  const areaRef = useMergedRef(ref, area)
+  // The dialog's own scrolling body (null for a render): there the messages are a plain block in it.
+  const dialogBody = useScrollElement()
+  // Stay at the newest message while new ones arrive or a reply streams in. Chrome and Firefox keep a column-reverse
+  // scroller at its end by themselves; WebKit doesn't, and the reply grew below the composer. In the dialog the box
+  // is the dialog's body, a plain scroller: open at the end and follow it there too.
+  useLayoutEffect(() => {
+    const inner = content.current
+    const box = ctx.dialog ? dialogBody : area.current
+    if (!box || !inner) return
+    // column-reverse: scrollTop is 0 at the end (the newest) and negative going back through the history.
+    const end = () => (ctx.dialog ? box.scrollHeight - box.clientHeight : 0)
+    if (ctx.dialog) box.scrollTop = end()
+    let atEnd = true
+    let seenHeight = box.scrollHeight
+    const onScroll = () => {
+      // WebKit keeps the top in place as content grows, and that adjustment fires a scroll event of its own: only a
+      // scroll at a height the observer has seen is the reader's.
+      if (box.scrollHeight !== seenHeight) return
+      atEnd = Math.abs(box.scrollTop - end()) < 2
+    }
+    const ro = new ResizeObserver(() => {
+      seenHeight = box.scrollHeight
+      if (atEnd && Math.abs(box.scrollTop - end()) >= 1) box.scrollTop = end()
+    })
+    box.addEventListener('scroll', onScroll, { passive: true })
+    ro.observe(inner, { box: 'border-box' }) // the top padding (the part above the sheet's edge) changes its height too
+    return () => {
+      box.removeEventListener('scroll', onScroll)
+      ro.disconnect()
+    }
+  }, [ctx.dialog, dialogBody])
+  return (
+    <div data-ybs-chat="">
+      <div data-ybs-chat-scroll="" {...props} ref={areaRef}>
+        <div data-ybs-chat-content="" ref={content}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** Visual grabber. Decorative; dragging works on the whole Header. */

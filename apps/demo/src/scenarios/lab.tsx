@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sheet } from '@yourrealm/bottom-sheet'
 import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
 import { logged, log } from '../debug'
@@ -16,6 +16,31 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
   const params = new URLSearchParams(location.search)
   const [short, setShort] = useState(params.get('short') === '1')
   const [open, setOpen] = useState(autoOpen)
+  // `?grow=1`: a row is added every 500ms while open (streamed content; issue #13), logging scrollTop each time.
+  const grow = params.get('grow') === '1'
+  // `&pin=1`: like a chat, keep the reader at the end when they were there before the row arrived.
+  const pin = params.get('pin') === '1'
+  const [extra, setExtra] = useState(0)
+  const atEnd = useRef(false)
+  useEffect(() => {
+    if (!grow || !open) return
+    const id = setInterval(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')
+      if (s) atEnd.current = s.scrollTop >= s.scrollHeight - s.clientHeight - 2
+      setExtra((n) => {
+        log(`lab: grow ${n + 1} st=${s ? Math.round(s.scrollTop) : '-'} end=${atEnd.current}`)
+        return n + 1
+      })
+    }, 500)
+    return () => clearInterval(id)
+  }, [grow, open])
+  useEffect(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')
+    if (!pin || !s || !atEnd.current) return
+    s.scrollTo({ top: s.scrollHeight })
+    const before = Math.round(s.scrollTop)
+    requestAnimationFrame(() => log(`lab: pinned ${before} -> next frame ${Math.round(s.scrollTop)}`))
+  }, [extra, pin])
   if (params.get('late') === '1') return <LateLab />
   if (params.get('untitled') === '1') return <UntitledLab />
   if (params.get('float') === '1') return <FloatLab />
@@ -31,6 +56,8 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
       <p className="filler">{'Background page text. '.repeat(400)}</p>
       <BottomSheet
         detents={[0.5]}
+        // `?full=1`: open at full (with `&short=1&grow=1&pin=1`: a chat that starts short and grows; issue #13).
+        initialDetent={params.get('full') === '1' ? 'full' : undefined}
         modal={params.get('modal') !== '0'}
         dismissible={params.get('dismissible') !== '0'}
         closeOnBack={params.get('back') === '1' ? true : undefined}
@@ -47,7 +74,7 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
         description="Drag, fling, scroll."
         headerExtra={<input className="search" placeholder="Search (keyboard test)" />}
       >
-        {Array.from({ length: short ? 4 : 60 }, (_, i) => (
+        {Array.from({ length: (short ? 4 : 60) + extra }, (_, i) => (
           <div key={i}>
             <div className="row">Row {i + 1}</div>
             {i === 2 && (

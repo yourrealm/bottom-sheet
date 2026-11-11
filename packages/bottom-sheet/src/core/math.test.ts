@@ -18,10 +18,15 @@ describe('buildStops', () => {
   it('keeps partials well below full, sorted and deduped', () => {
     expect(ids(buildStops([frac(0.5, 800), frac(0.25, 800), frac(0.5, 800)], 800))).toEqual(['closed', 0.25, 0.5, 'full'])
   })
-  it('drops partials within 15% of a short sheet (fit content)', () => {
-    // sheet is 400px tall: 0.5 * 800 = 400 is not < 340
+  it('drops partials at or above the full of a short sheet (fit content), or within a few px of it', () => {
+    // sheet is 400px tall: 0.5 * 800 = 400 is full itself
     expect(ids(buildStops([frac(0.5, 800)], 400))).toEqual(['closed', 'full'])
     expect(ids(buildStops([frac(0.3, 800), frac(0.5, 800)], 400))).toEqual(['closed', 0.3, 'full'])
+    expect(ids(buildStops([{ detent: '395px', top: 395 }], 400))).toEqual(['closed', 'full'])
+  })
+  it('keeps a partial close to the full of a short sheet (no percentage rule: the stops do not move with the content)', () => {
+    // A chat showing its latest turn at the peek: 0.5 is 368 of a 735px screen, the content 413 tall.
+    expect(ids(buildStops([frac(0.5, 735)], 413))).toEqual(['closed', 0.5, 'full'])
   })
   it('ignores out-of-range fractions', () => {
     expect(ids(buildStops([0, 1, -1, 2].map((f) => frac(f, 800)), 800))).toEqual(['closed', 'full'])

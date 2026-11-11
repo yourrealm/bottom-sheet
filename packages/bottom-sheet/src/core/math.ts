@@ -19,8 +19,14 @@ export interface Stop {
 /** UIScrollView.DecelerationRate.normal. Used to project where a release would come to rest. */
 export const DECELERATION = 0.998
 
-/** A partial detent closer than this to `full` (as a fraction of full) is dropped as pointless. */
-export const MIN_DETENT_GAP = 0.15
+/**
+ * A partial detent closer than this to `full` (px) is dropped: it would be the same resting place as full (stops
+ * are told apart with a 2px tolerance, and browsers settle at fractional positions). Only that: a partial the app
+ * asked for stays a stop however close to a short sheet's full it is. It used to be 15% of full, and with content
+ * that changes with the detent (a chat showing only its latest turn below full) the stops then changed under the
+ * finger: 0.5 vanished at the peek, a drag up to half landed at full, and the app expanded (#13).
+ */
+export const MIN_DETENT_GAP = 8
 
 /**
  * WWDC18 "Designing Fluid Interfaces": where would motion end if it just decelerated?
@@ -33,14 +39,14 @@ export function project(position: number, velocity: number, d = DECELERATION): n
 
 /**
  * All resting positions for this layout, ascending: [closed], usable partials..., full.
- * A partial is usable when it is above 0 and well below full (MIN_DETENT_GAP); duplicates by position are dropped.
+ * A partial is usable when it is above 0 and below full (by MIN_DETENT_GAP px); duplicates by position are dropped.
  * @param partials requested partial detents with their resolved positions
  * @param full scrollTop of the full detent = min(H, sheet height)
  * @param closable include `closed` (false for a sheet that can't be dismissed)
  */
 export function buildStops(partials: readonly Stop[], full: number, closable = true): Stop[] {
   const usable = partials
-    .filter((s) => s.detent !== 'closed' && s.detent !== 'full' && s.top > 0 && s.top < full * (1 - MIN_DETENT_GAP))
+    .filter((s) => s.detent !== 'closed' && s.detent !== 'full' && s.top > 0 && s.top < full - MIN_DETENT_GAP)
     .sort((a, b) => a.top - b.top)
     .filter((s, i, all) => i === 0 || Math.abs(s.top - all[i - 1]!.top) >= 1)
   return [...(closable ? [{ detent: 'closed' as Detent, top: 0 }] : []), ...usable, { detent: 'full', top: full }]

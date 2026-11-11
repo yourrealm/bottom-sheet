@@ -152,7 +152,9 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
   higher up lands on one, and only a flick from the peek itself closes the sheet (with `dismissible={false}`,
   nothing does). Other partial detents let a
   flick run past them. Full height (`'full'`) is always included, and is the content's own height when the content
-  is short. Default `[]`: the sheet opens straight to full, like iOS.
+  is short (see `fit`). A partial detent stays a stop however close it is to a short sheet's full; only one at or
+  within a few pixels of full is the same place and left out. Default `[]`: the sheet opens straight to full, like
+  iOS.
 - `initialDetent`: where it opens: `'full'` or one of your `detents`. Default: the smallest partial detent, else full.
 - `detent` / `onDetentChange`: the detent the sheet rests at, `'full'` or the value you passed in `detents`
   (`0.5`, `'76px'`, `'header'`, `'header+footer'`). Pass `detent` to control it (changing it moves the sheet). `onDetentChange` never
@@ -179,6 +181,11 @@ import { BottomSheet } from '@yourrealm/bottom-sheet/styled'
   elsewhere it does nothing.
 - `fullscreen`: the full detent reaches the very top of the screen, and the sheet fills the screen there even with
   short content. `/styled` squares off the corners as it arrives and pads the header by the top safe area.
+- `fit` (default `true`): a sheet with short content is as tall as its content, so full is lower on the screen.
+  `false` keeps the sheet at least a screen tall (the gap above it stays), so full is always the top of the screen.
+  Use it when the content changes with the detent, like a list that loads more at full: with a fitted sheet, full and
+  the other stops move every time the content does, so a flick up stops dead at the short content's top and a sheet
+  can bounce between two detents. For a chat, use `BottomSheet.Chat` (see "Chat") instead.
 - `recede`: the page behind scales back like iOS while the sheet covers the screen. Mark your app's wrapper with
   `data-ybs-background` and give it a background. While receding, `position: fixed` elements inside that wrapper are
   positioned against it. Modal sheets only. On by default for `variant="page"`.
@@ -297,6 +304,10 @@ Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the rol
   in about 400ms going up and 280ms going down (Material 3 emphasized easing), and are instant with reduced motion.
   Drags and flings are the browser's own scrolling.
 - With the content scrolled, dragging the header moves the whole sheet and keeps the content where it is, like native.
+  Scrolled to the very end (a chat at its latest message), the sheet shortens from the top instead, and the last line
+  and the footer stay on the bottom edge.
+- Content that changes height while the sheet rests keeps the sheet at its detent: at the end of a long content (a
+  chat following a streamed reply) it stays at the end, and a detent that moves far glides there.
 - A tap on content that is still scrolling only stops it, and a drag never presses what it started on.
 - Keys scroll the content but never move the sheet down or close it; closing by keyboard is Escape. Escape that ends
   an input method's composition (Chinese, Japanese) is left to the input.
@@ -390,6 +401,40 @@ Provider. Providers nest: an inner one overrides what it sets and keeps the rest
   Safari leave a scroller's own scrollbar square). The clip cuts off a `box-shadow`, so draw the shadow on the
   scroller, in dialog mode only: `[data-ybs-dialog] [data-ybs-scroller] { filter: drop-shadow(…) }`. Give it its own
   close button.
+
+### Chat
+
+A chat in a sheet wants its newest messages at the bottom, on the composer, at every height: at half you read the
+latest reply, and sliding up reveals the older messages above. One scrolling surface can't do that (at a partial
+height a sheet shows its content from the top), so `BottomSheet.Chat` gives the messages a scroll area of their own,
+pinned to the bottom of the screen:
+
+```tsx
+<BottomSheet
+  open
+  modal={false}
+  dismissible={false}
+  detents={['header+footer', 0.5]}
+  title="Assistant"
+  footer={<Composer />}
+>
+  <BottomSheet.Chat>
+    {messages.map((m) => <Message key={m.id} message={m} />)}
+  </BottomSheet.Chat>
+</BottomSheet>
+```
+
+- Render the whole conversation, whatever the detent: the newest messages are what shows at half, and the history is
+  already there above them when the sheet slides up. Don't swap in fewer messages at lower detents.
+- It starts at the newest message and stays there while messages arrive or a reply streams in. A reader who has
+  scrolled back into the history stays where they are. No scroll-to-end code needed.
+- The sheet is always a screen tall (as with `fit={false}`): its height can't follow the messages.
+- A swipe on the messages scrolls them, at every detent; the header and footer move the sheet. At the ends it hands
+  over: a swipe up at the newest message grows the sheet, a swipe down at the oldest shrinks it. At full with the
+  history scrolled back, a header drag moves the whole sheet with the messages as they are; at the newest message the
+  sheet shortens from the top and the newest stay on the composer.
+- Props and `ref` go to the scroll area (headless: `Sheet.Chat`). In the dialog presentation it's a plain block in the
+  dialog's scrolling body, which opens at the newest message and follows new ones the same way.
 
 ### Long lists (virtualized)
 

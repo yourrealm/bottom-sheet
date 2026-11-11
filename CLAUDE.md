@@ -174,8 +174,9 @@ separate mechanisms (window click swallow, View pointer handlers, a click-drop f
 ### Short content (spike 01)
 - `.sheet` has no min-height. `full = min(H, sheetHeight)`. When the sheet is shorter than H, the sheet snaps with
   `scroll-snap-align: end` (fit-content detent), so its bottom sits at the screen bottom.
-- Detents are **named** (`closed`/`medium`/`full`), not indexed, because the set changes with content size. `medium` is
-  dropped when it is within 15% of `full`. A ResizeObserver on the sheet re-measures this when content changes.
+- Detents are **named** (`closed`/`medium`/`full`), not indexed, because the set changes with content size. A partial
+  is dropped only at or within 8px of `full` (`MIN_DETENT_GAP`; it was 15% until #13, see below). A ResizeObserver on
+  the sheet re-measures this when content changes.
 - ✅ Firefox Android, ✅ iOS sim. iOS rubber-bands above the fit-content top (overscroll to 530, back to 404), which is native behaviour for free.
 
 ### Desktop mouse drag (spike 01)
@@ -455,6 +456,91 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
   paint on the main thread). The scrolled-header
   corner clip (`clip-path` on the non-scrolling `.ybs-view`) doesn't have that lag. Demo `#/soft-edge` (Albums,
   switches for the tokens, `?modal=1` for the dialog). Tests: "soft scroll edges".
+- **Content that changes under a sheet (issue #13, 2026-11-08, from Venga's "Create with AI" chat)**. Venga renders
+  the latest turn below full and the whole transcript at full, follows streamed text with `scrollTo` (scroll height),
+  and uses detents `['header+footer', 0.5]`. Demo copy: `#/assistant?venga=1` (`&send=<ms>`, `&tall=1` = `fit={false}`);
+  lab `?grow=1&pin=1&full=1` for growing content. Found and fixed, each with an e2e test:
+  - **The jump to the content top was the browser, not us.** At the very end the sheet's bottom sat a fraction above
+    the screen's (a 1857.97px sheet in a range ending at 1858): the sheet no longer covered the snapport, so the end
+    wasn't a valid snap position and Chrome/Firefox snapped to the sheet's start on the next layout change or app
+    `scrollTo`. Traced by wrapping `scrollTop`/`scrollTo` on the scroller: no write preceded the jump. Also Chromium
+    only: a scroll *past* the end (`scrollTo({ top: scrollHeight })`, Venga's idiom) lands on the content top even
+    with a whole-px sheet; exactly the end works (Firefox/WebKit land on the end either way). Fix: a snap marker
+    (`data-ybs-end`) whose 1px box is the content's last pixel, `scroll-snap-align: end`: its snap position is the
+    end, but the box is inside the snapport only there. Engines differ on a covering area's free range:
+    **Chromium ends it at any other snap *area* inside the snapport** (the first version, a start-aligned marker
+    whose box sat a screen above the end, made the whole last screen of every long sheet unrestable: swipes stuck
+    at end minus a screen; found by the pre-0.7.0 review), **Firefox at any other snap *position* within a snapport**
+    (an end marker less than a screen from full broke the soft-edge tests). So the marker is on for any sheet that
+    scrolls, but in Gecko (`CSS.supports('-moz-appearance', 'none')`) only for content more than a screen past full.
+    Tests: "every position in the last screen of a long sheet stays where it is put", "touch swipes through a long
+    sheet reach its very end", "a chat that grows past the screen can scroll to its end…". Ruled out:
+    `scroll-margin-bottom` (Chrome ignores it for covering), a marker beyond the range (clamped), undoing the re-snap
+    in JS (Chrome re-snapped again after 120ms), showing the marker only while at the end (an app scroll from
+    elsewhere still overshoots; a browser re-snap reads as leaving), and topping the sheet up to a whole px
+    (`--ybs-end-pad`; a frame late, and it flipped between two pads every frame in 1/64px layout units: a
+    ResizeObserver loop, error every frame).
+  - The momentum guard's `anchor` follows `full` when it moves (released at the old full, a grown chat's app scroll
+    read as a fling crossing full: clamped to the top, held by the lock; Firefox Android).
+  - The 15% detent-drop rule made the stops move with the content (0.5 vanished at Venga's peek, so peek -> half
+    landed at full and Venga expanded). Replaced by the 8px gap.
+  - The ResizeObserver's "still moving" skip (`USER_SCROLL_QUIET`) now only applies while no `scrollend` has come since
+    the last user scroll (`settledAt`): released at a short sheet's full, the app's growth landed within 100ms, the
+    browser snapped the sheet to 0.5, the app shrank, and so on (a loop on the maintainer's phone). A resting detent
+    that a layout change moves > 80px glides (`RESIZE_GLIDE_PX`) instead of jumping.
+  - Header drag at the content's very end pins the bottom (`data-ybs-pin-end`, `--ybs-drop`: the sheet's children but
+    the header get `translate: 0 -drop`; the scroller's own clip hides what rises above its moving top edge).
+  - **`fit={false}`** (`data-ybs-no-fit`): min-height a screen (gap kept), so `full` is fixed. Content that changes
+    with the detent and fit-content don't mix; that was the remaining jank (a flick up from 0.5 stopping dead at the
+    short content's top, then gliding). Advice for Venga, not done there: `fit={false}`, or drop the half detent
+    (peek + full only, the latest line in `headerExtra`), and a "go to the peek while the AI edits the page, back to
+    half when done" flow is plain controlled `detent`.
+  - **`Sheet.Chat` / `BottomSheet.Chat`** (2026-11-08, the maintainer: "what's the point of this library if we can't
+    solve it"): one scroller can't rest at half showing the end of its content (sheet height and content offset are
+    the same `scrollTop`), so the messages get a scroller of their own: `[data-ybs-chat]` (margin-top -H plus a
+    ::before of H, so its sticky child can rise past the sheet's top: a sticky element can't leave its containing
+    block) > `[data-ybs-chat-scroll]` (sticky, `bottom: var(--ybs-footer-h)`, a screen minus inset/header/footer
+    tall, `column-reverse`) > `[data-ybs-chat-content]`. The sheet gets `overflow: clip` + the screen min-height via
+    `:has([data-ybs-chat])`; the controller publishes `--ybs-footer-h`; the iOS non-modal "children scroll
+    sideways" rule skips it. WebKit doesn't keep a column-reverse scroller at its end as content grows (its own
+    adjustment fires a scroll event), so Chat keeps it there in JS (scroll events at a height the RO hasn't seen are
+    ignored). Dialog: plain block. Tests: "BottomSheet.Chat".
+    **Who owns the swipe** (2026-11-10/11). First version: below full the sheet owned every swipe (list
+    `overflow-y: hidden` without `data-ybs-at-full`, reset to the newest on settle), since a list scrolled into the
+    history at half took swipes unpredictably. The maintainer then decided (2026-11-11): "If half, and we swipe on
+    body (aka not header/footer) it should scroll, no opt-in". Now the list scrolls at every detent; the header and
+    footer move the sheet; at the ends the browser hands over (up at the newest grows the sheet, down at the oldest
+    shrinks it). `onWheel` lets the wheel scroll the list while it can go that way (a gesture that scrolled it never
+    steps the sheet). Below full the top of the list (a screen tall, pinned to the composer) sits above the sheet's
+    edge, so the oldest message was unreachable at half: `[data-ybs-chat-content]` gets `padding-top` = the hidden
+    part (`vv-h - inset - --ybs-visible`), and Chat's ResizeObserver watches the border box (with the content box it
+    missed the padding change, ignored the reader's scroll as "not seen yet" and later pulled them to the end).
+    `data-ybs-at-full` still drives the page lock and the chat header drag. Device (Firefox): three flings at half
+    reach Question 0 under the header, the fourth shrinks the sheet.
+    Header drag with the list scrolled back (maintainer: "closes the sheet the wrong way"): the outer scroller is at
+    full, so the detached drag never started and the header slid over messages pinned to the composer. The
+    controller tracks the list (`onInnerScroll`, a capture scroll listener on the sheet -> `data-ybs-chat-back`, which
+    also gives the header `touch-action: none` at full) and starts the detached drag there, without the end pin. On
+    hand-back below full it scrolls the list back by the drop, so the messages stay where the finger left them. At the newest message it's the plain scroll (sheet shortens from the
+    top). Device (Firefox): whole sheet came down with the history, landed at the peek.
+  - **Firefox Android's toolbar and non-modal sheets**: a swipe nothing takes (up at the content's end, a Chat at its
+    newest) goes to the page, whose dynamic toolbar slides away and resizes the sheet under the finger (735 -> 799);
+    `overscroll-behavior: contain` doesn't stop it, and the page itself doesn't scroll. Modal sheets never did it
+    (page locked from open); Chrome never did. Fix: a non-modal sheet takes the page lock (`lockHtml`) while
+    `atFull` and releases it below full (the sheet covers the page there anyway). Device: no resizes in 4 swipes past
+    the end and 2 flings from half past full; the page scrolls again at half. Only a sheet that covers the screen
+    (`sheetH >= H - 1`): a short fit-content one at full (dapuzzler's solved sheet) left the page locked (review).
+    Tests: "a non-modal sheet locks the page only while it covers it at full", "resting at full but short…". iOS not
+    tested.
+  - Pre-0.7.0 review (fresh agent) also fixed: the end marker survived `destroy()` (StrictMode left a stale one); Chat
+    in the dialog presentation now opens at, and follows, the newest message (its box is the dialog body, from
+    `useScrollElement()`; demo `&modal=1`). Not fixed, low: if a reader's first scroll frame coincides with a
+    WebKit height change, Chat's stay-at-end can pull them back once.
+  Tried and dropped: an RO rule "don't pin `full` while content is scrolled" and reporting `'full'` from the `detent`
+  getter when scrolled: both made Firefox (end-aligned re-snap of a former fit sheet) and Chrome (start) land in
+  different places when a fit sheet grows. Device: Venga mirror streaming followed in Chrome + Firefox Android. Android suite
+  with everything above, the review fixes included (2026-11-11): Firefox 3/3 PASS, Chrome 4/4 PASS (one more run was a
+  CHECK because Chrome's cold start took 8s and the suite's 4s wait sent the gestures before the sheet opened).
 - **Footer vs a low peek** (2026-11-02): at a peek lower than header + footer, the footer translates down under the
   header (`--ybs-header-h`, set by the controller, plus `--ybs-visible`); it used to pin over the title.
 - **`eyebrow` and `--ybs-title-size`** (2026-11-02, shopping lost its "Section" label above the title): the eyebrow

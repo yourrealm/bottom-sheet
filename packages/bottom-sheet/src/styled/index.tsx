@@ -54,6 +54,8 @@ export const StyledSheet = {
   Title: withClass(Base.Title, 'ybs-title'),
   Description: withClass(Base.Description, 'ybs-description'),
   Footer: withClass(Base.Footer, 'ybs-footer'),
+  /** A chat's messages, newest at the bottom, pinned to the composer (see `BottomSheet.Chat`). */
+  Chat: withClass(Base.Chat, 'ybs-chat'),
   /** The padded content area, after `Header`: the same side space as the header, so text lines up with the title. */
   Body: ({ className, ...p }: ComponentPropsWithRef<'div'>) => <div data-ybs-body="" {...p} className={cx('ybs-body', className)} />,
   /**
@@ -287,6 +289,12 @@ function SheetHeader(p: {
 
 /** Content that reaches the sheet's edges (see `StyledSheet.Edge`), for use inside `<BottomSheet>`. */
 BottomSheet.Edge = StyledSheet.Edge
+/**
+ * A chat's messages, newest at the bottom, in their own scroll area pinned to the composer (the `footer`): at half you
+ * see the latest, sliding up reveals older ones above, at full you scroll the history. Render the whole conversation:
+ *   <BottomSheet footer={<Composer />} detents={['header+footer', 0.5]}><BottomSheet.Chat>{messages}</BottomSheet.Chat></BottomSheet>
+ */
+BottomSheet.Chat = StyledSheet.Chat
 /** Closes the sheet it's in, e.g. a Cancel button in `leading` or `footer`. */
 BottomSheet.Close = StyledSheet.Close
 /** App-wide defaults for every sheet inside, e.g. `<BottomSheet.Provider dialog>` around your app: dialogs on desktop. */

@@ -4,10 +4,45 @@
 
 ### Added
 
+- `BottomSheet.Chat` (headless: `Sheet.Chat`): a chat's messages in their own scroll area, pinned to the composer
+  (the `footer`), newest at the bottom. At a partial detent you see the latest messages, sliding up reveals older ones
+  above while the newest stay put, and at full you scroll the history. It stays at the newest message as replies
+  stream in. A swipe on the messages scrolls them at every detent (touch or wheel), the header and footer move the
+  sheet, and a header drag with the history scrolled back moves the whole sheet. Render the whole conversation at every detent. See "Chat" in the README.
+
+- `fit={false}` on `BottomSheet` and `Sheet.Root`: the sheet is always at least a screen tall, so the full detent is
+  the top of the screen even with short content. For content that changes with the detent (a list that loads more at
+  full): a fitted sheet's stops moved with every content change, so a flick up stopped dead at the short content's
+  top, and a sheet could bounce between half and full.
+- With the content scrolled to its very end, dragging the header down shortens the sheet from the top: the last line
+  and the footer stay on the bottom edge (a chat at its latest message). In the middle of the content the whole
+  sheet still moves.
+
 - `BottomSheet.useScrollElement()` (headless: `Sheet.useScrollElement()`): the element a sheet's content scrolls in
   (the sheet's one scroller, or the dialog on desktop), for virtualizing a long list in a sheet. A 1000-row sheet
   took ~800ms from tap to first frame on a throttled phone profile, ~130ms virtualized. See "Long lists
   (virtualized)" in the README.
+
+### Changed
+
+- A partial detent is no longer dropped for being within 15% of a short sheet's full; only one at or within 8px of
+  full is. The stops used to change when the content did: a chat that showed less at its peek lost its 0.5 stop
+  there, so a drag up to half landed at full (#13).
+
+### Fixed
+
+- Firefox Android slid its toolbar away on a swipe nothing took (up at the end of a non-modal sheet's content), which
+  resized the sheet under the finger. A non-modal sheet now locks the page scroll while it rests at full and covers
+  the screen; below full, or as a short fit-content sheet, the page scrolls as before.
+- A chat following new text at the end of a long sheet jumped back to the top of its content (#13). At the very end
+  the sheet's bottom sat a fraction of a pixel above the screen's, so it no longer covered the screen and the browser
+  snapped it to the content top on the next layout change or app scroll; in Chrome, `scrollTo({ top: scrollHeight })`
+  landed on the content top too. The end of the content is now a snap position of its own.
+- Content that grew from fit-content past the screen, with the app scrolling to its end, was clamped to the content
+  top in Firefox (the momentum guard kept the old full line).
+- Content that grew right after the sheet settled at full (an app rendering more there) didn't move the sheet to the
+  new full: the browser snapped it down to the detent below, the app rendered less, and the two took turns. A big
+  move after a content change now glides instead of jumping.
 
 ## 0.6.0 (2026-11-05)
 
