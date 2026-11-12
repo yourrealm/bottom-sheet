@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 (2026-11-12)
+
+### Fixed
+
+- A sheet swiped or flicked down could stay part-way open with the page still blocked: a swipe on the page moved
+  the sheet back up, and only a tap finished closing it. Reported on iPhones (Safari and Chrome); also seen on Chrome
+  Android. A scroll that ends after the finger lifts was only settled by the browser's `scrollend` event, and
+  sometimes none comes. The sheet now settles itself 250ms after the last scroll event when it doesn't.
+
 ## 0.7.0 (2026-11-11)
 
 ### Added
