@@ -88,6 +88,14 @@ const KEYBOARD_THRESHOLD = 120
 const MAX_RETARGETS = 3
 /** A resize this soon after a user scroll event is mid-gesture or mid-momentum: don't re-target. */
 const USER_SCROLL_QUIET = 100
+/**
+ * Settle anyway when the browser sends no `scrollend` this long after the last scroll event. Browsers without
+ * `onscrollend` rely on it (120ms). Others get a backup (250ms): a real iPhone (Venga, Safari and Chrome on iOS) left a
+ * flicked-down sheet resting part-way, page blocked, until the next tap; nothing else settles a scroll that ends
+ * after the finger lifted. Not reproduced in the iOS sim.
+ */
+const SCROLLEND_FALLBACK_MS = 120
+const SCROLLEND_BACKUP_MS = 250
 /** A resting detent that a layout change moves further than this (px) is glided to, not jumped to. */
 const RESIZE_GLIDE_PX = 80
 const VELOCITY_WINDOW_MS = 80
@@ -502,10 +510,23 @@ export function createSheetController(els: SheetElements, options: SheetControll
       else if ((anchor > full + 2 && st < full - 2) || (anchor < full - 2 && st > full + 2)) clamp(full)
     }
 
-    if (!('onscrollend' in window)) {
-      clearTimeout(scrollEndTimer)
-      scrollEndTimer = setTimeout(onScrollEnd, 120)
-    }
+    clearTimeout(scrollEndTimer)
+    scrollEndTimer = setTimeout(onScrollEndBackup, 'onscrollend' in window ? SCROLLEND_BACKUP_MS : SCROLLEND_FALLBACK_MS)
+  }
+
+  /** The browser's scrollend: the backup timer for this scroll isn't needed. */
+  function onNativeScrollEnd() {
+    clearTimeout(scrollEndTimer)
+    onScrollEnd()
+  }
+  /**
+   * No scrollend came after the last scroll event (see SCROLLEND_BACKUP_MS). Not under a finger (its lift re-checks;
+   * a held finger isn't the end of a scroll) or the momentum lock (it settles itself on unlock).
+   */
+  function onScrollEndBackup() {
+    if (lock != null || touching) return
+    if ('onscrollend' in window) dbg(`no scrollend after the last scroll (st=${scroller.scrollTop.toFixed(2)}): settling`)
+    onScrollEnd()
   }
 
   function onScrollEnd() {
@@ -1123,7 +1144,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   // ---- wire up ----
   const passive = { passive: true } as const
   scroller.addEventListener('scroll', onScroll, passive)
-  scroller.addEventListener('scrollend', onScrollEnd)
+  scroller.addEventListener('scrollend', onNativeScrollEnd)
   scroller.addEventListener('touchstart', onTouchStart, passive)
   scroller.addEventListener('pointerdown', onPressStart, true)
   sheet.addEventListener('scroll', onInnerScroll, { capture: true, passive: true })
@@ -1216,7 +1237,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.style.transform = ''
       ro.disconnect()
       scroller.removeEventListener('scroll', onScroll)
-      scroller.removeEventListener('scrollend', onScrollEnd)
+      scroller.removeEventListener('scrollend', onNativeScrollEnd)
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('pointerdown', onPressStart, true)
       sheet.removeEventListener('scroll', onInnerScroll, true)

@@ -1156,6 +1156,22 @@ test('a touch held while the sheet finishes closing still lets it close', async 
   await expect(page.locator('#root')).not.toHaveAttribute('inert')
 })
 
+// A real iPhone (Venga) left a flicked-down sheet resting part-way, page blocked, until the next tap: a scroll that
+// ends after the finger lifted is only settled by scrollend. Here no scrollend reaches the sheet at all.
+test('a fling down closes the sheet even if the browser sends no scrollend', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP touch')
+  await openLab(page)
+  await page.waitForTimeout(300)
+  await page.evaluate(() => window.addEventListener('scrollend', (e) => e.stopImmediatePropagation(), true))
+  const cdp = await page.context().newCDPSession(page)
+  const p = await headerPoint(page)
+  await cdp.send('Input.synthesizeScrollGesture', { x: p.x, y: p.y + 60, yDistance: 250, speed: 2500, gestureSourceType: 'touch' })
+  await waitForEvent(page, 'lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  await expect(page.locator('#root')).not.toHaveAttribute('inert')
+  expect(await page.evaluate(() => window.__ybs.events.some((e) => e.includes('no scrollend after the last scroll')))).toBe(true)
+})
+
 test.describe('persistent (non-modal) sheet', () => {
   const st = (page: Page) => page.evaluate(() => document.querySelector('[data-ybs-scroller]')!.scrollTop)
   // The peek is the 'header' detent: exactly the header's height, nothing of the body showing.

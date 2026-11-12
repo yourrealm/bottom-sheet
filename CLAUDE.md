@@ -76,7 +76,14 @@ primary mechanism because the guard's `overflow` toggle made **Firefox Android s
   Skipped within 100ms of a user scroll event (`USER_SCROLL_QUIET`): during a fling or a content scroll, `current` is
   where the sheet last rested, and pinning to it yanked the sheet back when content changed height mid-fling.
   Test: "content that changes height mid-scroll". Device suite after this change (2026-11-01): 3/3 Chrome + 3/3 Firefox Android PASS; again after fullscreen/floating/recede/detached drag: 6/6.
-- **Close** when `scrollend` lands at 0 (debounce fallback when `onscrollend` is missing).
+- **Close** when `scrollend` lands at 0 (debounce fallback when `onscrollend` is missing, 120ms; and a 250ms backup
+  when it exists but none came after the last scroll event, not under a finger or the momentum lock). The backup is
+  for a Venga report (2026-11-12, real iPhone, Safari and Chrome): after a flick-close the page stayed blocked and a
+  swipe on it reopened the menu until a tap; a scroll that ends after the finger lifted is settled only by scrollend.
+  Not reproduced in the iOS 26.4 sim (20 flicks closed fine). Seen on Chrome Android with the backup in place: a swipe
+  released at 158px got no scrollend, and the backup closed it 0.4s later. It also fires, harmlessly, after a glide
+  or a re-pin (a scroll event after the native scrollend): onScrollEnd runs again at the resting position. Test: "a fling down closes
+  the sheet even if the browser sends no scrollend" (fails without the backup).
 - **Wheel/trackpad steps detents.** With mandatory snapping, a small wheel delta at a partial detent snaps straight back,
   so the wheel looked dead on desktop (reported on the Comments demo). Now: while below full, or at full and scrolling up,
   each wheel *gesture* (events < 250ms apart) is `preventDefault`ed and steps exactly one detent. At full scrolling down, or
