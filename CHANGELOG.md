@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.2 (2026-11-13)
+
+### Fixed
+
+- A sheet could close by itself right after a tap inside it. Reported on iPhones: tapping a submit button that
+  swapped in shorter content (with the keyboard up) made the browser move the sheet down, and the tap was taken as the
+  user closing it. Only the user's own movement of the sheet (a swipe, the wheel, a drag and their momentum) can close
+  it now; a sheet moved off its resting detent by anything else goes back there.
+- A flick-closed sheet could bounce back up on iPhones (Safari turned the momentum around near the bottom), stay on
+  screen for seconds, and reopen when the page was swiped. The sheet now finishes such a close itself.
+
 ## 0.7.1 (2026-11-12)
 
 ### Fixed
