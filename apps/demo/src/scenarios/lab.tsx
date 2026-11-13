@@ -10,7 +10,8 @@ import { logged, log } from '../debug'
  * `?late=1` (a headless sheet with no header whose content arrives after opening; with `&container=1` it is
  * portalled into an element of the page), `?untitled=1` (a sheet named by aria-label, no visible title),
  * `?float=1` (floating, a header peek and a footer), `?nodialog=1` (opts out of the app-wide dialog),
- * `?dismissible=0`. The confirm sheet moved to its own demo, `#/confirm`.
+ * `?dismissible=0`, `?login=1` (VEN-3953: a two-step login whose Continue swaps in shorter content).
+ * The confirm sheet moved to its own demo, `#/confirm`.
  */
 export function Lab({ autoOpen }: { autoOpen: boolean }) {
   const params = new URLSearchParams(location.search)
@@ -44,6 +45,7 @@ export function Lab({ autoOpen }: { autoOpen: boolean }) {
   if (params.get('late') === '1') return <LateLab />
   if (params.get('untitled') === '1') return <UntitledLab />
   if (params.get('float') === '1') return <FloatLab />
+  if (params.get('login') === '1') return <LoginLab />
 
   return (
     <div className="lab">
@@ -162,3 +164,67 @@ function FloatLab() {
 }
 
 
+
+/**
+ * VEN-3953 (Venga's login sheet): a tel input in step 1 (the keyboard is up), Continue in the footer submits, and a
+ * few hundred ms later a shorter step 2 replaces it. On iOS the content swap clamped scrollTop low and the sheet
+ * closed itself, the Continue tap counted as the user closing. scripts/ios-suite.sh drives it.
+ */
+function LoginLab() {
+  const [open, setOpen] = useState(true)
+  const [step, setStep] = useState(1)
+  // For scripts/ios-suite.sh: where the input and Continue are on screen (CSS px within the visual viewport), logged
+  // once things stop moving after opening and after each keyboard change.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!open || !vv) return
+    let t: ReturnType<typeof setTimeout> | undefined
+    const report = () => {
+      clearTimeout(t)
+      t = setTimeout(() => {
+        const at = (id: string) => {
+          const r = document.getElementById(id)?.getBoundingClientRect()
+          return r ? `${Math.round(r.x + r.width / 2)},${Math.round(r.y + r.height / 2 - vv.offsetTop)}` : '-'
+        }
+        log(`login: layout vvH=${Math.round(vv.height)} input=${at('login-tel')} continue=${at('login-continue')}`)
+      }, 700)
+    }
+    report()
+    vv.addEventListener('resize', report)
+    return () => { clearTimeout(t); vv.removeEventListener('resize', report) }
+  }, [open])
+  return (
+    <div className="lab">
+      <button id="open-login" className="primary" onClick={() => { setStep(1); setOpen(true) }}>Log in</button>
+      <BottomSheet
+        {...logged('login')}
+        open={open}
+        onOpenChange={(o, { reason }) => {
+          setOpen(o)
+          log(`login: onOpenChange ${o} ${reason}`)
+        }}
+        initialFocus={false}
+        title={step === 1 ? 'Log in' : 'Get your code'}
+        footer={step === 1
+          ? <button id="login-continue" type="submit" form="login-form" className="primary wide">Continue</button>
+          : <button className="secondary wide" onClick={() => setOpen(false)}>Done</button>}
+      >
+        {step === 1 ? (
+          <form id="login-form" onSubmit={(e) => {
+            e.preventDefault()
+            setTimeout(() => { setStep(2); log('login: step 2') }, 300)
+          }}>
+            <p>Enter your phone number and we'll text you a code.</p>
+            <input id="login-tel" type="tel" className="search" placeholder="Phone number" />
+            {Array.from({ length: 6 }, (_, i) => <p key={i}>Terms and privacy text, paragraph {i + 1}.</p>)}
+          </form>
+        ) : (
+          <div>
+            <button className="secondary wide">Send SMS</button>
+            <button className="secondary wide">Call me</button>
+          </div>
+        )}
+      </BottomSheet>
+    </div>
+  )
+}

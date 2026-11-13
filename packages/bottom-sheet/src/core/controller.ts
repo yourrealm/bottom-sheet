@@ -107,12 +107,15 @@ const TAP_MS = 500
 /** The click a dropped press would produce follows within this. */
 const CLICK_AFTER_MS = 1000
 /**
- * Arriving at closed closes the sheet only if we moved it there or the user touched, wheeled, dragged or pressed a
- * key within this long. Any other scroll (the browser scrolling a focused element into view, an app's
- * scrollIntoView, a test runner) that snaps to closed is undone. Long enough for a fling to finish.
+ * Arriving at closed closes the sheet only if we moved it there or the user moved it (a finger scrolling it, a wheel,
+ * a drag, and the momentum that follows) within this long. Any other scroll (the browser scrolling a focused element
+ * into view, an app's scrollIntoView, a layout change clamping scrollTop, a test runner) that lands there is undone.
+ * A press that stayed a tap is not moving the sheet: a tap on a submit button that swapped in shorter content (the
+ * browser clamped scrollTop below half before our ResizeObserver ran) closed the sheet (VEN-3953, iOS).
  */
 const STRAY_MS = 3000
-const INPUT_EVENTS = ['touchstart', 'touchend', 'wheel', 'pointerdown', 'pointerup', 'keydown'] as const
+/** A scroll event this soon after the user's own motion continues it (momentum, a snap animation, its bounces). */
+const MOTION_CHAIN_MS = 1000
 /**
  * Programmatic moves (open, close, snapTo, wheel steps, keyboard) are animated here, not by the browser's smooth
  * scroll: that took 660-770ms on a phone (Chrome/Firefox Android, measured 2026-11-01) and varies by browser.
@@ -213,6 +216,18 @@ export function createSheetController(els: SheetElements, options: SheetControll
   let lastUserScroll = -Infinity
   /** When scrollend last settled the sheet: a user scroll after it means it's moving again. */
   let settledAt = -Infinity
+  /**
+   * The user's own motion of the sheet (see STRAY_MS): a scroll under a finger, a wheel, a drag, and scroll events
+   * continuing it. Not a press that stayed a tap, not a key.
+   */
+  let lastMotionAt = -Infinity
+  /**
+   * A touch released below full: where, and the lowest point its momentum reached since. WebKit (iOS 26, real
+   * device) carries a flick-close down to a few px, turns it back up to full and down again (up to 3s): the sheet
+   * stayed on screen, and the user's next swipe on the "page" dragged it back open. See onScroll.
+   */
+  let fallFrom: number | null = null
+  let fallMin = Infinity
   /**
    * The scrollTop our own code last set (a glide frame, a re-pin). A scroll event that lands exactly there is ours
    * even when it arrives after `programmatic` was cleared (the glide's last frame is reported a frame after it
@@ -338,6 +353,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   function scrollToDetent(d: Detent) {
     cancelPull()
     target = resolve(d).detent
+    fallFrom = null
     dbg(`scrollTo ${String(target)} (${Math.round(pos(target))})`)
     programmatic = true
     anchor = null
@@ -494,8 +510,24 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   function onScroll() {
     const st = scroller.scrollTop
-    if (!programmatic && lock == null && !(Math.abs(st - ourTop) < 0.5)) lastUserScroll = performance.now()
+    const now = performance.now()
+    const users = !programmatic && lock == null && !(Math.abs(st - ourTop) < 0.5)
+    if (users) lastUserScroll = now
+    if (touching || (users && now - lastMotionAt < MOTION_CHAIN_MS)) lastMotionAt = now
     if (!detached) paint(st)
+
+    // A released flick heading for closed that turns back up before getting there (WebKit's snap, see fallFrom)
+    // was the user closing the sheet: finish it ourselves. Chrome and Firefox never turn around there.
+    if (fallFrom != null && users && !touching && !closing && isOpen && closable()) {
+      if (st < fallMin) fallMin = st
+      else if (fallMin < fallFrom - 8 && fallMin < pos(floor()) / 2 && st > fallMin + 2 && st > CLOSED_TOLERANCE) {
+        dbg(`flick turned back up at ${st.toFixed(2)} after falling to ${fallMin.toFixed(2)}: closing`)
+        fallFrom = null
+        closing = true
+        scrollToDetent('closed')
+        return
+      }
+    }
 
     if (lock != null && !touching) {
       if (Math.abs(st - lock) > 0.5) scroller.scrollTop = lock
@@ -547,7 +579,11 @@ export function createSheetController(els: SheetElements, options: SheetControll
       }
     }
     retries = 0
+    fallFrom = null
     if (root.getAttribute('data-ybs-drag') === 'settle') root.removeAttribute('data-ybs-drag')
+    // Measure first: a layout change (content swapped for shorter content) can clamp scrollTop and bring its
+    // scrollend before our ResizeObserver runs, and the stops would be the old layout's.
+    if (!programmatic && isOpen) layout()
 
     // Closing on purpose, but a finger (or a drag) stopped short of closed: carry on closing once it lets go.
     if (closing && isOpen && !belowFloor(st)) {
@@ -558,11 +594,22 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
     // Something other than the user or us scrolled the sheet down to closed (e.g. a scrollIntoView landing nearer the
     // closed snap point, seen in Playwright): go back to where it rested instead of closing.
-    if (isOpen && !closing && !programmatic && !touching && belowFloor(st) && performance.now() - lastInputAt > STRAY_MS) {
+    if (isOpen && !closing && !programmatic && !touching && belowFloor(st) && performance.now() - lastMotionAt > STRAY_MS) {
       const back = current && current !== 'closed' ? current : floor()
       dbg(`scrolled to closed without user input: back to ${String(back)}`)
       scrollToDetent(back)
       return
+    }
+    // Moved down off its resting detent with no motion by the user since it settled there (a layout change clamping
+    // scrollTop, VEN-3953): back to it. Only below full: an app scrolling the content (a chat following new text)
+    // isn't moving the sheet.
+    if (isOpen && !closing && !programmatic && !touching && current && current !== 'closed' && lastMotionAt < settledAt) {
+      const at = Math.min(pos(current), full)
+      if (st < at - 2) {
+        dbg(`moved off ${String(current)} without user input (st=${st.toFixed(2)}): back`)
+        scrollToDetent(current)
+        return
+      }
     }
 
     const now = stopAt(st, stops)?.detent ?? null
@@ -593,7 +640,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (!isOpen || closing || !closable()) return
     const st = scroller.scrollTop
     if (belowFloor(st) || st >= pos(floor()) - 2 || stopAt(st, stops)) return
-    const userClose = performance.now() - lastInputAt <= STRAY_MS
+    const userClose = performance.now() - lastMotionAt <= STRAY_MS
     // A sliver after the user's swipe: already closed to the eye. Close now, even under a finger (a tap on the page).
     if (userClose && st <= SLIVER_PX && !gliding && !programmatic) {
       dbg(`a ${st.toFixed(2)}px sliver on ${from}: closed`)
@@ -606,7 +653,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       dbg(`between closed and ${String(floor())} on ${from} (st=${st.toFixed(2)}), not now: touching=${touching} gliding=${gliding} prog=${programmatic}`)
       return
     }
-    const to = userClose && st < pos(floor()) / 2 ? 'closed' : floor()
+    const to = userClose ? (st < pos(floor()) / 2 ? 'closed' : floor()) : current && current !== 'closed' ? current : floor()
     dbg(`resting between closed and ${String(floor())} on ${from} (st=${st.toFixed(2)}): to ${String(to)}`)
     scrollToDetent(to)
   }
@@ -637,9 +684,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
   //   (touch-action: none) Chrome Android spends the next tap stopping an invisible fling and sends no click.
   // In each case the click that follows is dropped. The closing layer keeps taking pointer events, so that click
   // lands here instead of on what's underneath (a row of the sheet below).
-  /** Last touch, wheel, pointer or key input on the sheet: scrolls after it are the user's (see STRAY_MS). */
-  let lastInputAt = -Infinity
-  const onInput = () => (lastInputAt = performance.now())
   type Press = { id: number; x: number; y: number; t: number; touch: boolean; moving: boolean; outside: boolean; dragged: boolean }
   let press: Press | null = null
   let dropClickUntil = 0
@@ -657,7 +701,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
     press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastUserScroll < MOVING_MS, outside: isOutside(e.target), dragged: false }
   }
   function onPressMove(e: PointerEvent) {
-    if (press?.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) press.dragged = true
+    if (press?.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) {
+      press.dragged = true
+      lastMotionAt = performance.now()
+    }
   }
   /** For drags that start below TAP_SLOP (the header drag starts at 4px). */
   const markDragged = () => {
@@ -690,6 +737,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     cancelPull()
     touching = true
     anchor = null
+    fallFrom = null
     // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
     // still takes touches). The finger-lift check below completes the close. Any other glide stops where it is.
     if (closing) return
@@ -701,6 +749,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (e.touches.length) return
     touching = false
     anchor = scroller.scrollTop
+    if (!closing && anchor <= full + 2) {
+      fallFrom = anchor
+      fallMin = anchor
+    }
     dbg(`release @${Math.round(anchor)}`)
     // A touch while the sheet settles at closed makes its scrollend arrive with a finger down, so it
     // can't finish closing then. Re-check once the finger lifts; otherwise the sheet stays mounted,
@@ -750,6 +802,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // Shift+wheel scrolls sideways (a photo strip). Chrome on Windows/Linux reports it as deltaY with shiftKey and
     // scrolls horizontally itself; stepping a detent here would cancel that and move the sheet instead.
     if (e.shiftKey) return
+    lastMotionAt = performance.now()
     if (closing) return void e.preventDefault() // closing on purpose: the wheel doesn't bring it back
     if (pull) return pullMore(e)
     const t = performance.now()
@@ -1148,7 +1201,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('touchstart', onTouchStart, passive)
   scroller.addEventListener('pointerdown', onPressStart, true)
   sheet.addEventListener('scroll', onInnerScroll, { capture: true, passive: true })
-  for (const t of INPUT_EVENTS) scroller.addEventListener(t, onInput, { capture: true, passive: true })
   scroller.addEventListener('pointermove', onPressMove, true)
   scroller.addEventListener('pointerup', onPressEnd, true)
   scroller.addEventListener('pointercancel', onPressCancel, true)
@@ -1241,7 +1293,6 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('pointerdown', onPressStart, true)
       sheet.removeEventListener('scroll', onInnerScroll, true)
-      for (const t of INPUT_EVENTS) scroller.removeEventListener(t, onInput, true)
       scroller.removeEventListener('pointermove', onPressMove, true)
       scroller.removeEventListener('pointerup', onPressEnd, true)
       scroller.removeEventListener('pointercancel', onPressCancel, true)

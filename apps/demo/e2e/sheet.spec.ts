@@ -38,6 +38,21 @@ async function headerPoint(page: Page) {
   return { x: box.x + box.width / 2, y: box.y + 30 }
 }
 
+/**
+ * Moves the sheet scroller as the user would: a mouse press that turns into a drag first, so the controller counts
+ * the scroll as the user's (a scroll nobody made, down off a resting detent, goes back: see VEN-3953).
+ * `at`: a fraction of the scroller's height, -1 for the very end, or `{ top }` in px.
+ */
+const userScrollTo = (page: Page, at: number | { top: number }) =>
+  page.evaluate((at) => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    const o = { bubbles: true, pointerType: 'mouse', pointerId: 7, button: 0, clientX: 5, clientY: 5 }
+    s.dispatchEvent(new PointerEvent('pointerdown', o))
+    s.dispatchEvent(new PointerEvent('pointermove', { ...o, clientY: 40 }))
+    s.dispatchEvent(new PointerEvent('pointercancel', o))
+    s.scrollTop = typeof at === 'object' ? at.top : at < 0 ? s.scrollHeight : s.clientHeight * at
+  }, at)
+
 // ---------- tests ----------
 
 test('opens at the first partial detent', async ({ page }) => {
@@ -286,10 +301,7 @@ test.describe("'header+footer' detent (chat over a page)", () => {
     await waitForEvent(page, 'venga: onDetentChange full')
     await page.waitForTimeout(500)
     // Down to 0.5, as a drag would leave it.
-    await page.evaluate(() => {
-      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
-      s.scrollTop = s.clientHeight * 0.5
-    })
+    await userScrollTo(page, 0.5)
     await waitForEvent(page, 'venga: onDetentChange 0.5')
     await page.waitForTimeout(800)
     const changes = (await events(page)).filter((e) => e.includes('venga: onDetentChange'))
@@ -305,11 +317,7 @@ test.describe("'header+footer' detent (chat over a page)", () => {
     await page.goto('/?venga=1#/assistant')
     await page.locator('[data-ybs-sheet]').waitFor()
     await page.waitForTimeout(1000)
-    const to = (f: number) =>
-      page.evaluate((f) => {
-        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
-        s.scrollTop = s.clientHeight * f
-      }, f)
+    const to = (f: number) => userScrollTo(page, f)
     await to(0.15) // down to the peek
     await waitForEvent(page, 'venga: onDetentChange header+footer')
     await page.waitForTimeout(500)
@@ -332,8 +340,7 @@ test.describe("'header+footer' detent (chat over a page)", () => {
     await page.goto('/?venga=1#/assistant')
     await page.locator('[data-ybs-sheet]').waitFor()
     await page.waitForTimeout(1000)
-    const scrollTo = (top: number) =>
-      page.evaluate((top) => (document.querySelector<HTMLElement>('[data-ybs-scroller]')!.scrollTop = top), top)
+    const scrollTo = (top: number) => userScrollTo(page, { top })
     const H = (await geometry(page)).H
     await scrollTo(H * 0.15) // the peek
     await waitForEvent(page, 'venga: onDetentChange header+footer')
@@ -387,11 +394,7 @@ test.describe("'header+footer' detent (chat over a page)", () => {
           firstVisible: bubbles.findIndex((b) => b.bottom > header.bottom + 2),
         }
       })
-    const to = (page: Page, f: number) =>
-      page.evaluate((f) => {
-        const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
-        s.scrollTop = f < 0 ? s.scrollHeight : s.clientHeight * f
-      }, f)
+    const to = (page: Page, f: number) => userScrollTo(page, f)
 
     test.beforeEach(async ({ page }) => {
       await page.setViewportSize({ width: 412, height: 740 })
@@ -1720,7 +1723,13 @@ test.describe('resting between closed and the lowest detent', () => {
     await clearEvents(page)
     await page.evaluate(([top, input]) => {
       const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
-      if (input) s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 2 }))
+      // The user moving the sheet (a press that turned into a drag). A press alone isn't: see the VEN-3953 tests.
+      if (input) {
+        const o = { bubbles: true, pointerType: 'mouse', pointerId: 1, button: 0, clientX: 200, clientY: 200 }
+        s.dispatchEvent(new PointerEvent('pointerdown', o))
+        s.dispatchEvent(new PointerEvent('pointermove', { ...o, clientY: 230 }))
+        s.dispatchEvent(new PointerEvent('pointercancel', o))
+      }
       s.style.scrollSnapType = 'none' // as Firefox did: no snap to finish it
       s.scrollTop = top as number
     }, [top, input] as const)
@@ -1732,7 +1741,7 @@ test.describe('resting between closed and the lowest detent', () => {
   })
   test('without user input it goes back to the detent', async ({ page }) => {
     await restAt(page, 8, false)
-    await waitForEvent(page, /resting between closed and 0\.5/)
+    await waitForEvent(page, /moved off 0\.5 without user input/)
     await page.evaluate(() => document.querySelector<HTMLElement>('[data-ybs-scroller]')!.style.removeProperty('scroll-snap-type'))
     await expect.poll(async () => { const g = await geometry(page); return Math.abs(g.st - g.H * 0.5) }).toBeLessThan(3)
     await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
@@ -1827,6 +1836,111 @@ test('a scroll to closed without user input goes back instead of closing', async
   await expect.poll(async () => (await geometry(page)).st, { timeout: 3000 }).toBeGreaterThan(100)
   expect(await events(page)).not.toContain('lab: onOpenChange false')
   await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+})
+
+// VEN-3953 (Venga, iOS): a tap on a submit button swapped the sheet's content for shorter content, WebKit clamped
+// scrollTop below half before our ResizeObserver ran, and the tap (within STRAY_MS) made that read as the user
+// closing: the sheet slid away. A press that stayed a tap isn't moving the sheet.
+test('a tap in the sheet, then a scroll nobody made down to near closed: back to the detent', async ({ page, browserName }) => {
+  await openLab(page)
+  await page.waitForTimeout(300)
+  await clearEvents(page)
+  const p = await headerPoint(page)
+  if (browserName === 'firefox') await page.mouse.click(p.x, p.y)
+  else await page.touchscreen.tap(p.x, p.y)
+  await page.waitForTimeout(150)
+  // What WebKit did after the content swap: scrollTop clamped to a low value, then a scrollend.
+  // Snap off so it rests at 40 (WebKit rested at 76), not at the nearer snap point 0 (that's covered too).
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    s.style.scrollSnapType = 'none'
+    s.scrollTop = 40
+  })
+  await waitForEvent(page, /lab: moved off 0\.5 without user input/)
+  await page.evaluate(() => document.querySelector<HTMLElement>('[data-ybs-scroller]')!.style.removeProperty('scroll-snap-type'))
+  await expect.poll(async () => { const g = await geometry(page); return Math.abs(g.st - g.H * 0.5) }, { timeout: 3000 }).toBeLessThan(3)
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+})
+
+// VEN-3953, same bug, with the content really changing: shorter content swapped in and scrollTop clamped in the same
+// task, so the scrollend can come before the ResizeObserver.
+test('content swapped for shorter content right after a tap keeps the sheet open', async ({ page, browserName }) => {
+  await openLab(page)
+  await page.waitForTimeout(300)
+  const p = await headerPoint(page)
+  if (browserName === 'firefox') await page.mouse.click(p.x, p.y)
+  else await page.touchscreen.tap(p.x, p.y)
+  await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+    const sheet = document.querySelector<HTMLElement>('[data-ybs-sheet]')!
+    for (const el of Array.from(sheet.children).slice(1)) (el as HTMLElement).style.display = 'none'
+    s.scrollTop = 30
+  })
+  await page.waitForTimeout(1200)
+  expect(await events(page)).not.toContain('lab: onOpenChange false')
+  await expect(page.locator('[data-ybs-root]')).toHaveCount(1)
+  const g = await geometry(page)
+  expect(g.st).toBeGreaterThan(g.full / 2)
+})
+
+// The nav-menu report (Venga, real iPhone, iOS 26): WebKit carried a flick-close down to a few px, turned it back up
+// to full and down again, sometimes for over 3s. The sheet stayed on screen and the user's next swipe dragged it open;
+// once the bounces outlasted STRAY_MS, our stray guard reopened it. Played back here as scroll events after a release.
+test.describe('a flick-close that the browser turns back up (WebKit)', () => {
+  test.skip(({ browserName }) => browserName === 'firefox', 'touch emulation: mobile projects only')
+  async function release(page: Page) {
+    await openLab(page)
+    await page.waitForTimeout(300)
+    // A finger that moves the sheet a little, then lets go: the release of a flick.
+    await page.evaluate(async () => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      s.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
+      s.style.scrollSnapType = 'none'
+      s.scrollTop -= 30
+      await new Promise((r) => setTimeout(r, 50)) // its scroll event, under the finger
+      s.dispatchEvent(new TouchEvent('touchend', { bubbles: true }))
+    })
+    await clearEvents(page)
+  }
+  /** scrollTop values, one per frame (the user's momentum, not ours), snap off as during a fling. */
+  const play = (page: Page, tops: number[], gapMs = 16, blockScrollEnd = true) =>
+    page.evaluate(async ([tops, gapMs, block]) => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
+      const stop = (e: Event) => e.stopImmediatePropagation()
+      if (block) window.addEventListener('scrollend', stop, true)
+      s.style.scrollSnapType = 'none'
+      for (const t of tops as number[]) {
+        s.scrollTop = t
+        await new Promise((r) => setTimeout(r, gapMs as number))
+      }
+      window.removeEventListener('scrollend', stop, true)
+      s.style.removeProperty('scroll-snap-type')
+    }, [tops, gapMs, blockScrollEnd] as const)
+
+  test('turning back up near closed finishes the close', async ({ page }) => {
+    await release(page)
+    const H = (await geometry(page)).H
+    const half = Math.round(H * 0.5)
+    await play(page, [half - 90, half - 160, 150, 60, 20, 9, 40, 120, 260], 20)
+    await waitForEvent(page, /lab: flick turned back up/)
+    await waitForEvent(page, 'lab: onOpenChange false')
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+
+  test('a close by momentum that takes longer than 3s still closes', async ({ page }) => {
+    await release(page)
+    const half = Math.round((await geometry(page)).H * 0.5)
+    // 3.6s of slow downward motion (no turnaround), then a scrollend at 0.
+    const tops = Array.from({ length: 36 }, (_, i) => Math.max(3, Math.round(half * (1 - (i + 1) / 36))))
+    await play(page, tops, 100)
+    await page.evaluate(() => {
+      const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')
+      if (s) s.scrollTop = 0 // WebKit may have settled it already (snap back on)
+    })
+    await waitForEvent(page, 'lab: onOpenChange false', 4000)
+    expect((await events(page)).some((e) => e.includes('without user input'))).toBe(false)
+  })
 })
 
 // A color-scheme set on one sheet also reaches the bleed (the sheet colour behind the keyboard), which is outside it.

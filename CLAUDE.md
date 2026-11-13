@@ -130,6 +130,26 @@ scrollIntoView, a test runner) goes back to the resting detent. Found via dapuzz
 scroll-into-view landed nearer the closed snap point and the picker closed before the click (flaky under load).
 Test: "a scroll to closed without user input goes back instead of closing".
 
+### What counts as the user closing (VEN-3953, 2026-11-13)
+The STRAY_MS window runs from the user's own *motion* of the sheet (`lastMotionAt`): a scroll under a finger, a wheel,
+a press that became a drag, and scroll events chained within 1s of it (momentum, a snap animation, its bounces). It
+used to be any input on the scroller, so a tap counted. Venga's login sheet: Continue (footer submit) swapped in a
+shorter step while the iOS keyboard was up; WebKit clamped scrollTop to 76 and sent scrollend before our
+ResizeObserver ran, and the tap made `settleBetween` close it. Also reproduced in the iOS 26.4 sim with the hardware
+keyboard (`#/lab?login=1`, clamp to 137). Now:
+- `onScrollEnd` calls `layout()` first (stale stops), and a sheet moved down off its resting detent with no user
+  motion since it settled there goes back to it (`moved off … without user input`). Only below full (an app scrolling
+  content isn't moving the sheet). Tests that move the sheet by writing scrollTop must look like the user
+  (`userScrollTo` in the spec).
+- **A flick-close WebKit turns back up is finished by us** (`fallFrom`/`fallMin`, logged `flick turned back up`).
+  Venga's real iPhone (iOS 26, Safari): a flick from the menu sheet went to 4-20px, then back to full with no touch,
+  down again, up to 3.8s; the next swipe on the "page" dragged it open, and past 3s the stray guard reopened it.
+  Ruled out on the device: the 0.7.0 end marker, `scroll-snap-stop` on the sheet, near-fit geometry, app CSS. Cause
+  inside WebKit not found; the sim doesn't reproduce it (idb flicks close cleanly). Fix NOT yet verified on a device.
+Tests: "a tap in the sheet, then a scroll nobody made…", "content swapped for shorter content right after a tap…",
+"a flick-close that the browser turns back up (WebKit)". Device: Android suite 3/3 + 3/3 PASS, `scripts/ios-suite.sh`
+3/3 PASS (fails on 0.7.1's controller: login closes with reason swipe).
+
 ### Presses: one arbiter in the controller
 Which presses count as taps and whether their click activates is decided in one place (`onPressStart/Move/End` +
 `onClickCapture`, native capture listeners on the scroller). The click is dropped when:
@@ -653,6 +673,10 @@ Lessons: a non-modal sheet doesn't move focus, so an app that relied on initial 
 - **Reading device behaviour as text:** pass `debug` to `Sheet.Root`/`BottomSheet`. The playground forwards those lines (plus
   onDetentChange/onOpenChange) to `apps/demo/.logs/device.log`, prefixed with browser and tab id; hidden tabs don't log.
   Prefer this over screenshots. `scripts/android-suite.sh` runs the gesture suite and summarises it per run.
+- **iOS suite:** `scripts/ios-suite.sh [runs]` (booted simulator, idb, dev server): flick-close on `#/lab` and the
+  VEN-3953 login flow on `#/lab?login=1` (the page logs element positions, so taps don't depend on fixed coordinates).
+  Press Cmd+K in Simulator once for the software keyboard (the exact VEN-3953 setup); without it the login run still
+  checks the content-swap clamp and says so.
 - Chrome Android can be inspected live: `adb forward tcp:9222 localabstract:chrome_devtools_remote`, then a small CDP
   `Runtime.evaluate` over `ws://localhost:9222/devtools/page/<id>` (list pages at `localhost:9222/json`). Firefox release builds
   don't forward console output to logcat.
