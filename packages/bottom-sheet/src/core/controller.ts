@@ -520,13 +520,22 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // was the user closing the sheet: finish it ourselves. Chrome and Firefox never turn around there.
     if (fallFrom != null && users && !touching && !closing && isOpen && closable()) {
       if (st < fallMin) fallMin = st
-      else if (fallMin < fallFrom - 8 && fallMin < pos(floor()) / 2 && st > fallMin + 2 && st > CLOSED_TOLERANCE) {
+      else if (fallMin < fallFrom - 8 && fallMin < pos(floor()) / 2 && st > fallMin + 0.5 && st > CLOSED_TOLERANCE) {
         dbg(`flick turned back up at ${st.toFixed(2)} after falling to ${fallMin.toFixed(2)}: closing`)
+        const low = fallMin
         fallFrom = null
         closing = true
+        // Undo the bounce before it reads as the sheet reopening, then finish the close from there.
+        scroller.scrollTop = low
+        ourTop = low
         scrollToDetent('closed')
         return
       }
+    }
+    // A new finger, or WebKit turning a flick back up, must not drag a closing sheet open again.
+    if (closing && users && Number.isFinite(ourTop) && st > ourTop + 0.5) {
+      scroller.scrollTop = ourTop
+      return
     }
 
     if (lock != null && !touching) {
@@ -650,7 +659,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
       return
     }
     if (touching || gliding || programmatic) {
-      dbg(`between closed and ${String(floor())} on ${from} (st=${st.toFixed(2)}), not now: touching=${touching} gliding=${gliding} prog=${programmatic}`)
+      dbg(
+        `between closed and ${String(floor())} on ${from} (st=${st.toFixed(2)}), not now: touching=${touching} gliding=${gliding} prog=${programmatic}`,
+      )
       return
     }
     const to = userClose ? (st < pos(floor()) / 2 ? 'closed' : floor()) : current && current !== 'closed' ? current : floor()
@@ -698,7 +709,16 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const now = performance.now()
     // Moving = the user's own fling (a tap on it only stops it). Not our glide: a tap on the backdrop while the sheet
     // is still opening was dropped as "stopped the scroll" and did nothing.
-    press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: now, touch, moving: touch && now - lastUserScroll < MOVING_MS, outside: isOutside(e.target), dragged: false }
+    press = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      t: now,
+      touch,
+      moving: touch && now - lastUserScroll < MOVING_MS,
+      outside: isOutside(e.target),
+      dragged: false,
+    }
   }
   function onPressMove(e: PointerEvent) {
     if (press?.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) {
@@ -735,15 +755,19 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
   function onTouchStart() {
     cancelPull()
+    // A touch that lands while the sheet is already closing must not take over the scroller. Marking it
+    // `touching` pauses the close until the finger lifts, and the browser scrolls the sheet back up under
+    // that finger: the close animation jumps open, then the page can scroll.
+    if (closing) return
     touching = true
     anchor = null
     fallFrom = null
-    // A sheet on its way to closed finishes closing under a finger (it was closed on purpose; the closing layer
-    // still takes touches). The finger-lift check below completes the close. Any other glide stops where it is.
-    if (closing) return
     stopGlide()
     programmatic = false
     unlock()
+  }
+  function onTouchMove(e: TouchEvent) {
+    if (closing) e.preventDefault()
   }
   function onTouchEnd(e: TouchEvent) {
     if (e.touches.length) return
@@ -889,7 +913,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (p.sum === 0) return endPull(false) // scrolled back up
     p.timer = setTimeout(() => endPull(false), WHEEL_PULL_RELEASE_MS)
     // Rubber band: the first notch shows about half the travel; it never goes past WHEEL_PULL_MAX.
-    p.drop = WHEEL_PULL_MAX * (1 - Math.exp(-p.sum / WHEEL_CLOSE_PX * 1.5))
+    p.drop = WHEEL_PULL_MAX * (1 - Math.exp((-p.sum / WHEEL_CLOSE_PX) * 1.5))
     if (!p.raf) {
       const step = () => {
         if (pull !== p || destroyed) return
@@ -1125,8 +1149,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
   function syncViewport() {
     const vv = window.visualViewport
     if (!vv || !isOpen) return
-    root.style.setProperty('--ybs-vv-top', `${vv.offsetTop}px`)
-    root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
+    // Don't follow the visual viewport while closing: a touch that shows or hides the browser toolbar
+    // would jump the sheet mid-animation.
+    if (!closing) {
+      root.style.setProperty('--ybs-vv-top', `${vv.offsetTop}px`)
+      root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
+    }
     // iOS scrolls the document to reveal a focused input even with
     // html{overflow:hidden}. Undo it so the page behind doesn't jump.
     if (modal && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
@@ -1199,6 +1227,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
   scroller.addEventListener('scroll', onScroll, passive)
   scroller.addEventListener('scrollend', onNativeScrollEnd)
   scroller.addEventListener('touchstart', onTouchStart, passive)
+  scroller.addEventListener('touchmove', onTouchMove, { passive: false })
   scroller.addEventListener('pointerdown', onPressStart, true)
   sheet.addEventListener('scroll', onInnerScroll, { capture: true, passive: true })
   scroller.addEventListener('pointermove', onPressMove, true)
@@ -1291,6 +1320,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
       scroller.removeEventListener('scroll', onScroll)
       scroller.removeEventListener('scrollend', onNativeScrollEnd)
       scroller.removeEventListener('touchstart', onTouchStart)
+      scroller.removeEventListener('touchmove', onTouchMove)
       scroller.removeEventListener('pointerdown', onPressStart, true)
       sheet.removeEventListener('scroll', onInnerScroll, true)
       scroller.removeEventListener('pointermove', onPressMove, true)

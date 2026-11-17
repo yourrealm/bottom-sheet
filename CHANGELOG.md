@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Closing a sheet and then touching or scrolling the page could drag the sheet back open and interrupt the close
+  animation. A touch that lands while a sheet is already closing is ignored, and a flick WebKit turns back upward
+  finishes closing from its lowest point instead of reopening first. The sheet and the desktop dialog also stop
+  following the visual viewport while they close, so the browser toolbar showing or hiding doesn't jump them.
+
 ## 0.7.2 (2026-11-13)
 
 ### Fixed

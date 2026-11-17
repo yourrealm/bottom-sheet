@@ -103,8 +103,12 @@ export function createDialogController(els: SheetElements, options: SheetControl
   function syncViewport() {
     const vv = window.visualViewport
     if (!vv || !isOpen) return
-    root.style.setProperty('--ybs-vv-top', `${vv.offsetTop}px`)
-    root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
+    // Don't follow the visual viewport while closing: a touch that shows or hides the browser toolbar
+    // would jump the dialog mid-animation.
+    if (!closing) {
+      root.style.setProperty('--ybs-vv-top', `${vv.offsetTop}px`)
+      root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
+    }
     // Not while closing: the page is the app's again (a link in the dialog may have navigated and scrolled it).
     if (modal && !closing && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
   }
