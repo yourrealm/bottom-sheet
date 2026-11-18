@@ -1,4 +1,4 @@
-import { type Detent, type Stop, buildStops, easeAccelerate, easeDecelerate, nearestStop, project, resolveStop, stopAt } from './math'
+import { type Detent, type Stop, buildStops, easeAccelerate, easeDecelerate, easeHandoff, nearestStop, project, resolveStop, stopAt } from './math'
 import { softEdge } from './soft-edge'
 
 /**
@@ -33,6 +33,11 @@ export interface SheetControllerOptions {
   onDetentChange?: (detent: Detent) => void
   /** Called once the sheet has fully closed (scrolled to 0). */
   onClosed?: () => void
+  /**
+   * Called when a released swipe commits the sheet to closing, before it has finished moving (onClosed still follows).
+   * Not called for close().
+   */
+  onClosing?: () => void
   /** On every scroll: progress 0 (closed) .. 1 (full), and cover 0..1, the share of the available height the sheet covers. */
   onProgress?: (progress: number, cover: number) => void
   /** A tap (no drag) on the sheet layer outside the sheet: above it, or beside it when it is narrower than the screen. */
@@ -132,6 +137,12 @@ const BELOW_FLOOR_WAIT_MS = 150
  * last pixels, or waiting for the finger, kept the page blocked behind an invisible sliver and ate the taps on it.
  */
 const SLIVER_PX = 16
+/**
+ * iOS Safari's toolbar takes the sheet's colour ([data-ybs-tint]) while more than this share of the lowest detent
+ * shows. Below it, and from the moment a close starts, it goes back to the page, so Safari's own lag and fade run
+ * while the sheet is still leaving instead of after it.
+ */
+const TINT_CUTOFF = 0.5
 
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
 // the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
@@ -168,6 +179,20 @@ export function createSheetController(els: SheetElements, options: SheetControll
   function setClosing(v: boolean) {
     closing = v
     root.toggleAttribute('data-ybs-closing', v)
+    // The page is released as soon as the close starts, not when the sheet is gone: its scroll position goes back
+    // (iOS may have scrolled it for the keyboard), then the lock lets go, so a swipe on the page right after a close
+    // scrolls it.
+    if (v) {
+      if (modal && isOpen && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
+      releaseHtml()
+    } else {
+      root.removeAttribute('data-ybs-released')
+      if (isOpen && modal && !htmlLocked) {
+        pageY = window.scrollY
+        lockHtml()
+        htmlLocked = true
+      }
+    }
   }
   const closable = () => dismissible || closing
 
@@ -232,6 +257,10 @@ export function createSheetController(els: SheetElements, options: SheetControll
    */
   let fallFrom: number | null = null
   let fallMin = Infinity
+  /** User scroll samples since the finger lifted (the last VELOCITY_WINDOW_MS of them), for the falling speed. */
+  let fallSamples: { t: number; st: number }[] = []
+  /** The speed (px/ms, towards closed) the next close glide starts at, so it carries on a swipe's momentum. */
+  let handoffV = 0
   /**
    * The scrollTop our own code last set (a glide frame, a re-pin). A scroll event that lands exactly there is ours
    * even when it arrives after `programmatic` was cleared (the glide's last frame is reported a frame after it
@@ -296,6 +325,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
   const pos = (d: Detent) => resolve(d).top
   /** The lowest resting detent that isn't closed; also where open() goes by default. */
   const floor = () => stops.find((s) => s.detent !== 'closed')!.detent
+  /** Where the lowest resting detent sits, from the last layout (no measuring: paint calls it every frame). */
+  const floorStopTop = () => stops.find((s) => s.detent !== 'closed')?.top ?? 0
 
   function makeMarker() {
     const m = document.createElement('div')
@@ -322,8 +353,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
     root.style.setProperty('--ybs-footer-h', `${footerHeight()}px`)
     // The bleed (the sheet's colour behind the keyboard) is a sibling of the sheet, so a color-scheme set on the sheet
     // alone (one sheet forced dark) wouldn't reach it. Copy it over.
+    const sheetStyle = getComputedStyle(sheet)
     const bleed = root.querySelector<HTMLElement>('[data-ybs-bleed]')
-    if (bleed) bleed.style.colorScheme = getComputedStyle(sheet).colorScheme
+    if (bleed) bleed.style.colorScheme = sheetStyle.colorScheme
+    // iOS Safari's toolbar takes the colour of [data-ybs-tint], so give it the sheet's own (a colour set on the sheet,
+    // not on the root, is what the user sees at the bottom edge).
+    root.querySelector<HTMLElement>('[data-ybs-tint]')?.style.setProperty('--ybs-tint-bg', sheetStyle.backgroundColor)
     root.toggleAttribute('data-ybs-fit', sheetH < H)
     // No snap point at 0 for a sheet that can't be dismissed: a swipe down settles on the lowest detent natively.
     closedMarker.hidden = !closable()
@@ -366,6 +401,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     // Already there (e.g. a mouse drag released exactly on a detent, or at 0): nothing moves, so settle now.
     // Otherwise the drag stays in `settle` (snap off), or a close never finishes.
     if (Math.abs(scroller.scrollTop - pos(target)) < 1) {
+      handoffV = 0
       stopGlide()
       requestAnimationFrame(onScrollEnd)
       return
@@ -383,20 +419,29 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (target == null) return
     const from = scroller.scrollTop
     const up = pos(target) > from || landing
-    const ms = reducedMotion() ? 0 : landing ? LAND_MS : up ? GLIDE_UP_MS : GLIDE_DOWN_MS
+    // A swipe-close takes over a sheet that is already falling (see commitSwipeClose): start at its speed and slow to
+    // rest, instead of accelerating from zero, which read as the sheet stalling and then leaving.
+    const v = handoffV
+    handoffV = 0
+    const dist = from - pos(target)
+    const handoff = !up && v > 0 && dist > 0
+    const downMs = handoff ? Math.min(Math.max(2 * dist / v, 80), GLIDE_DOWN_MS) : GLIDE_DOWN_MS
+    const ms = reducedMotion() ? 0 : landing ? LAND_MS : up ? GLIDE_UP_MS : downMs
     if (ms === 0) {
       scroller.scrollTop = pos(target)
       requestAnimationFrame(onScrollEnd)
       return
     }
-    const ease = up ? easeDecelerate : easeAccelerate
+    const ease = up ? easeDecelerate : handoff ? easeHandoff(v * ms / dist) : easeAccelerate
     gliding = true
     root.setAttribute('data-ybs-glide', '')
-    let t0: number | null = null
+    // A handoff starts its clock now: the sheet is already moving, and the first frame must already carry it on.
+    let t0: number | null = handoff ? performance.now() : null
     const step = (now: number) => {
       if (destroyed || !gliding || target == null) return
       t0 ??= now
-      const k = Math.min((now - t0) / ms, 1)
+      // A frame's timestamp can be a little before performance.now().
+      const k = Math.min(Math.max((now - t0) / ms, 0), 1)
       scroller.scrollTop = from + (pos(target) - from) * ease(k)
       ourTop = scroller.scrollTop
       // Paint in this frame: the scroll event comes a frame later, and a footer placed from --ybs-visible (a short
@@ -477,6 +522,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const shown = Math.max(Math.min(st, full) - drop, 0)
     const progress = full > 0 ? Math.min(Math.max(shown / full, 0), 1) : 0
     root.style.setProperty('--ybs-progress', String(progress))
+    const floorTop = floorStopTop()
+    root.style.setProperty('--ybs-tint', floorTop > 0 && shown / floorTop > TINT_CUTOFF ? '1' : '0')
     // During a detached drag the clip math in /styled needs the screen bottom in sheet coordinates, which is st.
     root.style.setProperty('--ybs-visible', `${drop > 0 ? st : Math.min(st, full)}px`)
     options.onProgress?.(progress, H > 0 ? shown / H : 0)
@@ -516,19 +563,40 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const st = scroller.scrollTop
     const now = performance.now()
     const users = !programmatic && lock == null && !(Math.abs(st - ourTop) < 0.5)
-    if (users) lastUserScroll = now
-    if (touching || (users && now - lastMotionAt < MOTION_CHAIN_MS)) lastMotionAt = now
+    if (users) {
+      lastUserScroll = now
+      if (fallFrom != null) {
+        fallSamples.push({ t: now, st })
+        while (fallSamples.length > 2 && now - (fallSamples[0]?.t ?? now) > VELOCITY_WINDOW_MS) fallSamples.shift()
+      }
+    }
+    // The user's own motion of the sheet (see lastMotionAt): a tap followed by a scroll nobody made (the browser
+    // clamping scrollTop after a content swap) is not a swipe closing the sheet.
+    const motion = touching || (users && now - lastMotionAt < MOTION_CHAIN_MS)
+    if (motion) lastMotionAt = now
     if (!detached) paint(st)
 
-    // A released flick heading for closed that turns back up before getting there (WebKit's snap, see fallFrom)
-    // was the user closing the sheet: finish it ourselves. Chrome and Firefox never turn around there.
-    if (fallFrom != null && users && !touching && !closing && isOpen && closable()) {
-      if (st < fallMin) fallMin = st
-      else if (fallMin < fallFrom - 8 && fallMin < pos(floor()) / 2 && st > fallMin + 2 && st > CLOSED_TOLERANCE) {
+    if (fallFrom != null && motion && !touching && !closing && isOpen && closable()) {
+      if (st < fallMin) {
+        fallMin = st
+        // A released swipe falling past the lowest detent, and past half of it or heading there fast enough, is the
+        // user closing the sheet: commit now, while the browser's momentum still runs. Left to the browser, the sheet
+        // stayed an open layer over the page until it settled, and a touch on the page in the meantime (the user
+        // going back to it) stopped the momentum and dragged the sheet back up from wherever it was.
+        if (st < fallFrom - 8 && st > CLOSED_TOLERANCE) {
+          const floorTop = floorStopTop()
+          const v = fallSpeed()
+          if (st < floorTop - 8 && (st < floorTop / 2 || project(st, -v * 1000) < floorTop / 2)) {
+            dbg(`released sheet falling past the lowest detent at ${st.toFixed(2)} (${v.toFixed(2)}px/ms): closing`)
+            commitSwipeClose(v)
+            return
+          }
+        }
+      } else if (fallMin < fallFrom - 8 && fallMin < pos(floor()) / 2 && st > fallMin + 2 && st > CLOSED_TOLERANCE) {
+        // A released flick heading for closed that turns back up before getting there (WebKit's snap, see
+        // fallFrom). The commit above has usually taken over by then; this is for a fall it didn't catch.
         dbg(`flick turned back up at ${st.toFixed(2)} after falling to ${fallMin.toFixed(2)}: closing`)
-        fallFrom = null
-        setClosing(true)
-        scrollToDetent('closed')
+        commitSwipeClose(0)
         return
       }
     }
@@ -548,6 +616,27 @@ export function createSheetController(els: SheetElements, options: SheetControll
 
     clearTimeout(scrollEndTimer)
     scrollEndTimer = setTimeout(onScrollEndBackup, 'onscrollend' in window ? SCROLLEND_BACKUP_MS : SCROLLEND_FALLBACK_MS)
+  }
+
+  /** Falling speed (px/ms, positive = towards closed) over the last VELOCITY_WINDOW_MS of samples. */
+  function fallSpeed(): number {
+    const a = fallSamples[0]
+    const b = fallSamples.at(-1)
+    return a && b && b.t > a.t ? (a.st - b.st) / (b.t - a.t) : 0
+  }
+  /**
+   * A released swipe is closing the sheet: no finger is down, so touches go through to the page while it leaves
+   * (`data-ybs-released`), and the app hears about it now (onClosing) rather than when the glide ends. The glide
+   * starts at the swipe's speed `v`.
+   */
+  function commitSwipeClose(v: number) {
+    fallFrom = null
+    fallSamples = []
+    setClosing(true)
+    root.setAttribute('data-ybs-released', '')
+    handoffV = v
+    scrollToDetent('closed')
+    options.onClosing?.()
   }
 
   /** The browser's scrollend: the backup timer for this scroll isn't needed. */
@@ -746,6 +835,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     touching = true
     anchor = null
     fallFrom = null
+    fallSamples = []
     stopGlide()
     programmatic = false
     unlock()
@@ -757,6 +847,7 @@ export function createSheetController(els: SheetElements, options: SheetControll
     if (!closing && anchor <= full + 2) {
       fallFrom = anchor
       fallMin = anchor
+      fallSamples = [{ t: performance.now(), st: anchor }]
     }
     dbg(`release @${Math.round(anchor)}`)
     // A touch while the sheet settles at closed makes its scrollend arrive with a finger down, so it
@@ -1133,8 +1224,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     root.style.setProperty('--ybs-vv-top', `${vv.offsetTop}px`)
     root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
     // iOS scrolls the document to reveal a focused input even with
-    // html{overflow:hidden}. Undo it so the page behind doesn't jump.
-    if (modal && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
+    // html{overflow:hidden}. Undo it so the page behind doesn't jump. Not while closing: the page is the user's again.
+    if (modal && !closing && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
     // vv.height * scale: pinch-zoom shrinks vv.height too, but not what it covers in layout pixels.
     const kb = window.innerHeight - vv.height * vv.scale > KEYBOARD_THRESHOLD
     if (kb !== keyboard) {
@@ -1260,6 +1351,9 @@ export function createSheetController(els: SheetElements, options: SheetControll
     },
     close() {
       if (!isOpen) return
+      // Already gliding out (a swipe committed, then the app's open={false} arrives): restarting would drop the
+      // handed-off speed.
+      if (closing && gliding && target === 'closed') return
       if (!closing) {
         setClosing(true)
         if (!dismissible) layout()

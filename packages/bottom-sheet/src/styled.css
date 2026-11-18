@@ -48,10 +48,11 @@
   --ybs-at-top: clamp(0, (var(--ybs-progress, 0) - 0.9) * 10, 1);
 }
 .ybs-backdrop {
-  background: var(--ybs-backdrop);
+  /* An image, not a colour, so iOS Safari doesn't tint its toolbar from it (see [data-ybs-tint]). */
+  background: linear-gradient(var(--ybs-backdrop), var(--ybs-backdrop));
   opacity: calc(var(--ybs-progress, 0) * var(--ybs-backdrop-max));
 }
-.ybs-bleed { background: var(--ybs-sheet-bg); }
+.ybs-bleed { background: linear-gradient(var(--ybs-sheet-bg), var(--ybs-sheet-bg)); }
 /* Stacked sheets: the covered sheet recedes (scales back and lifts slightly), like iOS. */
 .ybs-view { transform-origin: 50% 0; transition: none; }
 [data-ybs-root][data-ybs-covered] .ybs-view {

@@ -230,6 +230,10 @@ function useConfirm() {
 `onOpenChange` fires for what the user does (a trigger click, a swipe, Escape, back, a tap outside, a close button),
 never when you change `open` yourself, so `onOpenChange={(o) => !o && onClose()}` can't loop.
 
+A swipe reports the close as soon as it has clearly closed the sheet, while the sheet is still sliding out, so the
+page can react right away; `onExitComplete` still comes once it's gone. From then on, touches go to the page under
+the leaving sheet (the root gets `data-ybs-released`). Any close lifts the page's scroll lock as soon as it starts.
+
 **Confirm prompts** ("Delete event?") are alert dialogs to a screen reader. Give the sheet that role with
 `contentProps`, and start focus on the safe action:
 
@@ -258,6 +262,12 @@ Escape or a tap outside is Cancel); `dismissible={false}` doesn't change the rol
   need a `color-scheme` on `:root`; if `--ybs-sheet-bg` isn't a colour when a sheet opens, the console says so. One sheet in a fixed theme:
   `rootProps={{ style: { colorScheme: 'dark' } }}` (on its root, see below).
 - The sheet uses your app's font (it sets none of its own).
+- iOS Safari 26 colours its toolbar from what's at the bottom of the screen. While a sheet is open, a strip at the
+  bottom edge (`[data-ybs-tint]`, invisible) gives it the sheet's own background colour, so the sheet runs into the
+  edge, and it lets go as soon as the sheet starts closing. The bleed and the `/styled` backdrop paint with
+  `background-image` so Safari doesn't take theirs; keep them images if you restyle them
+  (`background: linear-gradient(c, c)`). Each sheet's `[data-ybs-root]` is zero-sized for the same reason (its parts
+  are fixed to the screen), so anything of yours in `Sheet.Portal` beside the View should be `position: fixed`.
 - Tokens. Set them on `[data-ybs-root]` for every sheet, and point them at your own variables to match your theme
   (dark mode then comes with it): `[data-ybs-root] { --ybs-sheet-bg: var(--card); --ybs-sheet-fg: var(--card-foreground); }`.
 - One sheet with its own theme (a dark event sheet on a light page): put it on that sheet's root with `rootProps`,

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A sheet swiped closed on an iPhone could still be caught by the next touch: going back to the page while the sheet
+  slid away stopped its momentum and dragged it back up from wherever it was, and the page couldn't scroll until it
+  was gone. A released swipe that has clearly closed the sheet (fallen past half of its lowest detent, or heading
+  there fast enough) now finishes the close itself, carrying on at the swipe's speed. Touches go to the page from
+  then on, and the page's scroll lock is lifted as soon as any close starts.
+- iOS Safari 26 showed a black bar under the sheet (the toolbar took its colour from the sheet's full-screen layer)
+  and changed it back only after the close had finished. The toolbar now takes the sheet's colour while it's open,
+  so the sheet runs into the bottom edge, and lets go as soon as the sheet starts closing.
+
+### Changed
+
+- `onOpenChange(false, { reason: 'swipe' })` comes when a swipe commits to closing, while the sheet is still on
+  screen, instead of when it has gone. `onExitComplete` still marks the end.
+- Each sheet's `[data-ybs-root]` is zero-sized (it was a fixed, full-screen box; its parts were always fixed to the
+  screen themselves). Something of your own inside `Sheet.Portal`, outside the View, that was positioned against the
+  root needs `position: fixed`.
+- The bleed and the `/styled` backdrop paint with a one-colour `background-image` instead of `background-color`, so
+  Safari doesn't tint its toolbar from them. If you restyle them, keep them images
+  (`background: linear-gradient(c, c)`).
+
 ## 0.7.3 (2026-11-18)
 
 ### Fixed

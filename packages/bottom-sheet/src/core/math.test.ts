@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStops, cubicBezier, easeAccelerate, easeDecelerate, nearestStop, project, resolveStop, type Stop, stopAt } from './math'
+import { buildStops, cubicBezier, easeAccelerate, easeDecelerate, easeHandoff, nearestStop, project, resolveStop, type Stop, stopAt } from './math'
 
 const ids = (stops: Stop[]) => stops.map((s) => s.detent)
 const frac = (f: number, H: number): Stop => ({ detent: f, top: H * f })
@@ -80,5 +80,34 @@ describe('cubicBezier', () => {
   it('decelerate front-loads the motion, accelerate back-loads it', () => {
     expect(easeDecelerate(0.25)).toBeGreaterThan(0.6)
     expect(easeAccelerate(0.5)).toBeLessThan(0.25)
+  })
+})
+
+describe('easeHandoff', () => {
+  const slope = (ease: (k: number) => number, k: number) => (ease(k + 1e-6) - ease(k)) / 1e-6
+  it('starts at the handed-off slope and comes to rest at 1', () => {
+    for (const s of [0, 0.5, 1, 2, 3]) {
+      const ease = easeHandoff(s)
+      expect(ease(0)).toBe(0)
+      expect(ease(1)).toBeCloseTo(1, 9)
+      expect(slope(ease, 0)).toBeCloseTo(s, 4)
+      expect(slope(ease, 1 - 1e-6)).toBeCloseTo(0, 4)
+    }
+  })
+  it('never overshoots or goes back, even for a speed past the cap', () => {
+    for (const s of [-1, 0, 1.5, 3, 10]) {
+      const ease = easeHandoff(s)
+      let prev = 0
+      for (let k = 0.01; k <= 1; k += 0.01) {
+        const v = ease(k)
+        expect(v).toBeGreaterThanOrEqual(prev - 1e-9)
+        expect(v).toBeLessThanOrEqual(1 + 1e-9)
+        prev = v
+      }
+    }
+  })
+  it('2 is ease-out quad', () => {
+    const quad = (k: number) => 1 - (1 - k) * (1 - k)
+    for (const k of [0.1, 0.4, 0.75]) expect(easeHandoff(2)(k)).toBeCloseTo(quad(k), 9)
   })
 })

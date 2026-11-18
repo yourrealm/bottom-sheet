@@ -110,3 +110,11 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (k:
 export const easeDecelerate = cubicBezier(0.05, 0.7, 0.1, 1)
 /** Material 3 "emphasized accelerate": for things leaving (a sheet closing or moving down). */
 export const easeAccelerate = cubicBezier(0.3, 0, 0.8, 0.15)
+/**
+ * Hermite ease from a start slope `s` (a handed-off speed, in units of distance per duration) to rest. 2 is ease-out
+ * quad; clamped to 0..3, past which it would overshoot.
+ */
+export function easeHandoff(s: number): (k: number) => number {
+  const m = Math.min(Math.max(s, 0), 3)
+  return (k) => m * (k * k * k - 2 * k * k + k) + (3 * k * k - 2 * k * k * k)
+}

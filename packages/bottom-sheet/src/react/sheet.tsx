@@ -66,6 +66,8 @@ interface SheetContextValue {
   onDetentChange: ((d: Detent) => void) | undefined
   debug: ((m: string) => void) | undefined
   onClosed: () => void
+  /** onOpenChange(false, 'swipe') already went out when the swipe committed (see onClosing in View). */
+  swipeReported: RefObject<boolean>
   controller: RefObject<SheetController | null>
   /** Element focused before the sheet opened; focus returns here after close. */
   returnFocus: RefObject<HTMLElement | null>
@@ -347,6 +349,7 @@ export function Root(props: RootProps) {
   // Open -> mount; close -> animate out via the controller, unmount when closed.
   // Re-opening while the close animation runs reverses it.
   const closing = useRef(false)
+  const swipeReported = useRef(false)
   const debugRef = useRef(debug)
   debugRef.current = debug
   const returnFocus = useRef<HTMLElement | null>(null)
@@ -360,6 +363,7 @@ export function Root(props: RootProps) {
     }
     if (open && mounted && closing.current) {
       closing.current = false
+      swipeReported.current = false
       controller.current?.open(detent ?? initialDetent)
       // Closing gave focus back to the page, which a modal sheet has made inert again (Portal runs first): move it
       // into the sheet as on a first open.
@@ -386,8 +390,12 @@ export function Root(props: RootProps) {
   const onClosed = useCallback(() => {
     debugRef.current?.(`onClosed (open=${open}, mounted=${mounted})`)
     closing.current = false
+    const reported = swipeReported.current
+    swipeReported.current = false
     setMounted(false)
-    if (open) setOpen(false, 'swipe') // closed by a gesture
+    // Closed by a gesture, unless the swipe already said so when it committed (an app that ignored it stays closed:
+    // the sheet is gone).
+    if (open && !reported) setOpen(false, 'swipe')
   }, [open, mounted, setOpen])
 
   const value = useMemo<SheetContextValue>(
@@ -410,6 +418,7 @@ export function Root(props: RootProps) {
       onDetentChange,
       debug,
       onClosed,
+      swipeReported,
       controller,
       returnFocus,
       rootEl,
@@ -693,6 +702,11 @@ export function View({ children, bleedClassName, ref, ...props }: ViewProps) {
         dismissible: ctx.dismissible,
         onDetentChange: (d) => ctxRef.current.onDetentChange?.(d),
         onClosed: () => ctxRef.current.onClosed(),
+        // A released swipe is closing the sheet: tell the app now, so the page behind updates while it leaves.
+        onClosing: () => {
+          ctxRef.current.swipeReported.current = true
+          ctxRef.current.setOpen(false, 'swipe')
+        },
         onProgress: (p, cover) => reportProgress(root, p, cover),
         // Above the sheet (the spacer), or beside it when it is narrower than the screen (max-width on desktop).
         onOutsideTap: () => ctxRef.current.requestDismiss('outside-press'),
@@ -753,6 +767,7 @@ export function View({ children, bleedClassName, ref, ...props }: ViewProps) {
           {children}
         </div>
       </div>
+      <div data-ybs-tint="" aria-hidden="true" />
     </>
   )
 }

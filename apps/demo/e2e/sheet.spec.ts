@@ -1193,7 +1193,8 @@ test('a fling down closes the sheet even if the browser sends no scrollend', asy
   await waitForEvent(page, 'lab: onOpenChange false')
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
   await expect(page.locator('#root')).not.toHaveAttribute('inert')
-  expect(await page.evaluate(() => window.__ybs.events.some((e) => e.includes('no scrollend after the last scroll')))).toBe(true)
+  // Settled by the backup timer, or committed while still falling (the close glide settles itself).
+  expect(await page.evaluate(() => window.__ybs.events.some((e) => e.includes('no scrollend after the last scroll') || e.includes('released sheet falling')))).toBe(true)
 })
 
 test.describe('persistent (non-modal) sheet', () => {
@@ -1941,12 +1942,54 @@ test.describe('a flick-close that the browser turns back up (WebKit)', () => {
 
   test('turning back up near closed finishes the close', async ({ page }) => {
     await release(page)
-    const H = (await geometry(page)).H
-    const half = Math.round(H * 0.5)
-    await play(page, [half - 90, half - 160, 150, 60, 20, 9, 40, 120, 260], 20)
+    // Straight to the closed line (the early commit below only takes a fall it sees on the way), then back up.
+    await play(page, [1, 40, 120, 260], 20)
     await waitForEvent(page, /lab: flick turned back up/)
     await waitForEvent(page, 'lab: onOpenChange false')
     await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+  })
+
+  // The user going back to the page while the sheet falls: a touch there used to stop the momentum and drag the
+  // sheet back up from wherever it was. Committed early, the close can't be interrupted and the page is usable.
+  test('a released swipe falling past the lowest detent commits the close while it still falls', async ({ page }) => {
+    await release(page)
+    const half = Math.round((await geometry(page)).H * 0.5)
+    // The state at the moment of the commit (the close glide that follows is over in a few frames).
+    await page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>('[data-ybs-root]')!
+      const w = window as unknown as { atCommit?: object }
+      new MutationObserver((_, o) => {
+        if (!root.hasAttribute('data-ybs-released')) return
+        o.disconnect()
+        w.atCommit = {
+          mounted: root.isConnected,
+          sheetHits: getComputedStyle(root.querySelector('[data-ybs-sheet]')!).pointerEvents,
+          pageLocked: document.documentElement.style.overflow === 'hidden',
+          reported: window.__ybs.events.some((e) => e.includes('lab: onOpenChange false')),
+        }
+      }).observe(root, { attributes: true, attributeFilter: ['data-ybs-released'] })
+    })
+    await play(page, [half - 90, half - 160, half - 230], 20)
+    await waitForEvent(page, /lab: released sheet falling past the lowest detent/)
+    expect(await page.evaluate(() => (window as unknown as { atCommit?: object }).atCommit)).toEqual({
+      mounted: true,
+      sheetHits: 'none',
+      pageLocked: false,
+      reported: true,
+    })
+    await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
+    // Reported once: not again when the sheet has gone.
+    expect((await events(page)).filter((e) => e.includes('lab: onOpenChange false'))).toHaveLength(1)
+  })
+
+  test('a slow drift below the lowest detent is left to the browser', async ({ page }) => {
+    await release(page)
+    const half = Math.round((await geometry(page)).H * 0.5)
+    // Released at half - 30 (see release): a few px at a time, slower than a finger lets go of a swipe.
+    await play(page, [half - 32, half - 34, half - 36, half - 38], 100, false)
+    await page.waitForTimeout(300)
+    expect((await events(page)).some((e) => e.includes('released sheet falling'))).toBe(false)
+    await expect(page.locator('[data-ybs-root]')).not.toHaveAttribute('data-ybs-released')
   })
 
   test('a close by momentum that takes longer than 3s still closes', async ({ page }) => {
@@ -1974,7 +2017,43 @@ test('a color-scheme forced on one sheet reaches its bleed too', async ({ page }
   await waitForEvent(page, 'lab: onDetentChange 0.5')
   const bg = (sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s)!).backgroundColor, sel)
   expect(await bg('.ybs-sheet')).toBe('rgb(44, 44, 46)')
-  expect(await bg('[data-ybs-bleed]')).toBe('rgb(44, 44, 46)')
+  // Painted as an image (see the toolbar tint test).
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ybs-bleed]')!).backgroundImage)).toContain('rgb(44, 44, 46)')
+})
+
+// iOS Safari (26) colours its toolbar from a full-width fixed element at the bottom edge. [data-ybs-tint] carries the
+// sheet's colour while it shows, and lets go as soon as the sheet closes; the bleed and the backdrop paint with images
+// so Safari doesn't take theirs instead, and the root is zero-sized (Safari keeps the colour of a viewport-sized layer).
+test('the toolbar tint strip: the sheet colour while open, cleared as soon as it closes', async ({ page }) => {
+  await openLab(page)
+  const open = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>('[data-ybs-root]')!
+    const tint = root.querySelector<HTMLElement>('[data-ybs-tint]')!
+    const r = root.getBoundingClientRect()
+    const t = tint.getBoundingClientRect()
+    const bg = (sel: string) => getComputedStyle(root.querySelector(sel)!).backgroundColor
+    return {
+      tint: getComputedStyle(root).getPropertyValue('--ybs-tint').trim(),
+      // The strip mixes it in with color-mix(), which computes to a color(srgb ...) value: compare its input.
+      sameAsSheet: getComputedStyle(tint).getPropertyValue('--ybs-tint-bg').trim() === bg('[data-ybs-sheet]'),
+      painted: getComputedStyle(tint).backgroundColor !== 'rgba(0, 0, 0, 0)',
+      rootSize: [r.width, r.height],
+      atBottom: Math.round(innerHeight - t.bottom) === 0 && t.width === innerWidth && t.height > 10,
+      bleed: bg('[data-ybs-bleed]'),
+      backdrop: bg('.ybs-backdrop'),
+    }
+  })
+  expect(open).toEqual({ tint: '1', sameAsSheet: true, painted: true, rootSize: [0, 0], atBottom: true, bleed: 'rgba(0, 0, 0, 0)', backdrop: 'rgba(0, 0, 0, 0)' })
+  await page.mouse.click(40, 120) // the dimmed area: close
+  const closing = await page.waitForFunction(
+    () => {
+      const tint = document.querySelector('[data-ybs-root][data-ybs-closing] [data-ybs-tint]')
+      return tint ? getComputedStyle(tint).backgroundColor : false
+    },
+    null,
+    { polling: 'raf' },
+  )
+  expect(await closing.jsonValue()).toBe('rgba(0, 0, 0, 0)')
 })
 
 // initialFocus, like Base UI: a function of how the sheet was opened. The persistent demo focuses New board unless
@@ -2735,7 +2814,7 @@ test.describe('tokens: --ybs-* overrides from app CSS', () => {
   test('backdrop colour and how dark it gets', async ({ page }) => {
     await withCss(page, '[data-ybs-root] { --ybs-backdrop: rgb(200, 0, 0); --ybs-backdrop-max: 0.5; }')
     await openLab(page)
-    expect(await style(page, '.ybs-backdrop', 'background-color')).toBe('rgb(200, 0, 0)')
+    expect(await style(page, '.ybs-backdrop', 'background-image')).toContain('rgb(200, 0, 0)')
     const progress = Number(await style(page, '[data-ybs-root]', '--ybs-progress'))
     expect(progress).toBeGreaterThan(0.3)
     expect(Number(await style(page, '.ybs-backdrop', 'opacity'))).toBeCloseTo(progress * 0.5, 2)
@@ -2900,7 +2979,7 @@ test.describe('tokens: --ybs-* overrides from app CSS', () => {
         await openLab(page)
         await expect(page.locator('[data-ybs-root][data-demo="lab"]')).toHaveCount(1)
         expect(await style(page, '.ybs-sheet', 'background-color')).toBe('rgb(1, 2, 3)')
-        expect(await style(page, '.ybs-bleed', 'background-color')).toBe('rgb(1, 2, 3)')
+        expect(await style(page, '.ybs-bleed', 'background-image')).toContain('rgb(1, 2, 3)')
         await page.evaluate(() => {
           const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
           s.scrollTop = s.clientHeight + 300
@@ -3022,7 +3101,8 @@ test.describe('replaceable (a sheet opening over it takes its place)', () => {
         w.samples.push(
           [...document.querySelectorAll('[data-ybs-root]')].map((r) => {
             const cs = getComputedStyle(r.querySelector('.ybs-backdrop')!)
-            const alpha = Number(/rgba?\([^)]*?([\d.]+)\)$/.exec(cs.backgroundColor.replace(/rgb\(([^,]+),([^,]+),([^,)]+)\)/, 'rgba($1,$2,$3,1)'))?.[1] ?? 1)
+            const colour = /rgba?\([^)]*\)/.exec(cs.backgroundImage)?.[0] ?? cs.backgroundColor // a one-colour gradient
+            const alpha = Number(/rgba?\([^)]*?([\d.]+)\)$/.exec(colour.replace(/rgb\(([^,]+),([^,]+),([^,)]+)\)/, 'rgba($1,$2,$3,1)'))?.[1] ?? 1)
             const dim = Number(cs.opacity)
             return {
               title: r.querySelector('.ybs-title')!.textContent!,

@@ -249,6 +249,49 @@ A new mouse press ends a mouse drag whose release was missed (not a second finge
 mouse header drag also ends on `lostpointercapture`, and any new press clears the arbiter's "drop the next click" window. Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
 reopened on Space). Test: "the page takes focus and input back as soon as the sheet starts closing".
 
+### A released swipe commits the close (2026-11-18, Venga, real iPhone, iOS 26 Safari)
+Report: swipe a sheet closed, then touch or scroll the page while it slides away: the close animation was
+interrupted and "restarted from halfway", and the page didn't scroll until the sheet had gone. The sheet was still an
+open, modal layer over the page until it settled (closing only began on `scrollend` at 0), so that touch landed on
+the scroller, stopped WebKit's momentum and dragged the sheet. 0.7.3's `[data-ybs-closing]` touch-action rule didn't
+apply: nothing was closing yet.
+- After a touch release (`fallFrom`), user motion (`lastMotionAt`, so a tap and a scroll nobody made don't count:
+  VEN-3953) that takes the sheet past its lowest detent, and past half of it or heading there fast enough
+  (`project()` on the last `VELOCITY_WINDOW_MS` of samples, `fallSamples`), commits: `commitSwipeClose` sets
+  `closing`, `data-ybs-released` (scroller, backdrop and sheet `pointer-events: none`, so later touches go to the
+  page; a tap-to-close still lands on the sheet, see "Closing releases the page at once"), and calls `onClosing`
+  (React reports `onOpenChange(false, 'swipe')` then; `swipeReported` keeps `onClosed` from reporting it again).
+- The glide starts at the swipe's speed (`handoffV`, `easeHandoff`: Hermite from that slope to rest, duration
+  `2 * dist / v` clamped to 80..280ms, clock started at commit) instead of accelerating from 0, which read as a stall.
+  `close()` while that glide runs (the app's `open={false}`) leaves it alone.
+- `setClosing(true)` restores the page's scroll position and releases the html lock right away; `syncViewport` no
+  longer pins `scrollY` while closing; reopening relocks. The flick-turned-back-up path now goes through
+  `commitSwipeClose(0)`; it's mostly superseded (a fall past half commits first).
+Device (Henrik, iPhone, iOS 26 Safari, via a patch-package copy in Venga): swipe then scroll the page closes cleanly,
+the page scrolls during the close. Tests: "a released swipe falling past the lowest detent commits the close while
+it still falls", "a slow drift below the lowest detent is left to the browser". Not yet on Android devices (a
+Chrome/Firefox fling now ends in our glide instead of native momentum).
+
+### iOS Safari 26 toolbar tint (2026-11-18, same report)
+The area under Safari's floating toolbar went black while a sheet was open, and back to the page's colour only a
+beat after the close. WebKit (`LocalFrameView::fixedContainerEdges`, iOS 26) hit-tests a few px in from each edge and
+takes the nearest fixed/sticky container: it must span >= 90% of the width, its computed `background-color` is used
+(alpha < 0.1 is skipped; images and masks are ignored), boxes <= 10px tall are sampled from pixels instead, and a
+container the size of the viewport keeps the last colour it recorded. It re-reads on repaint or layout of an ordinary
+candidate. Our root was a viewport-sized fixed box (the toolbar held its colour until unmount) and the backdrop's
+`background-color` (black) was the hit.
+- `[data-ybs-root]` is 0x0 as a sheet (`:not([data-ybs-dialog])`); its parts are fixed anyway.
+- The bleed and the `/styled` backdrop paint with `linear-gradient(c, c)`, invisible to the heuristic.
+- `[data-ybs-tint]` (View, after the scroller): fixed, full width, 12px at the bottom, masked to nothing, background
+  `color-mix(--ybs-tint-bg, transparent)` by `--ybs-tint`. `layout()` copies the sheet's computed `background-color`
+  to `--ybs-tint-bg` (so a colour set on the sheet alone works); `paint()` sets `--ybs-tint` 1 while more than
+  `TINT_CUTOFF` (0.5) of the lowest detent shows. `[data-ybs-closing]` makes it transparent and 13px: the height change
+  is a layout, which makes WebKit re-read the edge at once, so Safari's own fade overlaps the glide instead of
+  following it. Hidden in the dialog presentation.
+Tried and dropped: a transparent backdrop while closing (no change), tucking the bleed under the sheet (the bar still
+lagged). Device (Henrik, iPhone, iOS 26): the bar takes the sheet colour, content stays above the toolbar (safe area),
+and it lets go with the close. Test: "the toolbar tint strip…" (checks the strip, not Safari's toolbar).
+
 ### Stacked sheets (`src/react/stack.ts`)
 - A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes
   everything else inert (siblings of its root and of each ancestor up to `<body>`, so `Portal container` works too),

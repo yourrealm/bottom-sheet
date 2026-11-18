@@ -16,6 +16,7 @@
  *   --ybs-progress  0..1, closed -> full
  *   --ybs-visible   px of the sheet on screen (scrollTop, capped at full)
  *   --ybs-bleed     0|1, whether the bleed (sheet colour under the visual viewport) shows
+ *   --ybs-tint      0|1, whether iOS Safari's toolbar takes the sheet's colour ([data-ybs-tint])
  * Consumer-settable:
  *   --ybs-inset     gap above the sheet at the full detent (default: safe area + 10px; 0 with fullscreen)
  *   --ybs-sheet-bg  colour of the bleed, should match the sheet
@@ -28,6 +29,9 @@
   --ybs-inset: calc(env(safe-area-inset-top, 0px) + 10px);
   position: fixed; inset: 0; z-index: 50; pointer-events: none;
 }
+/* Zero-sized (its layers are all fixed to the viewport): iOS Safari keeps the toolbar's last colour while a
+   viewport-sized fixed layer is at the bottom edge, so the toolbar would only let go once the sheet unmounts. */
+[data-ybs-root]:not([data-ybs-dialog]) { inset: auto; top: 0; left: 0; width: 0; height: 0; }
 [data-ybs-root][data-ybs-fullscreen] { --ybs-inset: 0px; }
 /* Fullscreen means the full detent covers the screen, even with short content. */
 [data-ybs-root][data-ybs-fullscreen] [data-ybs-sheet],
@@ -40,7 +44,8 @@
 [data-ybs-bleed] {
   position: fixed; left: 0; right: 0; height: 100lvh;
   top: calc(var(--ybs-vv-top, 0px) + var(--ybs-vv-h, 100dvh));
-  background: var(--ybs-sheet-bg, Canvas);
+  /* An image, not a colour: iOS Safari tints its toolbar from fixed elements' background-color ([data-ybs-tint]). */
+  background: linear-gradient(var(--ybs-sheet-bg, Canvas), var(--ybs-sheet-bg, Canvas));
   opacity: var(--ybs-bleed, 0);
 }
 [data-ybs-scroller] {
@@ -57,11 +62,30 @@
 [data-ybs-root][data-ybs-drag] [data-ybs-scroller],
 [data-ybs-root][data-ybs-glide] [data-ybs-scroller] { scroll-snap-type: none; }
 [data-ybs-track] { position: relative; }
+/* iOS Safari (26) colours its toolbar from a full-width fixed element at the bottom edge, and re-reads it only for an
+   ordinary one (it keeps the last colour for a viewport-sized layer, which is why the root is zero-sized). This
+   strip is that element: the sheet's computed background (--ybs-tint-bg, set in layout), cleared once the sheet
+   is mostly gone (TINT_CUTOFF) or closing. Over 10px tall (below that WebKit samples pixels instead), and masked
+   rather than hidden (the sampler ignores masks; opacity or visibility would disqualify it). */
+[data-ybs-tint] {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 12px;
+  pointer-events: none; will-change: transform;
+  background-color: color-mix(in srgb, var(--ybs-tint-bg, var(--ybs-sheet-bg, Canvas)) calc(var(--ybs-tint, 1) * 100%), transparent);
+  -webkit-mask-image: linear-gradient(transparent, transparent); mask-image: linear-gradient(transparent, transparent);
+}
+/* A committed close lets the toolbar go at once, so Safari's own lag and fade overlap the glide instead of
+   following it. The height change is a layout change, which makes WebKit re-read the edge colour right away. */
+[data-ybs-root][data-ybs-closing] [data-ybs-tint] { background-color: transparent; height: 13px; }
 [data-ybs-spacer] { height: var(--ybs-h, 100dvh); touch-action: none; }
 /* A closing sheet still covers the page; a touch that lands on it must not drag it back up (set before the touch, so
    no non-passive touchmove listener; a finger already down keeps the touch-action it started with). */
 [data-ybs-root][data-ybs-closing] [data-ybs-scroller],
 [data-ybs-root][data-ybs-closing] [data-ybs-scroller] * { touch-action: none !important; }
+/* A released swipe that's closing: no finger is down, so later touches go to the page (a tap that closed the
+   sheet still lands on the sheet, so its click can't reach the page). */
+[data-ybs-root][data-ybs-released] [data-ybs-scroller],
+[data-ybs-root][data-ybs-released] [data-ybs-backdrop],
+[data-ybs-root][data-ybs-released] [data-ybs-sheet] { pointer-events: none !important; }
 [data-ybs-markers] { position: absolute; top: 0; left: 0; width: 1px; height: 0; }
 [data-ybs-marker] {
   position: absolute; left: 0; width: 1px; height: 1px;
@@ -145,7 +169,7 @@
    positioned against the screen; the dialog's own overflow still clips them).
    Consumer-settable: --ybs-dialog-width (default 32rem), --ybs-dialog-gap (space kept around it, default 24px),
    --ybs-dialog-radius (corners; no default). */
-[data-ybs-root][data-ybs-dialog] :is([data-ybs-bleed], [data-ybs-spacer], [data-ybs-markers], [data-ybs-handle]) { display: none; }
+[data-ybs-root][data-ybs-dialog] :is([data-ybs-bleed], [data-ybs-tint], [data-ybs-spacer], [data-ybs-markers], [data-ybs-handle]) { display: none; }
 [data-ybs-root][data-ybs-dialog] [data-ybs-scroller] {
   top: var(--ybs-vv-top, 0px); height: var(--ybs-vv-h, 100dvh);
   overflow: hidden; scroll-snap-type: none;
