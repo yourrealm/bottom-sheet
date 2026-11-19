@@ -132,6 +132,11 @@ const BELOW_FLOOR_WAIT_MS = 150
  * last pixels, or waiting for the finger, kept the page blocked behind an invisible sliver and ate the taps on it.
  */
 const SLIVER_PX = 16
+/**
+ * iOS Safari's toolbar takes the sheet's colour ([data-ybs-tint]) while more than this share of the lowest detent
+ * shows. Below it, and from the moment a close starts, it goes back to the page.
+ */
+const TINT_CUTOFF = 0.5
 
 // The page scroll lock is shared by all open modal sheets: save the page's value on the first lock, restore it on
 // the last release. Per-sheet save/restore broke when stacked sheets closed together (the upper one restored the
@@ -168,6 +173,22 @@ export function createSheetController(els: SheetElements, options: SheetControll
   function setClosing(v: boolean) {
     closing = v
     root.toggleAttribute('data-ybs-closing', v)
+    // The page is released as soon as the close starts, not when the sheet is gone: its scroll position goes back
+    // (iOS may have scrolled it for the keyboard), then the lock lets go, so a swipe on the page during the close
+    // scrolls it. Reopening during the close locks it again.
+    if (v) {
+      if (modal && isOpen && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
+      releaseHtml()
+    } else if (isOpen && !htmlLocked) {
+      if (modal) {
+        pageY = window.scrollY
+        lockHtml()
+        htmlLocked = true
+      } else {
+        // A non-modal sheet locks only at full (see paint): let the next paint decide again.
+        atFull = false
+      }
+    }
   }
   const closable = () => dismissible || closing
 
@@ -296,6 +317,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
   const pos = (d: Detent) => resolve(d).top
   /** The lowest resting detent that isn't closed; also where open() goes by default. */
   const floor = () => stops.find((s) => s.detent !== 'closed')!.detent
+  /** Where the lowest resting detent sits, from the last layout (no measuring: paint calls it every frame). */
+  const floorStopTop = () => stops.find((s) => s.detent !== 'closed')?.top ?? 0
 
   function makeMarker() {
     const m = document.createElement('div')
@@ -322,8 +345,12 @@ export function createSheetController(els: SheetElements, options: SheetControll
     root.style.setProperty('--ybs-footer-h', `${footerHeight()}px`)
     // The bleed (the sheet's colour behind the keyboard) is a sibling of the sheet, so a color-scheme set on the sheet
     // alone (one sheet forced dark) wouldn't reach it. Copy it over.
+    const sheetStyle = getComputedStyle(sheet)
     const bleed = root.querySelector<HTMLElement>('[data-ybs-bleed]')
-    if (bleed) bleed.style.colorScheme = getComputedStyle(sheet).colorScheme
+    if (bleed) bleed.style.colorScheme = sheetStyle.colorScheme
+    // iOS Safari's toolbar takes the colour of [data-ybs-tint], so give it the sheet's own (a colour set on the sheet,
+    // not on the root, is what the user sees at the bottom edge).
+    root.querySelector<HTMLElement>('[data-ybs-tint]')?.style.setProperty('--ybs-tint-bg', sheetStyle.backgroundColor)
     root.toggleAttribute('data-ybs-fit', sheetH < H)
     // No snap point at 0 for a sheet that can't be dismissed: a swipe down settles on the lowest detent natively.
     closedMarker.hidden = !closable()
@@ -477,6 +504,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     const shown = Math.max(Math.min(st, full) - drop, 0)
     const progress = full > 0 ? Math.min(Math.max(shown / full, 0), 1) : 0
     root.style.setProperty('--ybs-progress', String(progress))
+    const floorTop = floorStopTop()
+    root.style.setProperty('--ybs-tint', floorTop > 0 && shown / floorTop > TINT_CUTOFF ? '1' : '0')
     // During a detached drag the clip math in /styled needs the screen bottom in sheet coordinates, which is st.
     root.style.setProperty('--ybs-visible', `${drop > 0 ? st : Math.min(st, full)}px`)
     options.onProgress?.(progress, H > 0 ? shown / H : 0)
@@ -1133,8 +1162,8 @@ export function createSheetController(els: SheetElements, options: SheetControll
     root.style.setProperty('--ybs-vv-top', `${vv.offsetTop}px`)
     root.style.setProperty('--ybs-vv-h', `${vv.height}px`)
     // iOS scrolls the document to reveal a focused input even with
-    // html{overflow:hidden}. Undo it so the page behind doesn't jump.
-    if (modal && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
+    // html{overflow:hidden}. Undo it so the page behind doesn't jump. Not while closing: the page is the user's again.
+    if (modal && !closing && Math.abs(window.scrollY - pageY) > 0.5) window.scrollTo(0, pageY)
     // vv.height * scale: pinch-zoom shrinks vv.height too, but not what it covers in layout pixels.
     const kb = window.innerHeight - vv.height * vv.scale > KEYBOARD_THRESHOLD
     if (kb !== keyboard) {

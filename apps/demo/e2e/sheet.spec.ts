@@ -121,6 +121,24 @@ test('tapping the dimmed area closes', async ({ page }) => {
   await expect(page.locator('[data-ybs-root]')).toHaveCount(0)
 })
 
+// Venga (iPhone): after a close, the page didn't scroll until the sheet had gone. The scroll lock now lets go when the
+// close starts, and a reopen during the close takes it again.
+test('the page scroll lock lets go as soon as the sheet starts closing', async ({ page }, info) => {
+  test.skip(info.project.name === 'firefox-desktop', 'the lab is a dialog there')
+  await openLab(page)
+  const state = () =>
+    page.evaluate(() => ({
+      mounted: !!document.querySelector('[data-ybs-root]'),
+      locked: document.documentElement.style.overflow === 'hidden',
+    }))
+  expect(await state()).toEqual({ mounted: true, locked: true })
+  await page.mouse.click(40, 120) // the dimmed area
+  expect(await state()).toEqual({ mounted: true, locked: false })
+  await page.evaluate(() => document.getElementById('open-lab')!.click()) // reopen mid-close
+  await page.waitForTimeout(600)
+  expect(await state()).toEqual({ mounted: true, locked: true })
+})
+
 test('close buttons: a visible ✕ when asked, otherwise one only screen readers get, none when not dismissible', async ({ page }) => {
   // closeButton: a visible ✕ named "Close" that closes the sheet.
   await page.goto('/?open=1#/product')
@@ -1974,7 +1992,43 @@ test('a color-scheme forced on one sheet reaches its bleed too', async ({ page }
   await waitForEvent(page, 'lab: onDetentChange 0.5')
   const bg = (sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s)!).backgroundColor, sel)
   expect(await bg('.ybs-sheet')).toBe('rgb(44, 44, 46)')
-  expect(await bg('[data-ybs-bleed]')).toBe('rgb(44, 44, 46)')
+  // Painted as an image (see the toolbar tint test).
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ybs-bleed]')!).backgroundImage)).toContain('rgb(44, 44, 46)')
+})
+
+// iOS Safari (26) colours its toolbar from a full-width fixed element at the bottom edge. [data-ybs-tint] carries the
+// sheet's colour while it shows, and lets go as soon as the sheet closes; the bleed and the backdrop paint with images
+// so Safari doesn't take theirs instead, and the root is zero-sized (Safari keeps the colour of a viewport-sized layer).
+test('the toolbar tint strip: the sheet colour while open, cleared as soon as it closes', async ({ page }) => {
+  await openLab(page)
+  const open = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>('[data-ybs-root]')!
+    const tint = root.querySelector<HTMLElement>('[data-ybs-tint]')!
+    const r = root.getBoundingClientRect()
+    const t = tint.getBoundingClientRect()
+    const bg = (sel: string) => getComputedStyle(root.querySelector(sel)!).backgroundColor
+    return {
+      tint: getComputedStyle(root).getPropertyValue('--ybs-tint').trim(),
+      // The strip mixes it in with color-mix(), which computes to a color(srgb ...) value: compare its input.
+      sameAsSheet: getComputedStyle(tint).getPropertyValue('--ybs-tint-bg').trim() === bg('[data-ybs-sheet]'),
+      painted: getComputedStyle(tint).backgroundColor !== 'rgba(0, 0, 0, 0)',
+      rootSize: [r.width, r.height],
+      atBottom: Math.round(innerHeight - t.bottom) === 0 && t.width === innerWidth && t.height > 10,
+      bleed: bg('[data-ybs-bleed]'),
+      backdrop: bg('.ybs-backdrop'),
+    }
+  })
+  expect(open).toEqual({ tint: '1', sameAsSheet: true, painted: true, rootSize: [0, 0], atBottom: true, bleed: 'rgba(0, 0, 0, 0)', backdrop: 'rgba(0, 0, 0, 0)' })
+  await page.mouse.click(40, 120) // the dimmed area: close
+  const closing = await page.waitForFunction(
+    () => {
+      const tint = document.querySelector('[data-ybs-root][data-ybs-closing] [data-ybs-tint]')
+      return tint ? getComputedStyle(tint).backgroundColor : false
+    },
+    null,
+    { polling: 'raf' },
+  )
+  expect(await closing.jsonValue()).toBe('rgba(0, 0, 0, 0)')
 })
 
 // initialFocus, like Base UI: a function of how the sheet was opened. The persistent demo focuses New board unless
@@ -2735,7 +2789,7 @@ test.describe('tokens: --ybs-* overrides from app CSS', () => {
   test('backdrop colour and how dark it gets', async ({ page }) => {
     await withCss(page, '[data-ybs-root] { --ybs-backdrop: rgb(200, 0, 0); --ybs-backdrop-max: 0.5; }')
     await openLab(page)
-    expect(await style(page, '.ybs-backdrop', 'background-color')).toBe('rgb(200, 0, 0)')
+    expect(await style(page, '.ybs-backdrop', 'background-image')).toContain('rgb(200, 0, 0)')
     const progress = Number(await style(page, '[data-ybs-root]', '--ybs-progress'))
     expect(progress).toBeGreaterThan(0.3)
     expect(Number(await style(page, '.ybs-backdrop', 'opacity'))).toBeCloseTo(progress * 0.5, 2)
@@ -2900,7 +2954,7 @@ test.describe('tokens: --ybs-* overrides from app CSS', () => {
         await openLab(page)
         await expect(page.locator('[data-ybs-root][data-demo="lab"]')).toHaveCount(1)
         expect(await style(page, '.ybs-sheet', 'background-color')).toBe('rgb(1, 2, 3)')
-        expect(await style(page, '.ybs-bleed', 'background-color')).toBe('rgb(1, 2, 3)')
+        expect(await style(page, '.ybs-bleed', 'background-image')).toContain('rgb(1, 2, 3)')
         await page.evaluate(() => {
           const s = document.querySelector<HTMLElement>('[data-ybs-scroller]')!
           s.scrollTop = s.clientHeight + 300
@@ -3022,7 +3076,8 @@ test.describe('replaceable (a sheet opening over it takes its place)', () => {
         w.samples.push(
           [...document.querySelectorAll('[data-ybs-root]')].map((r) => {
             const cs = getComputedStyle(r.querySelector('.ybs-backdrop')!)
-            const alpha = Number(/rgba?\([^)]*?([\d.]+)\)$/.exec(cs.backgroundColor.replace(/rgb\(([^,]+),([^,]+),([^,)]+)\)/, 'rgba($1,$2,$3,1)'))?.[1] ?? 1)
+            const colour = /rgba?\([^)]*\)/.exec(cs.backgroundImage)?.[0] ?? cs.backgroundColor // a one-colour gradient
+            const alpha = Number(/rgba?\([^)]*?([\d.]+)\)$/.exec(colour.replace(/rgb\(([^,]+),([^,]+),([^,)]+)\)/, 'rgba($1,$2,$3,1)'))?.[1] ?? 1)
             const dim = Number(cs.opacity)
             return {
               title: r.querySelector('.ybs-title')!.textContent!,

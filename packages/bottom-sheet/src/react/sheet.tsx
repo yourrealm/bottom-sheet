@@ -753,6 +753,7 @@ export function View({ children, bleedClassName, ref, ...props }: ViewProps) {
           {children}
         </div>
       </div>
+      <div data-ybs-tint="" aria-hidden="true" />
     </>
   )
 }

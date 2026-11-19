@@ -249,6 +249,31 @@ A new mouse press ends a mouse drag whose release was missed (not a second finge
 mouse header drag also ends on `lostpointercapture`, and any new press clears the arbiter's "drop the next click" window. Test: "a tap on the overlay of a stacked sheet…". Found porting dapuzzler: a key pressed right after Escape still landed in the sheet (the toss picker
 reopened on Space). Test: "the page takes focus and input back as soon as the sheet starts closing".
 
+### The page scroll lock goes when the close starts (2026-11-19, from PR #15, Venga, iPhone)
+`setClosing(true)` restores the page's `scrollY` and releases the html lock; `syncViewport` no longer pins `scrollY`
+while closing. Reopening mid-close relocks (modal) or clears `atFull` so the next paint decides (non-modal). The
+dialog presentation (`dialog.ts`) still holds it until it's gone. Test: "the page scroll lock lets go as soon as the
+sheet starts closing".
+Not taken from #15 (yet): committing a released swipe-close early (`commitSwipeClose`, `data-ybs-released`, an early
+`onOpenChange(false, 'swipe')`, the `easeHandoff` glide). It changes every Android fling-close and failed 2 e2e tests
+in CI; it needs fixed tests and `android-suite.sh` first.
+
+### iOS Safari 26 toolbar tint (2026-11-19, Henrik Vikstén, PR #15)
+The area under Safari's floating toolbar went black while a sheet was open, and back to the page's colour only a
+beat after the close. WebKit (`LocalFrameView::fixedContainerEdges`, iOS 26) hit-tests a few px in from each edge and
+takes the nearest fixed/sticky container: it must span >= 90% of the width, its computed `background-color` is used
+(alpha < 0.1 is skipped; images and masks are ignored), boxes <= 10px tall are sampled from pixels instead, and a
+container the size of the viewport keeps the last colour it recorded. Our root was a viewport-sized fixed box (the
+toolbar held its colour until unmount) and the backdrop's `background-color` (black) was the hit.
+- `[data-ybs-root]` is 0x0 as a sheet (`:not([data-ybs-dialog])`); its parts are fixed anyway.
+- The bleed and the `/styled` backdrop paint with `linear-gradient(c, c)`, invisible to the heuristic.
+- `[data-ybs-tint]` (View, after the scroller): fixed, full width, 12px at the bottom, masked to nothing, background
+  `color-mix(--ybs-tint-bg, transparent)` by `--ybs-tint`. `layout()` copies the sheet's computed `background-color`
+  to `--ybs-tint-bg`; `paint()` sets `--ybs-tint` 1 while more than `TINT_CUTOFF` (0.5) of the lowest detent shows.
+  `[data-ybs-closing]` makes it transparent and 13px: the height change is a layout, which makes WebKit re-read the
+  edge at once. Hidden in the dialog presentation.
+Device: Henrik's iPhone (iOS 26) via a patch in Venga; not verified by us (no iPhone). Test: "the toolbar tint strip…".
+
 ### Stacked sheets (`src/react/stack.ts`)
 - A sheet opened from inside another sheet renders its own portal root (later in `<body>`, so on top). Its Portal makes
   everything else inert (siblings of its root and of each ancestor up to `<body>`, so `Portal container` works too),

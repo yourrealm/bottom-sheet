@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The page's scroll lock is lifted as soon as a sheet starts closing, not when it has gone, so a swipe on the page
+  during the close scrolls it (Venga, iPhone). Reopening during the close locks it again.
+- iOS Safari 26 showed a black bar under the sheet (the toolbar took its colour from the sheet's full-screen layer)
+  and changed it back only after the close had finished. The toolbar now takes the sheet's colour while it's open,
+  and lets go as soon as the sheet starts closing. Thanks to Henrik Vikstén (#15).
+
+### Changed
+
+- Each sheet's `[data-ybs-root]` is zero-sized (it was a fixed, full-screen box; its parts were always fixed to the
+  screen themselves). Something of your own inside `Sheet.Portal`, outside the View, that was positioned against the
+  root needs `position: fixed`.
+- The bleed and the `/styled` backdrop paint with a one-colour `background-image` instead of `background-color`, so
+  Safari doesn't tint its toolbar from them. If you restyle them, keep them images
+  (`background: linear-gradient(c, c)`).
+
 ## 0.7.3 (2026-11-18)
 
 ### Fixed
